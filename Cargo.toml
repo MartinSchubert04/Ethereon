@@ -1,0 +1,12 @@
+# Workspace: el nucleo (broker sin interfaz) y la app de escritorio.
+[workspace]
+resolver = "2"
+members = ["crates/ethereon-core", "apps/desktop/src-tauri"]
+
+[profile.release]
+# Binario chico: es lo que queda corriendo de fondo.
+codegen-units = 16
+lto = "thin"
+opt-level = "s"
+panic = "abort"
+strip = true

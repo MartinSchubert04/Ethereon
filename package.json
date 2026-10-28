@@ -1,0 +1,12 @@
+{
+  "name": "ethereon",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*"],
+  "scripts": {
+    "dev": "npm run tauri -w @ethereon/desktop -- dev",
+    "build": "npm run tauri -w @ethereon/desktop -- build",
+    "check": "npm run check --workspaces --if-present",
+    "tauri": "npm run tauri -w @ethereon/desktop --"
+  }
+}

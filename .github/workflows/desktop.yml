@@ -1,0 +1,139 @@
+name: Escritorio
+
+# - En cada push y PR que toque algo de escritorio: tests de Rust y chequeo de tipos.
+# - Al etiquetar vX.Y.Z: compila el instalador de Windows, lo firma y lo publica en el
+#   Release de esa version junto con latest.json (lo que consultan las apps instaladas).
+#
+#     git tag v0.2.0
+#     git push origin v0.2.0
+#
+# Los filtros de carpetas no aplican a los tags: un tag v* siempre compila. Las pruebas
+# de aceptacion (contenedores SSH) no corren aca: necesitan Docker con Linux.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'apps/desktop/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop.yml'
+      - '.github/scripts/release.sh'
+  pull_request:
+    paths:
+      - 'apps/desktop/**'
+      - 'crates/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/desktop.yml'
+      - '.github/scripts/release.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Tests y build
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # Los tags solo pueden leer la cache de main: por eso main la deja con lo de
+      # release ya compilado (ver "Calentar cache") y el tag compila solo Ethereon.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Workspace de Cargo en la raiz: target/ queda ahi.
+          workspaces: .
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - run: npm ci
+
+      # En los tags no se repiten: ya corrieron con el push a main.
+      - name: Chequeo de tipos
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: npm run check -w @ethereon/desktop
+
+      - name: Tests de Rust
+        if: "!startsWith(github.ref, 'refs/tags/')"
+        run: cargo test -p ethereon -p ethereon-core
+
+      - name: Calentar cache de release
+        if: github.ref == 'refs/heads/main'
+        working-directory: apps/desktop
+        run: npx tauri build --no-bundle
+
+      - name: Version desde el tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: version
+        shell: bash
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "El tag '$GITHUB_REF_NAME' no tiene la forma vMAYOR.MENOR.PARCHE" >&2
+            exit 1
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Instalador
+        if: steps.version.outputs.version
+        shell: bash
+        working-directory: apps/desktop
+        env:
+          # Clave privada de las actualizaciones (Settings > Secrets > Actions). Sin ella
+          # el instalador sale igual, pero las apps instaladas no se pueden actualizar solas.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          # La version sale del tag: se escribe en los dos lugares donde vive.
+          sed -i "s/^version = \".*\"/version = \"$V\"/" src-tauri/Cargo.toml
+          if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then FIRMA=true; else FIRMA=false
+            echo "::warning::Falta el secret TAURI_SIGNING_PRIVATE_KEY: esta version no se ofrece como actualizacion automatica."
+          fi
+          npx tauri build --config "{\"version\":\"$V\",\"bundle\":{\"createUpdaterArtifacts\":$FIRMA}}"
+
+      - name: Publicar el Release
+        if: steps.version.outputs.version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="${{ steps.version.outputs.version }}"
+          SETUP=$(ls target/release/bundle/nsis/*-setup.exe)
+          cp "$SETUP" "Ethereon-$V-setup.exe"
+          ARCHIVOS="Ethereon-$V-setup.exe"
+
+          # latest.json: lo que consultan las apps instaladas para actualizarse solas.
+          if [ -f "$SETUP.sig" ]; then
+            URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/Ethereon-$V-setup.exe"
+            node -e '
+              const fs = require("fs");
+              const [v, url, sig] = process.argv.slice(1);
+              fs.writeFileSync("latest.json", JSON.stringify({
+                version: v,
+                pub_date: new Date().toISOString(),
+                platforms: { "windows-x86_64": { url, signature: fs.readFileSync(sig, "utf8").trim() } },
+              }, null, 2));
+            ' "$V" "$URL" "$SETUP.sig"
+            ARCHIVOS="$ARCHIVOS latest.json"
+          fi
+
+          bash .github/scripts/release.sh "$V" $ARCHIVOS

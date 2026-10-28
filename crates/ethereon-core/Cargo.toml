@@ -1,0 +1,28 @@
+[package]
+name = "ethereon-core"
+version = "0.1.0"
+edition = "2021"
+description = "Broker de Ethereon: vault, SSH, reglas, enmascarado, auditoria y servidor MCP. Sin interfaz."
+
+[dependencies]
+# ring en vez de aws-lc-rs: compila en Windows sin NASM.
+russh = { version = "0.65", default-features = false, features = ["ring", "rsa", "flate2"] }
+tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt-multi-thread"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+aes-gcm = "0.10"
+argon2 = "0.5"
+getrandom = "0.2"
+zeroize = { version = "1", features = ["derive"] }
+sha2 = "0.10"
+hmac = "0.12"
+hex = "0.4"
+base64 = "0.22"
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+thiserror = "2"
+log = "0.4"
+
+[dev-dependencies]
+tempfile = "3"

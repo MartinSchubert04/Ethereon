@@ -1,0 +1,367 @@
+/* Piezas comunes. Solo usan variables de themes.css: ningun color fijo aca. */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  background-image: var(--bg-image);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+#app {
+  height: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 8px 11px;
+  outline: none;
+  width: 100%;
+  user-select: text;
+  transition: border-color 0.15s;
+}
+textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  border-color: var(--accent);
+}
+input[type="checkbox"] {
+  width: auto;
+  accent-color: var(--accent);
+}
+select option {
+  background: var(--panel);
+  color: var(--text);
+}
+
+:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 2px;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  border-radius: 10px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mono,
+code,
+pre {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+code {
+  background: var(--panel-2);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* ---------- superficies ---------- */
+
+.card {
+  background: var(--panel);
+  backdrop-filter: var(--blur);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: var(--card-shadow);
+}
+
+.titlebar {
+  background: var(--titlebar);
+  background-size: 100% 100%;
+}
+
+/* ---------- botones ---------- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: var(--radius-sm);
+  background: var(--panel-2);
+  border: var(--border) solid var(--line);
+  font-weight: 550;
+  white-space: nowrap;
+  transition: background 0.15s, transform 0.08s, filter 0.15s;
+}
+.btn:hover {
+  background: var(--hover);
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn.primary {
+  background: var(--primary-bg);
+  color: var(--accent-ink);
+  border-color: transparent;
+}
+[data-theme="poolsuite"] .btn.primary {
+  border-color: var(--line);
+  box-shadow: 2px 2px 0 var(--line);
+}
+.btn.primary:hover {
+  filter: brightness(1.08);
+}
+.btn.danger {
+  color: var(--danger);
+}
+.btn.danger.solid {
+  background: var(--danger);
+  color: #fff;
+  border-color: transparent;
+}
+.btn.ghost {
+  background: none;
+  border-color: transparent;
+}
+.btn.sm {
+  height: 26px;
+  padding: 0 9px;
+  font-size: 12.5px;
+}
+.btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.icon-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  transition: background 0.15s, color 0.15s;
+}
+.icon-btn:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/* ---------- etiquetas ---------- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 550;
+  background: var(--panel-2);
+  color: var(--text-2);
+  border: var(--border) solid var(--line);
+  white-space: nowrap;
+}
+.chip.prod {
+  color: var(--env-prod);
+  border-color: color-mix(in srgb, var(--env-prod) 45%, transparent);
+}
+.chip.test {
+  color: var(--env-test);
+  border-color: color-mix(in srgb, var(--env-test) 45%, transparent);
+}
+.chip.dev {
+  color: var(--env-dev);
+  border-color: color-mix(in srgb, var(--env-dev) 45%, transparent);
+}
+.chip.ok {
+  color: var(--ok);
+}
+.chip.warn {
+  color: var(--warn);
+}
+.chip.bad {
+  color: var(--danger);
+}
+
+/* ---------- paginas ---------- */
+
+.page {
+  height: 100%;
+  overflow: auto;
+  padding: 22px 28px 40px;
+}
+.page-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.page-head h1 {
+  font-size: 21px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.page-head .sub {
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+.grow {
+  flex: 1;
+}
+.muted {
+  color: var(--text-2);
+}
+.faint {
+  color: var(--text-3);
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.section-title {
+  font-size: 11.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin: 22px 0 10px;
+}
+
+label.field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-2);
+}
+label.field .hint {
+  font-weight: 400;
+  color: var(--text-3);
+}
+.grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* Control segmentado (modo, entorno). */
+.seg {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--panel-2);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-sm);
+}
+.seg button {
+  padding: 4px 11px;
+  border-radius: calc(var(--radius-sm) - 2px);
+  color: var(--text-2);
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.seg button.on {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 0 0 var(--border) var(--line-strong);
+}
+
+.empty {
+  display: grid;
+  place-items: center;
+  text-align: center;
+  gap: 10px;
+  color: var(--text-2);
+  padding: 70px 20px;
+}
+.empty h3 {
+  margin: 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+table.list {
+  width: 100%;
+  border-collapse: collapse;
+}
+table.list th {
+  text-align: left;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-3);
+  padding: 8px 10px;
+  border-bottom: var(--border) solid var(--line);
+}
+table.list td {
+  padding: 9px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  vertical-align: middle;
+}
+table.list tr.click:hover td {
+  background: var(--hover);
+  cursor: pointer;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
