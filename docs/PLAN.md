@@ -22,6 +22,7 @@ queda un solo proceso chico en la bandeja que sigue atendiendo al agente.
 | 2 | Reglas y aprobaciones | `shell` (parser de pipes, `;`, `$( )`, backticks, `sh -c`, `eval`, `find -exec`, `sudo`, `xargs`, llaves), `policy` (solo lectura, aprobación, libre, sin agente; lista global; límites de tiempo, salida y comandos por minuto), cola de aprobación con aprobar, rechazar, patrón por sesión y editar | Tests de `shell` y `policy`. Aprobación editada probada desde la interfaz con sudo y salto | Hecho |
 | 3 | Modo servidor para varias PCs | Binario `ethereon-server` sin interfaz con el mismo `Broker`; HTTPS (rustls) con certificado propio o de Let's Encrypt; interfaz web mínima o la de escritorio conectada en remoto para desbloquear y aprobar; push al celular (ntfy) | Ver "Etapa 3" abajo | Pendiente. Ya está: tokens por dispositivo con vencimiento, hosts permitidos y revocación inmediata; el transporte MCP es HTTP |
 | 4 | Interfaz completa con terminal | Svelte 5: hosts por grupos tipo Termius, keychain, reglas con "probar un comando", aprobaciones, agentes, auditoría con verificación y exportación, ajustes. Terminal xterm.js por PTY. Cuatro temas (Default, Warp, Poolsuite FM, Haze) con 25 paletas. Barra de título propia con pestañas al estilo Termius, atajos de teclado, y la ventana vuelve con la misma posición, tamaño y estado maximizado. Importar `~/.ssh/config`, archivos de clave y Bitwarden; exportar OpenSSH (Termius), Bitwarden, CSV, JSON y respaldo cifrado | `svelte-check` limpio. Capturas de cada vista y de los cuatro temas manejando el WebView por DevTools. Terminal probada por el bastión | Hecho lo básico. Falta lo de "Pendientes" |
+| 5 | Publicación | Repo en GitHub, CI (`desktop.yml`: tests, tipos y build), Release por tag con instalador firmado y actualización automática (`updater.rs`) | El primer push corre el CI completo | Hecho; falta cargar el secret de la clave de firma |
 
 ### Pendientes
 
@@ -35,7 +36,6 @@ Ordenados por cuánto aportan contra cuánto cuestan.
 | Grabar las sesiones de terminal | 4 | Guardar el flujo de salida (asciicast v2) junto a la auditoría, cifrado con la clave del vault |
 | Importar desde Termius directamente | 4 | Termius no tiene un formato de exportación documentado; hoy se pasa por "Export → SSH config" o por el `~/.ssh/config` |
 | Pestañas de terminal divididas y snippets | 4 | Lo que tiene Termius y no hace falta para la v1 |
-| Instalador firmado y actualizaciones | - | Copiar el flujo de Haze (`tauri-plugin-updater` + GitHub Releases) |
 
 ### Etapa 3, cómo encararla
 
@@ -70,4 +70,5 @@ Ordenados por cuánto aportan contra cuánto cuestan.
 | Ventana sin marco con barra propia (pestañas en la barra de título) | Marco de Windows y pestañas abajo | Es lo de Termius: una sola barra arriba. Se copió de Haze, incluido mover y agrandar con `SetWindowPos` (con `set_size` la ventana crecía cada vez que se abría) |
 | En una terminal, Ctrl W va a la shell y la pestaña se cierra con Ctrl Shift W; bloquear es Ctrl Shift L | Ctrl W y Ctrl L siempre para la app | En bash, Ctrl W borra la palabra anterior y Ctrl L limpia la pantalla: cerrar la sesión sin querer cuesta más que un modificador |
 | Paletas generadas por un script de Python | Escribirlas a mano en CSS | 25 paletas son cientos de variables; en el script cada una es una línea |
+| Actualizaciones como Haze: `latest.json` en GitHub Releases, firmadas, de fondo | Avisar y que la persona baje el instalador | Es el flujo que ya funciona en Haze. Diferencia: solo se instala sola con la ventana cerrada, el vault bloqueado y sin comandos del agente, porque reiniciar bloquea el vault |
 | Tipografía Inter + Geist Mono en todos los temas | Una fuente pixel para Poolsuite | La personalidad de cada tema va en colores, bordes y sombras; las letras quedan legibles |
