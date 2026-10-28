@@ -21,6 +21,8 @@ export const app = $state({
   activeTerm: 0,
   /** Buscador de hosts de "New tab" (Ctrl T). */
   quickOpen: false,
+  /** En una terminal, ≡ muestra la barra lateral flotando encima. */
+  sidebarOverlay: false,
   sidebarCollapsed: (() => {
     try {
       return localStorage.getItem("ethereon.sidebar") === "collapsed";
@@ -109,6 +111,10 @@ export function closeTerminal(key: number) {
 }
 
 export function toggleSidebar() {
+  if (app.view === "terminal") {
+    app.sidebarOverlay = !app.sidebarOverlay;
+    return;
+  }
   app.sidebarCollapsed = !app.sidebarCollapsed;
   try {
     localStorage.setItem("ethereon.sidebar", app.sidebarCollapsed ? "collapsed" : "open");

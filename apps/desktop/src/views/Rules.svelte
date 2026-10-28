@@ -64,7 +64,8 @@
         <div class="modes">
           <span class="chip">{MODE_LABEL.read_only}</span><span>Only commands in the allowed list; nothing that writes files.</span>
           <span class="chip">{MODE_LABEL.approval}</span><span>Every command waits for you in Approvals.</span>
-          <span class="chip">{MODE_LABEL.free}</span><span>Anything not forbidden. For test machines.</span>
+          <span class="chip">{MODE_LABEL.guarded}</span><span>Anything not forbidden, without asking. For test machines.</span>
+          <span class="chip bad">{MODE_LABEL.unrestricted}</span><span>Anything at all, forbidden list included. Output still masked and logged.</span>
           <span class="chip">{MODE_LABEL.off}</span><span>The agent does not see the host.</span>
         </div>
         <div class="faint small">Set them per group (Hosts → group pencil) or per host. Default is Approval.</div>

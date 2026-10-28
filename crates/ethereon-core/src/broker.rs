@@ -488,7 +488,7 @@ impl Broker {
                     }
                     Some(Decision::ApproveEdited { command: c }) => {
                         // Lo prohibido sigue prohibido aunque lo escriba una persona.
-                        let free = Policy { mode: Mode::Free, ..pol.clone() };
+                        let free = Policy { mode: Mode::Guarded, ..pol.clone() };
                         if let Verdict::Deny(why) = policy::evaluate(&c, &free, &deny, &[]) {
                             entry.decision = "rejected".into();
                             return Err(Error::Invalid(format!("the edited command was rejected: {why}")));

@@ -11,8 +11,11 @@ credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
 - **Para Claude Code (MCP):** `list_hosts` y `run(host, comando)`. El agente ve nombres y
   descripciones, nunca IPs ni secretos. La salida vuelve con los secretos tapados con `***`.
 - **sudo sin exponer la contraseña:** Ethereon la escribe por la entrada estándar del proceso.
-- **Reglas:** por host o grupo, en modo solo lectura, con aprobación, libre o sin agente. La lista de
-  prohibidos se aplica a cada parte del comando (pipes, `;`, `$( )`, backticks, `sh -c`, `sudo`...).
+- **Reglas:** por host o grupo, en uno de cinco modos: solo lectura, con aprobación, Guarded (todo
+  menos lo prohibido), Free (libertad total) o sin agente. La lista de prohibidos se aplica a cada
+  parte del comando (pipes, `;`, `$( )`, backticks, `sh -c`, `sudo`...). Elegir Free, o arrastrar un
+  host a un grupo donde el agente no pregunta, pide confirmación.
+- **Grupos con arrastrar y soltar:** los hosts se mueven de un grupo a otro arrastrando la tarjeta.
 - **Aprobaciones:** aprobar, rechazar, editar el comando o permitir un patrón por el resto de la
   sesión. Aviso en el escritorio.
 - **Huellas:** la primera conexión pide confirmar la huella del host; si cambia, se bloquea y avisa.

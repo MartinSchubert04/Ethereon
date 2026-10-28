@@ -4,16 +4,32 @@
   import { app } from "../lib/state.svelte";
   import Seg from "./Seg.svelte";
   import Switch from "./Switch.svelte";
+  import { ask } from "../lib/confirm.svelte";
 
   let { policy = $bindable() }: { policy: Policy } = $props();
 
-  const modes: Mode[] = ["read_only", "approval", "free", "off"];
+  const modes: Mode[] = ["read_only", "approval", "guarded", "unrestricted", "off"];
   const help: Record<Mode, string> = {
     read_only: "Only commands in the allowed list run. Nothing that writes files.",
     approval: "Every command waits until you approve it in Ethereon.",
-    free: "Anything that is not forbidden runs. For test machines.",
+    guarded: "Anything that is not forbidden runs, without asking. For test machines.",
+    unrestricted: "Anything runs, forbidden commands included. Output is still masked and logged. Only for throwaway machines.",
     off: "The agent cannot see or use this host.",
   };
+
+  // Free saca todas las reglas: se confirma antes de elegirlo.
+  async function pick(m: Mode) {
+    if (m === "unrestricted" && policy.mode !== "unrestricted") {
+      const ok = await ask({
+        title: "Give the agent total freedom?",
+        body: "In Free mode the agent can run anything, including commands on the forbidden list (rm -rf, shutdown, reading ~/.ssh). Output is still masked and every command is logged.",
+        confirm: "Use Free",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    policy.mode = m;
+  }
 
   const lines = (s: string) =>
     s
@@ -23,7 +39,7 @@
 </script>
 
 <div class="stack">
-  <Seg bind:value={policy.mode} options={modes.map((m) => ({ value: m, label: MODE_LABEL[m] }))} />
+  <Seg value={policy.mode} options={modes.map((m) => ({ value: m, label: MODE_LABEL[m] }))} onchange={pick} />
   <div class="faint">{help[policy.mode]}</div>
 
   {#if policy.mode === "read_only"}

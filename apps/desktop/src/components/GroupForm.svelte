@@ -5,6 +5,7 @@
   import PolicyEditor from "./PolicyEditor.svelte";
   import { api, defaultPolicy, type Group } from "../lib/api";
   import { attempt } from "../lib/state.svelte";
+  import { ask } from "../lib/confirm.svelte";
 
   let { group, onclose }: { group: Group | null; onclose: () => void } = $props();
   const init = untrack(() => group);
@@ -16,7 +17,7 @@
     if (await attempt(() => api.groupSave({ name: name.trim(), policy }, original), "Group saved")) onclose();
   }
   async function remove() {
-    if (original && confirm(`Delete group ${original}? Its hosts stay, without a group.`)) {
+    if (original && (await ask({ title: `Delete group ${original}?`, body: "Its hosts stay, without a group.", confirm: "Delete group", danger: true }))) {
       if (await attempt(() => api.groupDelete(original))) onclose();
     }
   }

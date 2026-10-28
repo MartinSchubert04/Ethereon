@@ -2,7 +2,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 
 export type Env = "prod" | "test" | "dev";
-export type Mode = "read_only" | "approval" | "free" | "off";
+export type Mode = "read_only" | "approval" | "guarded" | "unrestricted" | "off";
 export type CredKind = "password" | "private_key" | "certificate" | "sudo_password" | "api_token";
 
 export interface Policy {
@@ -237,7 +237,8 @@ export function newHost(): Host {
 export const MODE_LABEL: Record<Mode, string> = {
   read_only: "Read-only",
   approval: "Approval",
-  free: "Free",
+  guarded: "Guarded",
+  unrestricted: "Free",
   off: "No agent",
 };
 

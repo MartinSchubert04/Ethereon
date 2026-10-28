@@ -28,6 +28,8 @@
   import TermPane from "./components/TermPane.svelte";
   import Titlebar from "./components/Titlebar.svelte";
   import QuickOpen from "./components/QuickOpen.svelte";
+  import Confirm from "./components/Confirm.svelte";
+  import { confirmState } from "./lib/confirm.svelte";
   import { flip } from "svelte/animate";
   import { fade } from "svelte/transition";
   import { flipMs, rise, toastIn } from "./lib/motion";
@@ -46,6 +48,24 @@
   ];
 
   const agentOn = $derived(app.snap?.settings.agent_enabled ?? false);
+  const overlay = $derived(app.sidebarOverlay && app.view === "terminal");
+
+  // Elegir una seccion desde el menu flotante lleva al vault y lo cierra.
+  function go(v: View) {
+    app.sidebarOverlay = false;
+    app.view = v;
+  }
+
+  // Cualquier cambio de vista cierra el menu flotante.
+  $effect(() => {
+    app.view;
+    app.sidebarOverlay = false;
+  });
+
+  function outside(e: PointerEvent) {
+    const t = e.target as HTMLElement;
+    if (overlay && !t.closest(".sidebar") && !t.closest(".ham")) app.sidebarOverlay = false;
+  }
 </script>
 
 <div class="frame">
@@ -57,11 +77,11 @@
 {:else}
   <Titlebar />
   <!-- Como en Termius: la barra lateral es de la pestaña Vault; las terminales usan todo el ancho. -->
-  <div class="shell" class:collapsed={app.sidebarCollapsed} class:full={app.view === "terminal"}>
+  <div class="shell" class:collapsed={app.sidebarCollapsed && !overlay} class:full={app.view === "terminal"} class:overlay>
     <aside class="sidebar">
       <nav>
         {#each nav as n}
-          <button class="nav" class:on={app.view === n.id} onclick={() => (app.view = n.id)} title={n.label}>
+          <button class="nav" class:on={app.view === n.id} onclick={() => go(n.id)} title={n.label}>
             <n.icon size={16} />
             <span class="grow label">{n.label}</span>
             {#if n.id === "approvals" && app.approvals.length}
@@ -136,6 +156,12 @@
   <QuickOpen />
 {/if}
 
+<svelte:window onpointerdowncapture={outside} onkeydown={(e) => overlay && e.key === "Escape" && (app.sidebarOverlay = false)} />
+
+{#if confirmState.open}
+  <Confirm />
+{/if}
+
 {#if prompt.error}
   <HostKeyPrompt error={prompt.error} ontrust={() => prompt.resolve?.(true)} oncancel={() => prompt.resolve?.(false)} />
 {/if}
@@ -184,6 +210,34 @@
     visibility: hidden;
     border: 0;
     padding: 0;
+  }
+  /* Menu flotante sobre la terminal. */
+  .shell {
+    position: relative;
+  }
+  .shell.full.overlay .sidebar {
+    visibility: visible;
+    position: absolute;
+    z-index: 30;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 216px;
+    padding: 12px 10px;
+    border-right: var(--border) solid var(--line-strong);
+    background: var(--sidebar);
+    box-shadow: 12px 0 40px -12px rgba(0, 0, 0, 0.6);
+    animation: menu-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  :global([data-theme="warp"]) .shell.full.overlay .sidebar,
+  :global([data-theme="haze"]) .shell.full.overlay .sidebar {
+    background: color-mix(in srgb, var(--bg) 90%, transparent);
+  }
+  @keyframes menu-in {
+    from {
+      transform: translateX(-24px);
+      opacity: 0;
+    }
   }
   .sidebar {
     display: flex;
@@ -256,6 +310,9 @@
     color: var(--danger);
   }
   main {
+    /* Fija: con el menu flotante la barra lateral sale de la grilla y main se correria a
+       la primera columna (que en una terminal mide 0). */
+    grid-column: 2;
     display: flex;
     flex-direction: column;
     min-width: 0;

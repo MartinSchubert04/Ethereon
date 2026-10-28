@@ -198,9 +198,9 @@ export const PALETTES: Record<string, { id: string; name: string; swatch: string
       "id": "mono",
       "name": "Monochrome",
       "swatch": [
-        "#c9ae82",
-        "#f2e9d4",
-        "#1c1714"
+        "#161210",
+        "#2a231d",
+        "#efe6d0"
       ]
     },
     {

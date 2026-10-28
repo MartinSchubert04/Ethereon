@@ -104,6 +104,15 @@
     padding: 14px 0;
     font-size: 14px;
   }
+  /* El buscador tiene el foco para que escribir funcione al toque, pero sin anillo:
+     ya es lo unico que hay en pantalla. */
+  .box .search input:focus,
+  .box .search input:focus-visible {
+    outline: none !important;
+    box-shadow: none !important;
+    border: 0 !important;
+    background: none !important;
+  }
   kbd {
     font: inherit;
     font-size: 11px;

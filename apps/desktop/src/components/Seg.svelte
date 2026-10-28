@@ -18,8 +18,9 @@
       aria-checked={o.value === value}
       class:on={o.value === value}
       onclick={() => {
-        value = o.value;
-        onchange?.(o.value);
+        // Con onchange el que decide es el padre (puede pedir confirmacion y no cambiar).
+        if (onchange) onchange(o.value);
+        else value = o.value;
       }}>{o.label}</button
     >
   {/each}

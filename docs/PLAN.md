@@ -75,4 +75,6 @@ Ordenados por cuánto aportan contra cuánto cuestan.
 | Portapapeles con `tauri-plugin-clipboard-manager` | `navigator.clipboard` | En el WebView leer el portapapeles pide permisos o falla según el origen; el plugin anda siempre |
 | Atajos y opciones de la terminal en el almacenamiento del WebView | Dentro del vault | No afectan la seguridad, y así se pueden cambiar con el vault bloqueado |
 | Argon2 y AES optimizados también en `dev` | Todo sin optimizar | Sin optimizar, desbloquear el vault con `npm run dev` tardaba varios segundos |
+| Free = libertad total y Guarded = todo menos lo prohibido; los vaults viejos con "free" se leen como Guarded | Cambiar el significado de "free" en el lugar | Si no, al actualizar, hosts que estaban protegidos por la lista de prohibidos se quedaban sin ella sin aviso |
+| Arrastrar hosts con eventos de mouse propios | Drag and drop del navegador | En Tauri el WebView le pasa el arrastre a Windows (para soltar archivos) y los eventos HTML5 no llegan |
 | Tipografía Inter + Geist Mono en todos los temas salvo Athanor | Una fuente pixel para Poolsuite | La personalidad de cada tema va en colores, bordes y sombras; las letras quedan legibles |

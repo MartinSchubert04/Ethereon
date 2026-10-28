@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FileKey, FolderInput, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
+  import { FileKey, FolderInput, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import HostForm from "../components/HostForm.svelte";
   import GroupForm from "../components/GroupForm.svelte";
@@ -7,6 +7,7 @@
   import { app, attempt, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
   import { pop } from "../lib/motion";
+  import { ask } from "../lib/confirm.svelte";
 
   let query = $state("");
   let editing = $state<Host | null | undefined>(undefined); // undefined = cerrado, null = nuevo
@@ -27,9 +28,99 @@
       hosts: hosts.filter((h) => h.group === n),
     }));
     const loose = hosts.filter((h) => !h.group || !names.includes(h.group));
-    if (loose.length || !out.length) out.push({ name: null, group: null, hosts: loose });
+    // Mientras se arrastra, "No group" aparece aunque este vacio: tambien es un destino.
+    if (loose.length || !out.length || drag?.started) out.push({ name: null, group: null, hosts: loose });
     return out;
   });
+
+  // ---------------------------------------------------------- arrastrar entre grupos
+  //
+  // Con el mouse (no con el drag and drop del navegador, que el WebView le pasa a
+  // Windows): una copia de la tarjeta sigue al cursor y el grupo de abajo se resalta.
+
+  interface Drag {
+    host: Host;
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+    offX: number;
+    offY: number;
+    w: number;
+    started: boolean;
+    /** Nombre del grupo de abajo; null = sin grupo; undefined = ninguno. */
+    over: string | null | undefined;
+  }
+  let drag = $state<Drag | null>(null);
+  let justDragged = false;
+
+  function dragStart(e: PointerEvent, h: Host) {
+    if (e.button !== 0 || (e.target as HTMLElement).closest("button")) return;
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    drag = {
+      host: h,
+      x: e.clientX,
+      y: e.clientY,
+      startX: e.clientX,
+      startY: e.clientY,
+      offX: e.clientX - r.left,
+      offY: e.clientY - r.top,
+      w: r.width,
+      started: false,
+      over: undefined,
+    };
+  }
+
+  function dragMove(e: PointerEvent) {
+    if (!drag) return;
+    drag.x = e.clientX;
+    drag.y = e.clientY;
+    if (!drag.started && Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 6) drag.started = true;
+    if (!drag.started) return;
+    const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    const zone = under?.closest<HTMLElement>("[data-drop]");
+    drag.over = zone ? (zone.dataset.drop === "" ? null : zone.dataset.drop) : undefined;
+    // Cerca de los bordes, la pagina se desplaza sola.
+    const page = document.querySelector(".hosts-page");
+    if (page) {
+      const r = page.getBoundingClientRect();
+      if (e.clientY < r.top + 50) page.scrollBy(0, -14);
+      else if (e.clientY > r.bottom - 50) page.scrollBy(0, 14);
+    }
+  }
+
+  async function dragEnd() {
+    const d = drag;
+    drag = null;
+    if (!d?.started) return;
+    justDragged = true;
+    setTimeout(() => (justDragged = false), 50);
+    if (d.over === undefined || d.over === (d.host.group ?? null)) return;
+    await moveHost(d.host, d.over);
+  }
+
+  const groupPolicy = (name: string | null) => app.snap?.groups.find((g) => g.name === name)?.policy;
+
+  async function moveHost(h: Host, to: string | null) {
+    const before = h.policy?.mode ?? groupPolicy(h.group)?.mode ?? "approval";
+    const after = h.policy?.mode ?? groupPolicy(to)?.mode ?? "approval";
+    // Pasar a un modo donde el agente no pregunta se confirma.
+    const rank = { off: 0, read_only: 1, approval: 2, guarded: 3, unrestricted: 4 } as const;
+    if (rank[after] > rank[before] && rank[after] >= 3) {
+      const ok = await ask({
+        title: `Move ${h.name} to ${to ?? "No group"}?`,
+        body:
+          after === "unrestricted"
+            ? `${to} is in Free mode: the agent can run anything on ${h.name}, forbidden commands included, without asking you.`
+            : `${to} is in Guarded mode: the agent will run commands on ${h.name} without asking you. Forbidden commands are still blocked.`,
+        confirm: "Move",
+        danger: true,
+      });
+      if (!ok) return;
+    }
+    const moved = { ...$state.snapshot(h), group: to } as Host;
+    await attempt(() => api.hostSave(moved, h.name), `${h.name} moved to ${to ?? "No group"}`);
+  }
 
   function mode(h: Host) {
     const p = h.policy ?? app.snap?.groups.find((g) => g.name === h.group)?.policy;
@@ -60,7 +151,7 @@
   }
 </script>
 
-<div class="page">
+<div class="page hosts-page" class:is-dragging={drag?.started}>
   <div class="page-head">
     <h1>Hosts</h1>
     <span class="sub">{app.snap?.hosts.length ?? 0} saved</span>
@@ -95,40 +186,60 @@
       </div>
     </div>
   {:else}
-    {#each groups as g}
-      {#if g.hosts.length || g.group}
-        <div class="group-head">
-          <span class="section-title">{g.name ?? "No group"}</span>
-          {#if g.group}
-            <span class="chip">{MODE_LABEL[g.group.policy.mode]}</span>
-            <button class="icon-btn" aria-label="Edit group" onclick={() => (editingGroup = g.group)}><Pencil size={13} /></button>
-          {/if}
-        </div>
-        <div class="grid">
-          {#each g.hosts as h, i (h.name)}
-            <div class="host card lift stagger" style="--i: {i}" role="button" tabindex="0" ondblclick={() => openTerminal(h.name)} onkeydown={(e) => e.key === "Enter" && openTerminal(h.name)}>
-              <div class="top">
-                <div class="badge {h.env}"><Server size={16} /></div>
-                <div class="grow info">
-                  <div class="name ellipsis">{h.name}</div>
-                  <div class="addr mono ellipsis">{h.user}@{h.hostname}{h.port !== 22 ? `:${h.port}` : ""}</div>
+    {#each groups as g (g.name ?? "")}
+      {#if g.hosts.length || g.group || drag?.started}
+        <section
+          class="zone"
+          class:over={drag?.started && drag.over === g.name}
+          class:target={drag?.started && drag.over !== g.name && (drag.host.group ?? null) !== g.name}
+          data-drop={g.name ?? ""}
+        >
+          <div class="group-head">
+            <span class="section-title">{g.name ?? "No group"}</span>
+            {#if g.group}
+              <span class="chip" class:bad={g.group.policy.mode === "unrestricted"} class:warn={g.group.policy.mode === "guarded"}>{MODE_LABEL[g.group.policy.mode]}</span>
+              <button class="icon-btn" aria-label="Edit group" onclick={() => (editingGroup = g.group)}><Pencil size={13} /></button>
+            {/if}
+          </div>
+          <div class="grid">
+            {#each g.hosts as h, i (h.name)}
+              <div
+                class="host card lift stagger"
+                class:dragging={drag?.started && drag.host.name === h.name}
+                style="--i: {i}"
+                role="button"
+                tabindex="0"
+                onpointerdown={(e) => dragStart(e, h)}
+                ondblclick={() => !justDragged && openTerminal(h.name)}
+                onkeydown={(e) => e.key === "Enter" && openTerminal(h.name)}
+              >
+                <div class="top">
+                  <span class="grip" title="Drag to another group"><GripVertical size={14} /></span>
+                  <div class="badge {h.env}"><Server size={16} /></div>
+                  <div class="grow info">
+                    <div class="name ellipsis">{h.name}</div>
+                    <div class="addr mono ellipsis">{h.user}@{h.hostname}{h.port !== 22 ? `:${h.port}` : ""}</div>
+                  </div>
+                  <div class="actions">
+                    <button class="icon-btn" title="Test connection" onclick={() => testHost(h.name)}><Plug size={14} /></button>
+                    <button class="icon-btn" title="Edit" onclick={() => (editing = h)}><Pencil size={14} /></button>
+                  </div>
                 </div>
-                <div class="actions">
-                  <button class="icon-btn" title="Test connection" onclick={() => testHost(h.name)}><Plug size={14} /></button>
-                  <button class="icon-btn" title="Edit" onclick={() => (editing = h)}><Pencil size={14} /></button>
+                {#if h.description}<div class="desc faint">{h.description}</div>{/if}
+                <div class="chips">
+                  <span class="chip {h.env}">{h.env}</span>
+                  <span class="chip">{MODE_LABEL[mode(h)]}</span>
+                  {#if h.jump.length}<span class="chip">via {h.jump.join(" → ")}</span>{/if}
+                  {#each h.tags as t}<span class="chip">{t}</span>{/each}
                 </div>
+                <button class="btn sm connect" onclick={() => openTerminal(h.name)}>Connect</button>
               </div>
-              {#if h.description}<div class="desc faint">{h.description}</div>{/if}
-              <div class="chips">
-                <span class="chip {h.env}">{h.env}</span>
-                <span class="chip">{MODE_LABEL[mode(h)]}</span>
-                {#if h.jump.length}<span class="chip">via {h.jump.join(" → ")}</span>{/if}
-                {#each h.tags as t}<span class="chip">{t}</span>{/each}
-              </div>
-              <button class="btn sm connect" onclick={() => openTerminal(h.name)}>Connect</button>
-            </div>
-          {/each}
-        </div>
+            {/each}
+            {#if drag?.started && (drag.host.group ?? null) !== g.name}
+              <div class="drop-hint">Drop here to move {drag.host.name}</div>
+            {/if}
+          </div>
+        </section>
       {/if}
     {/each}
   {/if}
@@ -141,9 +252,91 @@
   <GroupForm group={editingGroup} onclose={() => (editingGroup = undefined)} />
 {/if}
 
-<svelte:window onclick={(e) => importOpen && !(e.target as HTMLElement).closest(".menu-wrap") && (importOpen = false)} />
+{#if drag?.started}
+  <div class="ghost card" style="left: {drag.x - drag.offX}px; top: {drag.y - drag.offY}px; width: {drag.w}px">
+    <div class="top">
+      <div class="badge {drag.host.env}"><Server size={16} /></div>
+      <div class="grow info">
+        <div class="name ellipsis">{drag.host.name}</div>
+        <div class="addr mono ellipsis">{drag.host.user}@{drag.host.hostname}</div>
+      </div>
+    </div>
+    <div class="ghost-to">
+      {drag.over === undefined || drag.over === (drag.host.group ?? null) ? "Drop on a group" : `→ ${drag.over ?? "No group"}`}
+    </div>
+  </div>
+{/if}
+
+<svelte:window onpointermove={dragMove} onpointerup={dragEnd} onpointercancel={() => (drag = null)} onclick={(e) => importOpen && !(e.target as HTMLElement).closest(".menu-wrap") && (importOpen = false)} />
 
 <style>
+  .zone {
+    margin: 0 -10px;
+    padding: 0 10px 10px;
+    border-radius: var(--radius);
+    border: 2px dashed transparent;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .zone.target {
+    border-color: color-mix(in srgb, var(--line-strong) 70%, transparent);
+  }
+  .zone.over {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+  }
+  .is-dragging {
+    user-select: none;
+    cursor: grabbing;
+  }
+  .is-dragging .host {
+    pointer-events: none;
+  }
+  .host.dragging {
+    opacity: 0.3;
+    transform: scale(0.97);
+  }
+  .grip {
+    display: grid;
+    margin: 0 -6px 0 -4px;
+    color: var(--text-3);
+    cursor: grab;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .host:hover .grip {
+    opacity: 1;
+  }
+  .drop-hint {
+    display: grid;
+    place-items: center;
+    min-height: 92px;
+    border-radius: var(--radius);
+    border: 2px dashed var(--line-strong);
+    color: var(--text-3);
+    font-size: 12.5px;
+  }
+  .zone.over .drop-hint {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .ghost {
+    position: fixed;
+    z-index: 85;
+    pointer-events: none;
+    padding: 13px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transform: rotate(2deg) scale(1.03);
+    box-shadow: 0 24px 50px -16px rgba(0, 0, 0, 0.7);
+    border-color: var(--accent);
+    opacity: 0.96;
+  }
+  .ghost-to {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--accent);
+  }
   .search {
     display: flex;
     align-items: center;

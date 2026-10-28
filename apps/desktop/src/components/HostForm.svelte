@@ -11,6 +11,7 @@
   import { flipMs, pop } from "../lib/motion";
   import { api, defaultPolicy, newHost, type Env, type Host } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
+  import { ask } from "../lib/confirm.svelte";
 
   let { host, onclose }: { host: Host | null; onclose: () => void } = $props();
   const init = untrack(() => host);
@@ -67,7 +68,7 @@
   }
 
   async function remove() {
-    if (original && confirm(`Delete ${original}?`)) {
+    if (original && (await ask({ title: `Delete ${original}?`, body: "Its credentials stay in the keychain.", confirm: "Delete host", danger: true }))) {
       if (await attempt(() => api.hostDelete(original), "Host deleted")) onclose();
     }
   }

@@ -66,7 +66,7 @@ async fn acceptance() {
             jump: vec!["bastion".into()],
             env: Env::Test,
             description: "internal app server".into(),
-            policy: Some(Policy { mode: Mode::Free, ..Default::default() }),
+            policy: Some(Policy { mode: Mode::Guarded, ..Default::default() }),
             ..Default::default()
         });
         Ok(())
@@ -147,7 +147,7 @@ async fn acceptance() {
 
     // 5. Si cambia la clave del host, la conexion se bloquea.
     b.write(|d| {
-        d.hosts.iter_mut().find(|h| h.name == "app").unwrap().policy = Some(Policy { mode: Mode::Free, ..Default::default() });
+        d.hosts.iter_mut().find(|h| h.name == "app").unwrap().policy = Some(Policy { mode: Mode::Guarded, ..Default::default() });
         d.known_hosts.iter_mut().find(|k| k.addr == "target:22").unwrap().fingerprint = "SHA256:somethingelse".into();
         Ok(())
     })

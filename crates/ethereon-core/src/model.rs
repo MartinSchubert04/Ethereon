@@ -136,7 +136,13 @@ pub enum Mode {
     /// Cada comando espera aprobacion en la interfaz.
     #[default]
     Approval,
-    /// Todo menos lo prohibido.
+    /// Todo menos lo prohibido. Los vaults de antes de la 1.0.2 guardaban este modo como
+    /// "free": se lee como Guarded para no sacarle protecciones a nadie al actualizar.
+    #[serde(alias = "free")]
+    Guarded,
+    /// Libertad total: ni lista de prohibidos ni chequeo de comandos escondidos. Siguen el
+    /// enmascarado, la auditoria y los limites de tiempo, salida y frecuencia.
+    #[serde(rename = "unrestricted")]
     Free,
     /// El agente no puede usar este host.
     Off,

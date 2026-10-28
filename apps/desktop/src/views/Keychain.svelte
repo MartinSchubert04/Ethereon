@@ -5,6 +5,7 @@
   import Select from "../components/Select.svelte";
   import { api, KIND_LABEL, type CredKind, type CredView } from "../lib/api";
   import { app, attempt, toast } from "../lib/state.svelte";
+  import { ask } from "../lib/confirm.svelte";
 
   let editing = $state<CredView | null | undefined>(undefined);
   let id = $state("");
@@ -46,7 +47,8 @@
   }
 
   async function remove(c: CredView) {
-    if (confirm(`Delete ${c.id}? This cannot be undone.`)) await attempt(() => api.credDelete(c.id), "Deleted");
+    if (await ask({ title: `Delete ${c.id}?`, body: "The secret is erased from the vault. This cannot be undone.", confirm: "Delete", danger: true }))
+      await attempt(() => api.credDelete(c.id), "Deleted");
   }
 
   async function importKey() {

@@ -32,11 +32,16 @@
   .switch-row:disabled {
     opacity: 0.5;
   }
+  /* El pulgar se centra con top 50% + translate: queda bien con borde de 1 o 2 px. */
   .track {
+    --tw: 34px;
+    --th: 20px;
+    --gap: 2px;
+    --size: calc(var(--th) - 2 * var(--border) - 2 * var(--gap));
     position: relative;
     flex: none;
-    width: 34px;
-    height: 20px;
+    width: var(--tw);
+    height: var(--th);
     border-radius: 999px;
     background: var(--panel-2);
     border: var(--border) solid var(--line-strong);
@@ -48,28 +53,30 @@
   }
   .thumb {
     position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 14px;
-    height: 14px;
+    top: 50%;
+    left: var(--gap);
+    width: var(--size);
+    height: var(--size);
     border-radius: 50%;
     background: var(--text-2);
     box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    transform: translate(0, -50%);
     transition:
       transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
       background 0.2s,
       width 0.15s;
   }
+  /* Recorrido = ancho - alto: el pulgar queda a la misma distancia de los dos bordes. */
   .on .thumb {
-    transform: translateX(14px);
+    transform: translate(calc(var(--tw) - var(--th)), -50%);
     background: var(--accent-ink);
   }
   /* Al apretar, el pulgar se estira (como en iOS). */
   .switch-row:active .thumb {
-    width: 18px;
+    width: calc(var(--size) + 4px);
   }
   .switch-row:active .on .thumb {
-    transform: translateX(10px);
+    transform: translate(calc(var(--tw) - var(--th) - 4px), -50%);
   }
   .switch-row:focus-visible .track {
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);

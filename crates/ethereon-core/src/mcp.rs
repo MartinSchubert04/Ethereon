@@ -24,8 +24,9 @@ const PROTOCOLS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
 const INSTRUCTIONS: &str = "Ethereon runs shell commands on the user's SSH hosts for you. You never get passwords, keys \
 or IPs: call list_hosts to see what exists (with a description of each host), then run(host, command). \
-Output has secrets replaced by ***. Some hosts are read-only (only listed commands), some need a person to \
-approve each command (always give a clear `reason`), some refuse commands like rm -rf or reading ~/.ssh. \
+Output has secrets replaced by ***. Each host has a mode: read_only (only listed commands), approval (a person \
+approves each command: always give a clear `reason`), guarded (anything except forbidden commands like rm -rf or \
+reading ~/.ssh) or unrestricted (anything). \
 If a command is rejected, do not try to get around the rule; tell the user.";
 
 pub fn router(b: Arc<Broker>) -> Router {
@@ -45,7 +46,7 @@ fn tools() -> Value {
         {
             "name": "list_hosts",
             "description": "List the SSH hosts you can use: name, group, environment (prod/test/dev), tags, a description \
-                of what runs there, the rule mode (read_only, approval, free) and whether sudo is available.",
+                of what runs there, the rule mode (read_only, approval, guarded, unrestricted) and whether sudo is available.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
             "annotations": { "readOnlyHint": true }
         },

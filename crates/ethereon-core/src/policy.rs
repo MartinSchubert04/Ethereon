@@ -84,6 +84,9 @@ pub fn evaluate(cmd: &str, policy: &Policy, global_deny: &[String], session_patt
     if cmd.trim().is_empty() {
         return Verdict::Deny("empty command".into());
     }
+    if policy.mode == Mode::Free {
+        return Verdict::Allow;
+    }
     let cmds = match shell::parse(cmd) {
         Ok(c) => c,
         Err(e) if policy.mode == Mode::Approval => return Verdict::Ask(vec![format!("could not analyze: {e}")]),
@@ -99,8 +102,8 @@ pub fn evaluate(cmd: &str, policy: &Policy, global_deny: &[String], session_patt
 
     let hidden: Vec<String> = cmds.iter().filter_map(|c| c.hidden.clone()).collect();
     match policy.mode {
-        Mode::Off => unreachable!(),
-        Mode::Free => match hidden.first() {
+        Mode::Off | Mode::Free => unreachable!(),
+        Mode::Guarded => match hidden.first() {
             Some(h) => Verdict::Deny(format!("{h}; write the command explicitly")),
             None => Verdict::Allow,
         },
@@ -394,22 +397,37 @@ mod tests {
             "dd if=/dev/zero of=/dev/sda",
             "history",
         ] {
-            assert!(denied(&eval(cmd, Mode::Free)), "should deny: {cmd}");
+            assert!(denied(&eval(cmd, Mode::Guarded)), "should deny: {cmd}");
         }
     }
 
     #[test]
     fn free_mode_allows_normal_commands() {
         for cmd in ["rm file.txt", "rm -r build", "systemctl restart nginx", "ls -la | grep x > out.txt"] {
-            assert_eq!(eval(cmd, Mode::Free), Verdict::Allow, "{cmd}");
+            assert_eq!(eval(cmd, Mode::Guarded), Verdict::Allow, "{cmd}");
         }
     }
 
     #[test]
     fn hidden_commands() {
-        assert!(denied(&eval("echo cm0gLXJmIC8= | base64 -d | sh", Mode::Free)));
-        assert!(denied(&eval("X=rm; $X -rf /", Mode::Free)));
+        assert!(denied(&eval("echo cm0gLXJmIC8= | base64 -d | sh", Mode::Guarded)));
+        assert!(denied(&eval("X=rm; $X -rf /", Mode::Guarded)));
         assert!(matches!(eval("X=ls; $X", Mode::Approval), Verdict::Ask(w) if !w.is_empty()));
+    }
+
+    #[test]
+    fn free_mode_allows_everything() {
+        for cmd in ["rm -rf /tmp/x", "cat ~/.ssh/id_rsa", "echo cm0= | base64 -d | sh", "X=rm; $X -rf y"] {
+            assert_eq!(eval(cmd, Mode::Free), Verdict::Allow, "{cmd}");
+        }
+    }
+
+    #[test]
+    fn old_free_is_read_as_guarded() {
+        let p: Policy = serde_json::from_str(r#"{"mode":"free"}"#).unwrap();
+        assert_eq!(p.mode, Mode::Guarded);
+        let p: Policy = serde_json::from_str(r#"{"mode":"unrestricted"}"#).unwrap();
+        assert_eq!(p.mode, Mode::Free);
     }
 
     #[test]

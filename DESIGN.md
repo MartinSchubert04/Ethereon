@@ -36,7 +36,7 @@ genera `styles/palettes.css` y `lib/palettes.gen.ts`; cada tema recuerda la suya
 |---|---|
 | Default | Mint, Nord, Dracula, Tokyo Night, Catppuccin, Gruvbox, Paper (clara) |
 | Warp | Violet, Solar Flare, Pink City, Jellyfish, Leafy, Red Rock |
-| Poolsuite FM | Sunset, Mint Pool, Tropicana, Lavender, Beach, Platinum (Mac OS 9), Monochrome (la app nueva de Poolsuite: crema y negro sobre papel tramado), Vellum |
+| Poolsuite FM | Sunset, Mint Pool, Tropicana, Lavender, Beach, Platinum (Mac OS 9), Monochrome (oscura, como la app nueva de Poolsuite: casi negro tramado con texto y bordes crema), Vellum |
 | Haze | Cream, Peach, Rose, Mauve, Sky, Sage, Amber (acentos de Catppuccin, con la bruma teñida a juego) |
 | Athanor | Srcery, Umber, Cinnabar, Vellum (clara), Orpiment (clara): las de portfolio-athanor |
 
@@ -86,6 +86,12 @@ negrita ni cursiva; los títulos en Jacquard 24 a 48 px. Ver `styles/athanor.css
   buscador si hay más de 7 opciones.
 - **Switch**: reemplaza a las casillas de un solo ajuste. **Seg**: control segmentado con píldora
   que se desliza. Las casillas que quedan (listas) son propias, con tilde animada.
+- **Confirm** (`components/Confirm.svelte`, `lib/confirm.svelte.ts`): modal para confirmar. Reemplaza
+  al `confirm()` de Windows. Rojo cuando la acción quita protecciones o borra algo.
+- **Arrastrar hosts**: una copia de la tarjeta sigue al cursor, el grupo de destino se marca con
+  borde punteado y los grupos vacíos muestran "Drop here".
+- **Menú ≡ en una terminal**: la barra lateral aparece flotando encima; se cierra tocando afuera,
+  con ≡ o con Esc.
 - **Campos**: la ayuda va debajo del campo (`.field .hint`), así los campos de una fila quedan
   alineados aunque uno tenga ayuda y otro no.
 
