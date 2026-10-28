@@ -81,7 +81,11 @@ navegador.
   (`WT_SESSION`, `NO_COLOR`…) y se presentan como `TERM_PROGRAM=Ethereon`, para que el perfil de
   PowerShell sepa dónde está.
 - Muestran imágenes Sixel (`chafa -f sixel`, `img2sixel`…). Para eso Ethereon usa la ConPTY de
-  Windows Terminal (`apps/desktop/src-tauri/conpty`): la de Windows descarta las imágenes.
+  Windows Terminal (`apps/desktop/src-tauri/conpty`): la de Windows descarta las imágenes. Por
+  defecto las escala como Windows Terminal (10×20 píxeles por celda), así lo pensado para Windows
+  Terminal se ve igual; se cambia en **Settings → Terminal**.
+- Con fuentes de píxeles (PxPlus y similares) la negrita se marca con brillo y no engrosando: el
+  navegador la engrosaría con suavizado y se vería borrosa.
 - Las terminales locales usan la shell real de Windows (PowerShell 7, Windows PowerShell, CMD, WSL,
   Git Bash, las que estén instaladas), con tu perfil, oh-my-posh incluido.
 - Los bloques y las líneas de caja (`█ ▀ ▄ ─ │`), y también los sextantes y octantes que usan

@@ -25,11 +25,32 @@ function legacyGlyphs(): Plugin {
   };
 }
 
+// Windows Terminal (y conhost) ubican las imagenes Sixel como si cada celda midiera 10x20
+// pixeles; xterm.js las pone a tamaño real. Las herramientas pensadas para Windows Terminal
+// (el splash de athanor, por ejemplo) salen enormes. Antes de ubicar cada imagen se llama a
+// globalThis.__ethSixel, que la reescala (src/lib/sixel.ts).
+function sixelLikeWindowsTerminal(): Plugin {
+  const call = /(this\._dec\.release\(\),)this\._storage\.addImage\((\w+)\)/;
+  return {
+    name: "ethereon-sixel-scale",
+    enforce: "pre",
+    transform(code, id) {
+      if (!/@xterm[\\/]addon-image[\\/]lib[\\/]addon-image\.m?js/.test(id)) return;
+      if (!call.test(code)) {
+        this.warn("xterm addon-image changed: Sixel images will not be scaled like Windows Terminal");
+        return;
+      }
+      const hook = (v: string) => `(globalThis.__ethSixel?globalThis.__ethSixel(${v},this._storage._renderer.cellSize):${v})`;
+      return { code: code.replace(call, (_m, pre, v) => `${pre}this._storage.addImage(${hook(v)})`), map: null };
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [legacyGlyphs(), svelte()],
+  plugins: [legacyGlyphs(), sixelLikeWindowsTerminal(), svelte()],
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   // Sin pre-empaquetar, para que el plugin de arriba tambien corra en `npm run dev`.
-  optimizeDeps: { exclude: ["@xterm/addon-webgl"] },
+  optimizeDeps: { exclude: ["@xterm/addon-webgl", "@xterm/addon-image"] },
   build: { target: "es2022", chunkSizeWarningLimit: 800 },
 });

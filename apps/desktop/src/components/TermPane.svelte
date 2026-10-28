@@ -12,7 +12,8 @@
   import { comboOf, matches, prefs, pretty } from "../lib/prefs.svelte";
   import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { cssVar } from "../lib/themes";
-  import { termFont } from "../lib/termfonts";
+  import { boldWeight, termFont } from "../lib/termfonts";
+  import "../lib/sixel";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
 
@@ -92,6 +93,7 @@
     if (!term) return;
     term.options.theme = theme();
     term.options.fontFamily = termFont();
+    term.options.fontWeightBold = boldWeight();
     term.options.fontSize = fontSize();
     fitNow();
   };
@@ -117,6 +119,7 @@
     const f = termFont();
     term.options.fontFamily = "monospace";
     term.options.fontFamily = f;
+    term.options.fontWeightBold = boldWeight();
     fitNow();
   };
 
@@ -187,6 +190,9 @@
   onMount(() => {
     term = new Terminal({
       fontFamily: termFont(),
+      fontWeightBold: boldWeight(),
+      // La negrita tambien aclara el color, como en Windows Terminal.
+      drawBoldTextInBrightColors: true,
       fontSize: fontSize(),
       // Con 1 los bloques (█ ▀ ▄) y las lineas de caja se tocan entre filas, como en
       // cualquier terminal; con mas aire quedan rayas entre una fila y la otra.

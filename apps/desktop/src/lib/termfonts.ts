@@ -35,6 +35,13 @@ export function termFont(): string {
   return [...chosen.split(",").map(quote), NERD, theme].join(", ");
 }
 
+/** Fuentes de pixeles (PxPlus, Px437...): no tienen negrita y el navegador la inventaria
+ *  engrosando con suavizado, borrosa. Ahi la negrita va solo con color brillante. */
+export function boldWeight(): "bold" | "normal" {
+  const first = termFont().split(",")[0];
+  return /\b(PxPlus|Px437|Mx437|PxIBM|Ac437)\b/i.test(first) ? "normal" : "bold";
+}
+
 export interface WtFont {
   face: string;
   size: number;

@@ -59,6 +59,8 @@ const defaults = () => ({
     fontSize: 0,
     /** Vacio = la del tema. Si no, una o varias familias separadas por coma. */
     fontFamily: "",
+    /** Imagenes Sixel con la escala de Windows Terminal (10x20 pixeles por celda). */
+    sixelLikeWt: true,
   },
   files: {
     /** Donde arranca el panel de esta PC en SFTP: el Escritorio, la carpeta del usuario u otra. */
