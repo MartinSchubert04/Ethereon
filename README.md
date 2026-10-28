@@ -3,11 +3,16 @@
 Gestor SSH para Windows al estilo Termius, que también le da acceso a Claude Code sin darle ninguna
 credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
 
+![Ethereon con el tema Poolsuite FM, paleta Monochrome](docs/screenshot.png)
+
 - **Vault cifrado:** contraseñas, claves privadas (con passphrase), certificados, contraseñas de sudo
   y tokens. AES-256-GCM con una clave derivada de la contraseña maestra (Argon2id). Se bloquea solo.
 - **Hosts tipo Termius:** grupos, etiquetas, entorno (prod, test, dev), saltos por bastión
   encadenados y una descripción que el agente lee para tener contexto.
-- **Terminal propia:** doble clic en un host y se abre una terminal (xterm.js) en la app.
+- **Terminal propia:** doble clic en un host y se abre una terminal en la app, con pestañas. También
+  terminales locales (PowerShell, CMD, WSL, Git Bash).
+- **SFTP:** esta PC y el servidor lado a lado; se pasan archivos arrastrando (también desde el
+  Explorador), con progreso y cancelación.
 - **Para Claude Code (MCP):** `list_hosts` y `run(host, comando)`. El agente ve nombres y
   descripciones, nunca IPs ni secretos. La salida vuelve con los secretos tapados con `***`.
 - **sudo sin exponer la contraseña:** Ethereon la escribe por la entrada estándar del proceso.
@@ -21,8 +26,9 @@ credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
 - **Huellas:** la primera conexión pide confirmar la huella del host; si cambia, se bloquea y avisa.
 - **Auditoría:** cada pedido con dispositivo, host, comando, resultado y hash de la salida, en una
   cadena firmada que detecta si alguien la edita. Búsqueda y exportación a CSV.
-- **Importar y exportar:** `~/.ssh/config`, archivos de clave y Bitwarden. Exporta a OpenSSH (lo que
-  importa Termius), Bitwarden, CSV, JSON, o un respaldo cifrado.
+- **Importar y exportar:** el import reconoce el formato solo: respaldos y exports de Ethereon,
+  `~/.ssh/config` (también el de Termius), claves y Bitwarden. Exporta a Ethereon, OpenSSH (lo que
+  importa Termius), Bitwarden, CSV o un respaldo cifrado.
 - **Temas:** Default, Warp, Poolsuite FM, Haze y Athanor (fuente bitmap IBM VGA y "pixel clay",
   como el portfolio-athanor), cada uno con varias paletas (Nord, Dracula, Tokyo Night, Srcery, Solar
   Flare, Lavender, Vellum...).
