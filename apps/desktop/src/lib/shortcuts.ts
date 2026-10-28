@@ -2,7 +2,7 @@
 // los de copiar y pegar de la terminal los maneja TermPane.
 import { api } from "./api";
 import { comboOf, matches, prefs } from "./prefs.svelte";
-import { app, closeTerminal, currentTabIndex, goToTab, openTerminal, toast, toggleSidebar } from "./state.svelte";
+import { app, closeTerminal, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
 import { cssVar } from "./themes";
 
 function zoom(d: number) {
@@ -37,8 +37,36 @@ function tabCount() {
   return app.terms.length + 1;
 }
 
+/** Ctrl R: refresca la pestaña actual. Si es una terminal conectada, la tecla es de la shell. */
+function refreshTab(e: KeyboardEvent): boolean {
+  if (app.view === "terminal") {
+    const t = app.terms.find((x) => x.key === app.activeTerm);
+    if (!t) return true;
+    if (!t.sftp && t.alive && inTerminal(e)) return false; // la shell la usa (buscar en el historial)
+    window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: t.key }));
+    return true;
+  }
+  refresh();
+  return true;
+}
+
+/** Teclas con las que el WebView recargaria la pagina y cerraria todas las pestañas. */
+function isReload(e: KeyboardEvent) {
+  return e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.code === "KeyR");
+}
+
 function onKey(e: KeyboardEvent) {
-  if (!app.status?.unlocked || prefs.recording) return;
+  if (prefs.recording) return;
+  if (app.status?.unlocked && matches(e, "refresh") && !document.querySelector(".drawer, [role=alertdialog]")) {
+    if (refreshTab(e)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    return;
+  }
+  // Nunca recargar. Sin stopPropagation: F5 sigue llegando al panel de archivos.
+  if (isReload(e) && !inTerminal(e)) e.preventDefault();
+  if (!app.status?.unlocked) return;
   const combo = comboOf(e);
   if (!combo) return;
   // Un atajo sin Ctrl/Alt no corre mientras se escribe en un campo.

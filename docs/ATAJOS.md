@@ -9,6 +9,7 @@ Los atajos marcados con ✎ se cambian en **Settings → Keyboard shortcuts**; l
 |---|---|
 | `Ctrl T` ✎ | Pestaña nueva: buscar un host o una shell de esta PC |
 | `Ctrl Shift T` ✎ | Terminal local nueva (la primera shell de la lista, normalmente PowerShell 7) |
+| `Ctrl R` ✎ | Refrescar la pestaña actual: en SFTP recarga las carpetas; en una pestaña que no conectó o se cortó, reconecta ahí mismo. En una terminal conectada, `Ctrl R` es de la shell (buscar en el historial) |
 | `Ctrl W` ✎ | Cerrar la pestaña (dentro de una terminal va a la shell si así está configurado) |
 | `Ctrl Shift W` ✎ | Cerrar la pestaña, también desde una terminal |
 | `Ctrl Tab` / `Ctrl Shift Tab` ✎ | Pestaña siguiente / anterior |
@@ -18,6 +19,9 @@ Los atajos marcados con ✎ se cambian en **Settings → Keyboard shortcuts**; l
 | `Ctrl N` ✎ | Host nuevo. En Keychain: credencial nueva |
 | `Ctrl ,` ✎ | Settings |
 | `Ctrl Shift L` ✎ | Bloquear el vault |
+
+La app nunca se recarga: `F5`, `Ctrl R` y `Ctrl Shift R` no cierran las pestañas como en un
+navegador.
 
 ## Buscador de pestaña nueva (`Ctrl T`)
 
@@ -68,6 +72,7 @@ esta PC; a la derecha, el servidor.
 
 | Atajo | Qué hace |
 |---|---|
+| Escribir letras | Saltar al primer elemento que empieza así; la misma letra otra vez va al siguiente |
 | `↑` `↓` `Inicio` `Fin` | Moverse (con `Shift`, elegir varios) |
 | Clic / `Ctrl` clic / `Shift` clic | Elegir uno / sumar o sacar / elegir un rango |
 | `Ctrl A` | Elegir todo |
@@ -77,7 +82,7 @@ esta PC; a la derecha, el servidor.
 | `F2` | Renombrar |
 | `Supr` | Borrar (pregunta antes; las carpetas se borran con todo) |
 | `Ctrl Shift N` | Carpeta nueva (queda lista para ponerle nombre) |
-| `F5` | Recargar |
+| `F5` o `Ctrl R` | Recargar |
 | `Ctrl F` | Filtrar la carpeta |
 | `Ctrl H` | Mostrar u ocultar archivos ocultos (los que empiezan con punto) |
 | `Esc` | Soltar la selección |
@@ -87,6 +92,8 @@ esta PC; a la derecha, el servidor.
   ahí adentro.
 - También se pueden **arrastrar desde el Explorador de Windows** al panel del servidor.
 - Clic derecho abre un menú con todas las acciones.
+- El panel de esta PC arranca en el Escritorio. Se cambia en **Settings → Files (SFTP)**: Escritorio,
+  carpeta del usuario u otra carpeta. El botón de la casita vuelve ahí.
 - Clic en la ruta de arriba para escribir una a mano (`Enter` para ir). Las migas de pan llevan a
   cada carpeta; en esta PC, el ícono del disco muestra las unidades.
 - Antes de pisar algo que ya existe, pregunta.
@@ -94,6 +101,19 @@ esta PC; a la derecha, el servidor.
   archivo cancelado a mitad se borra.
 - Cada acción en el servidor queda en la auditoría (`[sftp] upload …`, `delete …`, etc.).
 - Con el vault bloqueado no se toca nada del servidor. Al desbloquear, la pestaña se reconecta sola.
+
+## Importar
+
+**Hosts → Import → A file...** (o **Settings → Import and export**), o soltar el archivo sobre la
+página de Hosts. El formato se reconoce solo, mirando el contenido:
+
+- Respaldo cifrado de Ethereon (pide la contraseña maestra de ese respaldo).
+- Export de Ethereon en JSON (el formato por defecto al exportar) o CSV.
+- Carpeta exportada en formato OpenSSH, o una carpeta `.ssh` (**A folder...**).
+- SSH config (también lo que exporta Termius), claves privadas y JSON de Bitwarden.
+
+Siempre suma al vault actual: lo que ya existe con el mismo nombre se deja como está, y las huellas
+de servidores ya confirmadas no se pisan. Los tokens de los agentes no se importan.
 
 ## Settings
 

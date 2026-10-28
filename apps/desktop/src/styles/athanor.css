@@ -181,6 +181,25 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* Mismo doble marco para los buscadores con icono, en el contenedor y no en el input. */
+[data-theme="athanor"] .inbox {
+  background: var(--ink-deep);
+  border: 2px solid var(--line);
+  border-radius: 0;
+}
+[data-theme="athanor"] .inbox:focus-within {
+  border-color: var(--accent);
+  box-shadow: none;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+[data-theme="athanor"] .inbox.bare,
+[data-theme="athanor"] .inbox.bare:focus-within {
+  background: none;
+  border-width: 0 0 2px;
+  border-color: var(--line);
+  outline: none;
+}
 [data-theme="athanor"] .nav.on {
   background: none;
   color: var(--accent);

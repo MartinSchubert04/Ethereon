@@ -264,9 +264,41 @@
     refresh();
   }
 
+  // Escribir salta al primer elemento que empieza asi, como el Explorador: "d" va a la
+  // primera "d...", otra "d" a la siguiente, y "do" rapido a la primera "do...".
+  let seek = "";
+  let seekAt = 0;
+  function typeAhead(ch: string) {
+    const now = Date.now();
+    const fresh = now - seekAt > 800;
+    seekAt = now;
+    seek = fresh ? ch : seek + ch;
+    const q = seek.toLowerCase();
+    const same = [...q].every((c) => c === q[0]);
+    const cur = shown.findIndex((x) => x.name === selected[selected.length - 1]);
+    // Misma letra repetida: recorre las que empiezan con esa letra.
+    const prefix = same ? q[0] : q;
+    const from = same ? cur + 1 : Math.max(cur, 0);
+    const order = [...shown.slice(from), ...shown.slice(0, from)];
+    const hit = order.find((x) => x.name.toLowerCase().startsWith(prefix));
+    if (!hit) return;
+    const i = shown.indexOf(hit);
+    selected = [hit.name];
+    anchor = i;
+    tick().then(() => listEl?.querySelector(`[data-name="${CSS.escape(hit.name)}"]`)?.scrollIntoView({ block: "nearest" }));
+  }
+
   function onKey(e: KeyboardEvent) {
     if (renaming || (e.target as HTMLElement).closest("input")) return;
     const k = e.key;
+    const typing = k.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey;
+    // Un espacio en medio de un nombre que se esta escribiendo es parte del nombre.
+    if (typing && (k !== " " || (seek && Date.now() - seekAt < 800))) {
+      typeAhead(k);
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (k === "ArrowDown") moveSel(1, e.shiftKey);
     else if (k === "ArrowUp") moveSel(-1, e.shiftKey);
     else if (k === "Home") moveSel(-1e9, e.shiftKey);
@@ -385,7 +417,7 @@
       <span class="ellipsis">{fs.label}</span>
     </span>
     <span class="grow"></span>
-    <label class="find">
+    <label class="find inbox">
       <Search size={13} />
       <input class="filter" placeholder="Filter" bind:value={filter} onkeydown={(e) => e.key === "Escape" && ((filter = ""), root.focus())} />
     </label>
@@ -398,10 +430,10 @@
 
   <div class="pathbar">
     <button class="icon-btn" title="Up (Backspace)" disabled={fs.side === "remote" ? path === "/" : !path} onclick={() => go(parent(fs, path))}><ArrowUp size={15} /></button>
-    <button class="icon-btn" title="Home" onclick={start}><House size={15} /></button>
+    <button class="icon-btn" title={fs.side === "local" ? "Start folder (Settings → Files)" : "Home folder"} onclick={start}><House size={15} /></button>
     <div class="crumbs">
       <input
-        class="mono"
+        class="mono tight"
         bind:value={typed}
         spellcheck="false"
         onkeydown={(e) => {
@@ -459,7 +491,7 @@
         {#if renaming === e.name}
           <!-- svelte-ignore a11y_autofocus -->
           <input
-            class="rename"
+            class="rename tight"
             bind:value={renameTo}
             onkeydown={(ev) => {
               ev.stopPropagation();
@@ -548,28 +580,14 @@
     flex: none;
   }
   .find {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    height: 28px;
+    height: 30px;
     padding: 0 8px;
-    color: var(--text-3);
-    border-radius: var(--radius-sm);
-    background: var(--panel-2);
-    width: 130px;
+    width: 140px;
     margin-right: 4px;
   }
   .find input {
-    border: 0;
-    background: none;
-    padding: 0;
     height: 26px;
     font-size: 12px;
-    min-width: 0;
-  }
-  .find input:focus {
-    outline: none;
-    box-shadow: none;
   }
   .pathbar {
     display: flex;

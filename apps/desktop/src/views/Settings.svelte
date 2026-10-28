@@ -1,6 +1,6 @@
 <script lang="ts">
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
-  import { save } from "@tauri-apps/plugin-dialog";
+  import { open, save } from "@tauri-apps/plugin-dialog";
   import { api, type ExportFormat, type Settings } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
   import KeyBinds from "../components/KeyBinds.svelte";
@@ -8,7 +8,8 @@
   import Select from "../components/Select.svelte";
   import Switch from "../components/Switch.svelte";
   import Section from "../components/Section.svelte";
-  import { Download, Keyboard, Palette, Power, Shield, SquareTerminal } from "@lucide/svelte";
+  import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Power, Shield, ShieldCheck, SquareTerminal } from "@lucide/svelte";
+  import { importPick } from "../lib/importer";
   import { THEMES, applyTheme, currentPalette, currentTheme, palettesOf, type ThemeId } from "../lib/themes";
 
   let theme = $state<ThemeId>(currentTheme());
@@ -40,14 +41,15 @@
   let oldPw = $state("");
   let newPw = $state("");
 
-  let format = $state<ExportFormat>("open_ssh");
+  // Por defecto el formato propio: lo que se exporta aca se vuelve a importar entero.
+  let format = $state<ExportFormat>("json");
   let exportPw = $state("");
 
   const formats: { id: ExportFormat; label: string; hint: string; secrets: boolean }[] = [
+    { id: "json", label: "Ethereon (JSON)", hint: "Everything in plain text: hosts, credentials, groups and host keys. Import it back here or on another PC.", secrets: true },
     { id: "open_ssh", label: "OpenSSH (Termius, VS Code)", hint: "A folder with config and key files. Termius: Import → SSH config.", secrets: true },
     { id: "bitwarden", label: "Bitwarden JSON", hint: "Unencrypted JSON. Bitwarden: Tools → Import data → Bitwarden (json).", secrets: true },
     { id: "csv", label: "CSV (hosts only)", hint: "No secrets. For a spreadsheet.", secrets: false },
-    { id: "json", label: "Ethereon JSON", hint: "Everything in plain text, to migrate or inspect.", secrets: true },
   ];
   const fmt = $derived(formats.find((f) => f.id === format)!);
 
@@ -86,6 +88,14 @@
     if (await attempt(() => api.exportData(format, path, fmt.secrets ? exportPw : null).then((m) => m), "Exported")) {
       exportPw = "";
     }
+  }
+
+  async function pickStart() {
+    const dir = (await open({ directory: true, multiple: false })) as string | null;
+    if (dir) {
+      prefs.files.customPath = dir;
+      prefs.files.localStart = "custom";
+    } else if (!prefs.files.customPath) prefs.files.localStart = "desktop";
   }
 
   async function backup() {
@@ -180,6 +190,35 @@
       </div>
     </Section>
 
+    <Section
+      id="files"
+      title="Files (SFTP)"
+      icon={FolderOpen}
+      summary="This PC starts in {prefs.files.localStart === 'custom' && prefs.files.customPath ? prefs.files.customPath : prefs.files.localStart === 'home' ? 'your user folder' : 'Desktop'}"
+    >
+      <div class="grid2">
+        <div class="field">This PC starts in
+          <Select
+            bind:value={prefs.files.localStart}
+            options={[
+              { value: "desktop", label: "Desktop" },
+              { value: "home", label: "User folder" },
+              { value: "custom", label: "Another folder", hint: prefs.files.customPath },
+            ]}
+            onchange={(v) => v === "custom" && !prefs.files.customPath && pickStart()}
+          />
+        </div>
+        {#if prefs.files.localStart === "custom"}
+          <div class="field">Folder
+            <button class="btn path-btn" onclick={pickStart}>
+              <FolderOpen size={14} /><span class="ellipsis">{prefs.files.customPath || "Pick a folder..."}</span>
+            </button>
+          </div>
+        {/if}
+      </div>
+      <div class="faint small">The left panel of every new SFTP tab opens here. The house button goes back to it.</div>
+    </Section>
+
     <Section id="keys" title="Keyboard shortcuts" icon={Keyboard} summary="Change any shortcut">
       <KeyBinds />
     </Section>
@@ -209,7 +248,18 @@
       </div>
     </Section>
 
-    <Section id="export" title="Export and backup" icon={Download} summary="OpenSSH, Bitwarden, CSV, JSON or an encrypted copy">
+    <Section id="export" title="Import and export" icon={ArrowDownUp} summary="Ethereon, OpenSSH, Bitwarden, CSV or an encrypted backup">
+      <div class="sub">Import</div>
+      <div class="row">
+        <button class="btn primary" onclick={() => importPick()}><FileInput size={14} /> Import a file...</button>
+        <button class="btn" onclick={() => importPick(true)}><FolderInput size={14} /> Import a folder...</button>
+      </div>
+      <div class="faint small">
+        The format is detected by itself: Ethereon backups and exports, SSH config (Termius exports too), private
+        keys and Bitwarden JSON. It adds to this vault and never replaces what is already here. An encrypted backup
+        asks for its own master password.
+      </div>
+      <div class="sub">Export</div>
       <div class="grid2">
         <div class="field">Format<Select bind:value={format} options={formats.map((f) => ({ value: f.id, label: f.label }))} /></div>
         {#if fmt.secrets}
@@ -222,7 +272,7 @@
       <div class="faint small">{fmt.hint}</div>
       <div class="row">
         <button class="btn primary" disabled={fmt.secrets && !exportPw} onclick={doExport}>Export</button>
-        <button class="btn" onclick={backup}>Encrypted backup of the vault</button>
+        <button class="btn" onclick={backup}><ShieldCheck size={14} /> Encrypted backup</button>
       </div>
     </Section>
   </div>
@@ -289,6 +339,11 @@
     height: 56px;
     border-radius: var(--radius-sm);
     border: 1px solid rgba(127, 127, 127, 0.25);
+  }
+  .path-btn {
+    justify-content: flex-start;
+    min-width: 0;
+    height: 36px;
   }
   .sections {
     display: flex;

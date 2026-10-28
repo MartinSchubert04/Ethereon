@@ -4,6 +4,7 @@
 export type Action =
   | "newTab"
   | "newLocal"
+  | "refresh"
   | "save"
   | "newItem"
   | "zoomIn"
@@ -23,6 +24,7 @@ export type Action =
 export const ACTIONS: { id: Action; label: string; def: string }[] = [
   { id: "newTab", label: "New tab (pick a host or local shell)", def: "Ctrl+T" },
   { id: "newLocal", label: "New local terminal (first shell in the list)", def: "Ctrl+Shift+T" },
+  { id: "refresh", label: "Refresh: folders in SFTP, reconnect a tab that lost its connection", def: "Ctrl+R" },
   { id: "closeTab", label: "Close tab", def: "Ctrl+W" },
   { id: "closeTabAnywhere", label: "Close tab, also from inside a terminal", def: "Ctrl+Shift+W" },
   { id: "nextTab", label: "Next tab", def: "Ctrl+Tab" },
@@ -56,6 +58,11 @@ const defaults = () => ({
     /** 0 = lo que diga el tema. */
     fontSize: 0,
   },
+  files: {
+    /** Donde arranca el panel de esta PC en SFTP: el Escritorio, la carpeta del usuario u otra. */
+    localStart: "desktop" as "desktop" | "home" | "custom",
+    customPath: "",
+  },
   /** Mientras se graba un atajo nuevo, los atajos no corren. */
   recording: false,
 });
@@ -66,7 +73,7 @@ function load() {
   const d = defaults();
   try {
     const saved = JSON.parse(localStorage.getItem(KEY) ?? "{}");
-    return { ...d, binds: { ...d.binds, ...saved.binds }, term: { ...d.term, ...saved.term }, recording: false };
+    return { ...d, binds: { ...d.binds, ...saved.binds }, term: { ...d.term, ...saved.term }, files: { ...d.files, ...saved.files }, recording: false };
   } catch {
     return d;
   }
@@ -76,7 +83,7 @@ export const prefs = $state(load());
 
 $effect.root(() => {
   $effect(() => {
-    const out = JSON.stringify({ binds: prefs.binds, term: prefs.term });
+    const out = JSON.stringify({ binds: prefs.binds, term: prefs.term, files: prefs.files });
     try {
       localStorage.setItem(KEY, out);
     } catch {}

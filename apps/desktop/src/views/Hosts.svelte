@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { FileKey, FolderInput, FolderOpen, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
-  import { open } from "@tauri-apps/plugin-dialog";
+  import { FileInput, FolderInput, FolderOpen, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
+  import { onMount } from "svelte";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
+  import { importLocalSsh, importPath, importPick } from "../lib/importer";
   import HostForm from "../components/HostForm.svelte";
   import GroupForm from "../components/GroupForm.svelte";
-  import { api, MODE_LABEL, userOf, type Group, type Host, type ImportSummary } from "../lib/api";
+  import { api, MODE_LABEL, userOf, type Group, type Host } from "../lib/api";
   import { app, attempt, openSftp, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
   import { pop } from "../lib/motion";
@@ -135,36 +137,32 @@
     return p?.mode ?? "approval";
   }
 
-  function report(s: ImportSummary) {
-    toast(`Imported ${s.hosts} hosts and ${s.credentials} credentials${s.skipped ? `, ${s.skipped} already there` : ""}`);
-    for (const n of s.notes.slice(0, 4)) toast(n);
-  }
-
-  async function importFrom(kind: "ssh" | "ssh-file" | "key" | "bitwarden") {
-    importOpen = false;
-    let path: string | null = null;
-    if (kind !== "ssh") {
-      const filters =
-        kind === "bitwarden" ? [{ name: "Bitwarden JSON", extensions: ["json"] }] : undefined;
-      path = (await open({ multiple: false, filters })) as string | null;
-      if (!path) return;
-    }
-    try {
-      const f =
-        kind === "key" ? api.importKeyFile(path!) : kind === "bitwarden" ? api.importBitwarden(path!) : api.importSshConfig(path);
-      report(await f);
-    } catch (e) {
-      toast(String(e), true);
-    }
-  }
+  // Soltar un archivo o carpeta sobre Hosts lo importa (el formato se reconoce solo).
+  let fileOver = $state(false);
+  onMount(() => {
+    let off: (() => void) | undefined;
+    getCurrentWebview()
+      .onDragDropEvent(async (ev) => {
+        if (app.view !== "hosts") return;
+        const p = ev.payload;
+        if (p.type === "enter" || p.type === "over") fileOver = true;
+        else if (p.type === "leave") fileOver = false;
+        else if (p.type === "drop") {
+          fileOver = false;
+          for (const path of p.paths) await importPath(path);
+        }
+      })
+      .then((u) => (off = u));
+    return () => off?.();
+  });
 </script>
 
-<div class="page hosts-page" class:is-dragging={drag?.started}>
+<div class="page hosts-page" class:is-dragging={drag?.started} class:file-over={fileOver}>
   <div class="page-head">
     <h1>Hosts</h1>
     <span class="sub">{app.snap?.hosts.length ?? 0} saved</span>
     <span class="grow"></span>
-    <div class="search">
+    <div class="search inbox">
       <Search size={14} />
       <input placeholder="Search (Ctrl F)" bind:value={query} data-host-search />
     </div>
@@ -172,10 +170,18 @@
       <button class="btn" onclick={() => (importOpen = !importOpen)}><Upload size={14} /> Import</button>
       {#if importOpen}
         <div class="menu card" transition:pop|global>
-          <button onclick={() => importFrom("ssh")}><FolderInput size={14} /> ~/.ssh/config of this PC</button>
-          <button onclick={() => importFrom("ssh-file")}><FolderInput size={14} /> SSH config file (Termius export)</button>
-          <button onclick={() => importFrom("key")}><FileKey size={14} /> Private key file</button>
-          <button onclick={() => importFrom("bitwarden")}><FileKey size={14} /> Bitwarden JSON</button>
+          <button onclick={() => ((importOpen = false), importPick())}>
+            <FileInput size={14} />
+            <span class="mi"><b>A file...</b><small>Ethereon backup or export, SSH config, key, Bitwarden. Detected by itself.</small></span>
+          </button>
+          <button onclick={() => ((importOpen = false), importPick(true))}>
+            <FolderInput size={14} />
+            <span class="mi"><b>A folder...</b><small>Ethereon OpenSSH export or a .ssh folder</small></span>
+          </button>
+          <button onclick={() => ((importOpen = false), importLocalSsh())}>
+            <FolderInput size={14} />
+            <span class="mi"><b>~/.ssh/config of this PC</b><small>Or drop any file on this page</small></span>
+          </button>
         </div>
       {/if}
     </div>
@@ -187,9 +193,9 @@
     <div class="empty">
       <Server size={30} />
       <h3>No hosts yet</h3>
-      <div>Add one, or import your ~/.ssh/config.</div>
+      <div>Add one, import a file (or drop it here): Ethereon backups and exports, SSH config, keys or Bitwarden.</div>
       <div class="row">
-        <button class="btn" onclick={() => importFrom("ssh")}>Import ~/.ssh/config</button>
+        <button class="btn" onclick={() => importPick()}>Import a file</button>
         <button class="btn primary" onclick={() => (editing = null)}>New host</button>
       </div>
     </div>
@@ -349,20 +355,7 @@
     color: var(--accent);
   }
   .search {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-left: 10px;
-    width: 200px;
-    background: var(--panel-2);
-    border: var(--border) solid var(--line);
-    border-radius: var(--radius-sm);
-    color: var(--text-3);
-  }
-  .search input {
-    border: 0;
-    background: none;
-    padding: 6px 8px 6px 0;
+    width: 220px;
   }
   .menu-wrap {
     position: relative;
@@ -373,7 +366,7 @@
     top: 38px;
     right: 0;
     z-index: 20;
-    width: 260px;
+    width: 320px;
     padding: 5px;
     background: var(--sidebar);
     box-shadow: var(--pop-shadow);
@@ -382,14 +375,37 @@
   }
   .menu button {
     display: flex;
-    gap: 9px;
-    align-items: center;
+    gap: 10px;
+    align-items: flex-start;
     padding: 8px 10px;
     border-radius: var(--radius-sm);
     text-align: left;
   }
   .menu button:hover {
     background: var(--hover);
+  }
+  .menu button :global(svg) {
+    flex: none;
+    margin-top: 2px;
+    color: var(--accent);
+  }
+  .mi {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .mi b {
+    font-weight: 600;
+  }
+  .mi small {
+    font-size: 11.5px;
+    color: var(--text-3);
+    line-height: 1.35;
+  }
+  .file-over {
+    outline: 2px dashed var(--accent);
+    outline-offset: -6px;
+    border-radius: var(--radius);
   }
   .group-head {
     display: flex;
@@ -402,7 +418,8 @@
   .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-    align-items: start;
+    /* Todas las tarjetas de una fila con la misma altura; los botones quedan abajo. */
+    align-items: stretch;
     gap: 12px;
   }
   .host {
@@ -484,5 +501,6 @@
   .connect-row {
     display: flex;
     gap: 6px;
+    margin-top: auto;
   }
 </style>

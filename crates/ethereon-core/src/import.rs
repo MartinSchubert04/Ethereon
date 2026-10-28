@@ -1,10 +1,12 @@
-//! Importar: `~/.ssh/config` (lo que tambien exporta Termius), archivos de clave y el
-//! JSON sin cifrar de Bitwarden. Devuelven lo que hay que agregar; el broker decide.
+//! Importar: `~/.ssh/config` (lo que tambien exporta Termius), archivos de clave, el
+//! JSON sin cifrar de Bitwarden y lo que exporta Ethereon (JSON, CSV, carpeta OpenSSH y
+//! el respaldo cifrado). `detect` reconoce el formato mirando el contenido. Devuelven lo
+//! que hay que agregar; el broker decide.
 
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-use crate::model::{Credential, CredentialKind, Host};
+use crate::model::{Credential, CredentialKind, Group, Host, KnownHost, VaultData};
 
 #[derive(Debug, Default, serde::Serialize)]
 pub struct Imported {
@@ -12,6 +14,10 @@ pub struct Imported {
     pub hosts: Vec<Host>,
     #[serde(skip)]
     pub credentials: Vec<Credential>,
+    #[serde(skip)]
+    pub groups: Vec<Group>,
+    #[serde(skip)]
+    pub known_hosts: Vec<KnownHost>,
     pub notes: Vec<String>,
 }
 
@@ -54,6 +60,12 @@ pub fn key_file(path: &Path) -> Result<Credential, String> {
 
 /// Lee un `~/.ssh/config`. Los bloques con comodines (`Host *`) se saltean.
 pub fn ssh_config(text: &str) -> Imported {
+    ssh_config_in(text, None)
+}
+
+/// Con `dir`, los IdentityFile se buscan primero en esa carpeta: la exportacion OpenSSH de
+/// Ethereon dice `~/.ssh/<clave>`, pero las claves estan al lado del config.
+pub fn ssh_config_in(text: &str, dir: Option<&Path>) -> Imported {
     let mut out = Imported::default();
     let mut cur: Option<Host> = None;
     let mut blocks: Vec<(Host, Option<String>, Vec<String>)> = Vec::new();
@@ -102,7 +114,8 @@ pub fn ssh_config(text: &str) -> Imported {
     let names: Vec<String> = blocks.iter().map(|b| b.0.name.clone()).collect();
     for (mut h, ident, jumps) in blocks {
         if let Some(path) = ident {
-            let p = expand(&path);
+            let local = dir.and_then(|d| Path::new(&path).file_name().map(|n| d.join(n))).filter(|p| p.is_file());
+            let p = local.unwrap_or_else(|| expand(&path));
             match key_file(&p) {
                 Ok(c) => {
                     h.credential = c.id.clone();
@@ -220,5 +233,253 @@ Host bastion
         assert_eq!(r.credentials.len(), 2);
         assert_eq!(r.credentials[0].id, "prod-db");
         assert_eq!(r.credentials[1].kind, CredentialKind::PrivateKey);
+    }
+}
+
+// ---- deteccion automatica
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Kind {
+    SshConfig,
+    SshFolder,
+    KeyFile,
+    Bitwarden,
+    EthereonJson,
+    EthereonBackup,
+    EthereonCsv,
+}
+
+impl Kind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Kind::SshConfig => "SSH config",
+            Kind::SshFolder => "SSH folder",
+            Kind::KeyFile => "private key",
+            Kind::Bitwarden => "Bitwarden export",
+            Kind::EthereonJson => "Ethereon JSON export",
+            Kind::EthereonBackup => "Ethereon encrypted backup",
+            Kind::EthereonCsv => "Ethereon CSV export",
+        }
+    }
+}
+
+/// Reconoce el formato por el contenido, no por la extension.
+pub fn detect(path: &Path) -> Result<Kind, String> {
+    if path.is_dir() {
+        return if path.join("config").is_file() {
+            Ok(Kind::SshFolder)
+        } else {
+            Err("that folder has no `config` file (pick an OpenSSH export or a .ssh folder)".into())
+        };
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&bytes);
+    let t = text.trim_start_matches('\u{feff}').trim_start();
+    if (t.starts_with("-----BEGIN") && t.contains("PRIVATE KEY")) || t.starts_with("PuTTY-User-Key-File") {
+        return Ok(Kind::KeyFile);
+    }
+    if t.starts_with("ssh-") || t.starts_with("ecdsa-") {
+        return Err("that is a public key: pick the private one (the file without .pub)".into());
+    }
+    if t.starts_with('{') {
+        let v: Value = serde_json::from_str(t).map_err(|_| "it looks like JSON, but it could not be read".to_string())?;
+        if v.get("kdf").is_some() && v.get("nonce").is_some() && v.get("data").is_some() {
+            return Ok(Kind::EthereonBackup);
+        }
+        if v.get("items").is_some_and(|i| i.is_array()) {
+            if v.get("encrypted").and_then(|e| e.as_bool()) == Some(true) {
+                return Err("that Bitwarden export is encrypted: export it again as plain JSON".into());
+            }
+            return Ok(Kind::Bitwarden);
+        }
+        if v.get("hosts").is_some() || v.get("credentials").is_some() {
+            return Ok(Kind::EthereonJson);
+        }
+        return Err("unknown JSON file".into());
+    }
+    if t.lines().next().is_some_and(|l| l.trim().starts_with("name,hostname,port,user")) {
+        return Ok(Kind::EthereonCsv);
+    }
+    let is_ssh = t.lines().any(|l| {
+        let l = l.trim().to_lowercase();
+        l.starts_with("host ") || l.starts_with("host\t") || l.starts_with("host=")
+    });
+    if is_ssh {
+        return Ok(Kind::SshConfig);
+    }
+    Err("could not tell what this file is. It works with SSH configs, private keys, Bitwarden JSON and Ethereon exports.".into())
+}
+
+/// Lee el archivo segun su formato. El respaldo cifrado necesita su contrasena maestra.
+pub fn load(path: &Path, kind: Kind, password: Option<&str>) -> Result<Imported, String> {
+    let read = || std::fs::read_to_string(path).map_err(|e| e.to_string());
+    match kind {
+        Kind::SshConfig => Ok(ssh_config_in(&read()?, path.parent())),
+        Kind::SshFolder => {
+            let text = std::fs::read_to_string(path.join("config")).map_err(|e| e.to_string())?;
+            Ok(ssh_config_in(&text, Some(path)))
+        }
+        Kind::KeyFile => Ok(Imported { credentials: vec![key_file(path)?], ..Default::default() }),
+        Kind::Bitwarden => bitwarden(&read()?),
+        Kind::EthereonJson => {
+            let d: VaultData = serde_json::from_str(&read()?).map_err(|e| format!("could not read the export: {e}"))?;
+            Ok(from_vault(d))
+        }
+        Kind::EthereonBackup => {
+            let pw = password.ok_or("this backup needs its master password")?;
+            let (_, d) = crate::vault::open(path, pw).map_err(|e| match e {
+                crate::Error::WrongPassword => "wrong master password for that backup".to_string(),
+                e => e.to_string(),
+            })?;
+            Ok(from_vault(d))
+        }
+        Kind::EthereonCsv => csv(&read()?),
+    }
+}
+
+/// De un vault (respaldo o export JSON) se traen hosts, credenciales, grupos y huellas.
+/// Agentes, ajustes y la clave de la auditoria son de cada PC y no se mezclan.
+fn from_vault(d: VaultData) -> Imported {
+    let mut out = Imported {
+        hosts: d.hosts.clone(),
+        credentials: d.credentials.clone(),
+        groups: d.groups.clone(),
+        known_hosts: d.known_hosts.clone(),
+        notes: Vec::new(),
+    };
+    if !d.devices.is_empty() {
+        out.notes.push("Agent tokens are not imported: create new ones in Agents".into());
+    }
+    out
+}
+
+/// El CSV que exporta Ethereon (solo hosts, sin secretos).
+pub fn csv(text: &str) -> Result<Imported, String> {
+    let mut out = Imported::default();
+    for (i, line) in text.lines().enumerate().skip(1) {
+        if line.trim().is_empty() {
+            continue;
+        }
+        let f = split_csv(line);
+        if f.len() < 10 {
+            out.notes.push(format!("line {}: expected 10 columns", i + 1));
+            continue;
+        }
+        let env = match f[6].as_str() {
+            "prod" => crate::model::Env::Prod,
+            "test" => crate::model::Env::Test,
+            "dev" => crate::model::Env::Dev,
+            _ => crate::model::Env::Unset,
+        };
+        out.hosts.push(Host {
+            name: f[0].clone(),
+            hostname: f[1].clone(),
+            port: f[2].parse().unwrap_or(22),
+            user: f[3].clone(),
+            credential: f[4].clone(),
+            group: (!f[5].is_empty()).then(|| f[5].clone()),
+            env,
+            tags: f[7].split_whitespace().map(String::from).collect(),
+            jump: f[8].split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect(),
+            description: f[9].clone(),
+            ..Default::default()
+        });
+    }
+    if !out.hosts.is_empty() {
+        out.notes.push("The CSV has no secrets: check that each host's credential exists in Keychain".into());
+    }
+    Ok(out)
+}
+
+fn split_csv(line: &str) -> Vec<String> {
+    let mut out = vec![String::new()];
+    let mut quoted = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if quoted && chars.peek() == Some(&'"') => {
+                chars.next();
+                out.last_mut().unwrap().push('"');
+            }
+            '"' => quoted = !quoted,
+            ',' if !quoted => out.push(String::new()),
+            c => out.last_mut().unwrap().push(c),
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod detect_tests {
+    use super::*;
+
+    fn tmp(name: &str, body: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("eth-detect-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        let p = d.join(name);
+        std::fs::write(&p, body).unwrap();
+        p
+    }
+
+    #[test]
+    fn detects_formats_by_content() {
+        assert_eq!(detect(&tmp("a", "Host web\n  HostName 1.2.3.4\n")), Ok(Kind::SshConfig));
+        assert_eq!(detect(&tmp("b.txt", "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n")), Ok(Kind::KeyFile));
+        assert_eq!(detect(&tmp("c.json", r#"{"encrypted":false,"items":[]}"#)), Ok(Kind::Bitwarden));
+        assert_eq!(detect(&tmp("d.json", r#"{"kdf":{},"nonce":"x","data":"y"}"#)), Ok(Kind::EthereonBackup));
+        assert_eq!(detect(&tmp("e.json", r#"{"hosts":[],"credentials":[]}"#)), Ok(Kind::EthereonJson));
+        assert_eq!(detect(&tmp("f.csv", "name,hostname,port,user,credential,group,env,tags,jump,description\n")), Ok(Kind::EthereonCsv));
+        assert!(detect(&tmp("g.pub", "ssh-ed25519 AAAA x")).unwrap_err().contains("public key"));
+        assert!(detect(&tmp("h", "hello")).is_err());
+    }
+
+    #[test]
+    fn csv_round_trip() {
+        let mut d = VaultData::default();
+        d.hosts.push(Host {
+            name: "web".into(),
+            hostname: "10.0.0.5".into(),
+            port: 2222,
+            user: "deploy".into(),
+            credential: "k".into(),
+            description: r#"a, "quoted" one"#.into(),
+            tags: vec!["x".into(), "y".into()],
+            jump: vec!["bastion".into()],
+            env: crate::model::Env::Prod,
+            ..Default::default()
+        });
+        let p = std::env::temp_dir().join(format!("eth-csv-{}.csv", std::process::id()));
+        crate::export::write(&d, crate::export::Format::Csv, &p).unwrap();
+        let imp = load(&p, detect(&p).unwrap(), None).unwrap();
+        let h = &imp.hosts[0];
+        assert_eq!((h.name.as_str(), h.port, h.user.as_str(), h.description.as_str()), ("web", 2222, "deploy", r#"a, "quoted" one"#));
+        assert_eq!((h.tags.len(), h.jump[0].as_str(), h.env), (2, "bastion", crate::model::Env::Prod));
+    }
+
+    #[test]
+    fn backup_round_trip_and_wrong_password() {
+        let mut d = VaultData::default();
+        d.hosts.push(Host { name: "db".into(), hostname: "10.0.0.9".into(), ..Default::default() });
+        let p = std::env::temp_dir().join(format!("eth-backup-{}.json", std::process::id()));
+        crate::vault::create(&p, "backup-pass-1", d).unwrap();
+        assert_eq!(detect(&p), Ok(Kind::EthereonBackup));
+        assert!(load(&p, Kind::EthereonBackup, Some("nope")).unwrap_err().contains("wrong master password"));
+        assert_eq!(load(&p, Kind::EthereonBackup, Some("backup-pass-1")).unwrap().hosts[0].name, "db");
+    }
+
+    #[test]
+    fn folder_export_finds_keys_next_to_config() {
+        let d = std::env::temp_dir().join(format!("eth-folder-{}", std::process::id()));
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("config"), "Host web\n  HostName 1.2.3.4\n  User u\n  IdentityFile ~/.ssh/eth-only-here-key\n").unwrap();
+        std::fs::write(d.join("eth-only-here-key"), "-----BEGIN OPENSSH PRIVATE KEY-----\nbroken\n-----END OPENSSH PRIVATE KEY-----\n").unwrap();
+        assert_eq!(detect(&d), Ok(Kind::SshFolder));
+        let imp = load(&d, Kind::SshFolder, None).unwrap();
+        assert_eq!(imp.hosts.len(), 1);
+        // La clave esta rota a proposito: lo importante es que la busco al lado del config
+        // (si no, el error seria que no existe el archivo).
+        let note = imp.notes.join(" | ");
+        assert!(!note.to_lowercase().contains("cannot find") && !note.to_lowercase().contains("no such file"), "{note}");
     }
 }

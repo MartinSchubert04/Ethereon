@@ -5,8 +5,9 @@
   import { fadeQuick, pop } from "../lib/motion";
 
   let ok = $state<HTMLButtonElement>();
+  let field = $state<HTMLInputElement>();
   $effect(() => {
-    ok?.focus();
+    (field ?? ok)?.focus();
   });
 
   function onKey(e: KeyboardEvent) {
@@ -28,10 +29,20 @@
     <div class="body">
       <h3>{c.title}</h3>
       {#if c.body}<p class="muted">{c.body}</p>{/if}
+      {#if c.input}
+        <input
+          bind:this={field}
+          class="field-in"
+          type={c.input.secret ? "password" : "text"}
+          placeholder={c.input.placeholder}
+          bind:value={c.value}
+          onkeydown={(e) => e.key === "Enter" && c.value && (e.preventDefault(), c.resolve?.(true))}
+        />
+      {/if}
     </div>
     <div class="row actions">
       <button class="btn" onclick={() => c.resolve?.(false)}>Cancel</button>
-      <button bind:this={ok} class="btn {c.danger ? 'danger solid' : 'primary'}" onclick={() => c.resolve?.(true)}>
+      <button bind:this={ok} class="btn {c.danger ? 'danger solid' : 'primary'}" disabled={!!c.input && !c.value} onclick={() => c.resolve?.(true)}>
         {c.confirm}
       </button>
     </div>
@@ -85,6 +96,10 @@
     margin: 0;
     line-height: 1.5;
     font-size: 13px;
+  }
+  .field-in {
+    margin-top: 12px;
+    width: 100%;
   }
   .actions {
     grid-column: 1 / -1;

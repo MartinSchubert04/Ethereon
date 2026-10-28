@@ -101,6 +101,57 @@ select option {
   outline-offset: 2px;
 }
 
+/* Campo con icono (buscadores, filtros): el marco es del contenedor y se ilumina entero
+   con el foco; el input de adentro no dibuja ni borde ni anillo. Con .bare el contenedor
+   tampoco: es la barra de arriba de un popup (Ctrl T, desplegables) y solo lleva la linea
+   de abajo. */
+.inbox {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  min-width: 0;
+  color: var(--text-3);
+  background: var(--panel-2);
+  border: var(--border) solid var(--line);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.inbox input,
+.inbox input:focus,
+.inbox input:focus-visible {
+  flex: 1;
+  min-width: 0;
+  border: 0 !important;
+  background: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  padding-left: 0;
+  padding-right: 0;
+}
+.inbox:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text-2);
+}
+/* Campos metidos en un lugar que recorta (una fila, la barra de ruta): el foco solo
+   cambia el color del borde, sin anillo que se corte. */
+.tight:focus,
+.tight:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: var(--accent) !important;
+}
+.inbox.bare,
+.inbox.bare:focus-within {
+  background: none;
+  border-width: 0 0 var(--border);
+  border-color: var(--line);
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

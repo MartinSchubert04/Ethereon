@@ -148,7 +148,7 @@
     onkeydown={onKey}
   >
     {#if searchable}
-      <div class="search">
+      <div class="search inbox bare">
         <Search size={14} />
         <input placeholder="Search..." bind:value={query} oninput={() => (active = 0)} />
       </div>
@@ -257,10 +257,7 @@
     border-bottom: var(--border) solid var(--line);
   }
   .search input {
-    border: 0;
-    background: none;
     padding: 10px 0;
-    box-shadow: none;
   }
   .opts {
     overflow: auto;

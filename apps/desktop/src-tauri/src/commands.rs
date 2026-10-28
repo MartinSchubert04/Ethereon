@@ -496,6 +496,21 @@ fn merge(s: &State<AppState>, imp: import::Imported) -> R<ImportSummary> {
                 sum.hosts += 1;
             }
         }
+        for g in imp.groups.iter() {
+            if !d.groups.iter().any(|x| x.name == g.name) {
+                d.groups.push(g.clone());
+            }
+        }
+        // Una huella que ya esta confirmada aca no se pisa con la del archivo.
+        for k in imp.known_hosts.iter() {
+            match d.known_hosts.iter().find(|x| x.addr == k.addr) {
+                None => d.known_hosts.push(k.clone()),
+                Some(x) if x.fingerprint != k.fingerprint => {
+                    sum.notes.push(format!("{}: kept the host key already confirmed here", k.addr))
+                }
+                Some(_) => {}
+            }
+        }
         Ok(sum)
     })
 }
@@ -520,6 +535,36 @@ pub fn import_key_file(s: State<AppState>, path: String) -> R<ImportSummary> {
 pub fn import_bitwarden(s: State<AppState>, path: String) -> R<ImportSummary> {
     let text = std::fs::read_to_string(path)?;
     merge(&s, import::bitwarden(&text).map_err(invalid)?)
+}
+
+#[derive(Serialize)]
+pub struct Detected {
+    kind: import::Kind,
+    label: &'static str,
+    needs_password: bool,
+}
+
+/// Que es este archivo o carpeta (para el boton Import y para soltar archivos).
+#[tauri::command]
+pub fn import_detect(path: String) -> R<Detected> {
+    let kind = import::detect(std::path::Path::new(&path)).map_err(invalid)?;
+    Ok(Detected { kind, label: kind.label(), needs_password: kind == import::Kind::EthereonBackup })
+}
+
+/// Importa sumando a lo que hay (nunca reemplaza). El respaldo cifrado pide su
+/// contrasena; abrirlo tarda (Argon2), por eso va en otro hilo.
+#[tauri::command]
+pub async fn import_auto(s: State<'_, AppState>, path: String, password: Option<String>) -> R<ImportSummary> {
+    s.broker.read(|_| ())?;
+    let imp = tauri::async_runtime::spawn_blocking(move || {
+        let p = std::path::PathBuf::from(&path);
+        let kind = import::detect(&p)?;
+        import::load(&p, kind, password.as_deref())
+    })
+    .await
+    .map_err(|e| invalid(e.to_string()))?
+    .map_err(invalid)?;
+    merge(&s, imp)
 }
 
 /// Exportar con secretos pide la contrasena maestra otra vez.

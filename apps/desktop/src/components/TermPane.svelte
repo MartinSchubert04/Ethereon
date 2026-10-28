@@ -8,7 +8,7 @@
   import { api, errText, type TermEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
   import { app, toast, type TermTab } from "../lib/state.svelte";
-  import { comboOf, matches, prefs } from "../lib/prefs.svelte";
+  import { comboOf, matches, prefs, pretty } from "../lib/prefs.svelte";
   import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { cssVar } from "../lib/themes";
 
@@ -106,7 +106,7 @@
     term.writeln(`\x1b[2mConnecting to ${tab.host}...\x1b[0m`);
     // La primera vez hay que confirmar la huella (y la de cada salto).
     if (!(await testHost(tab.host, true))) {
-      term.writeln("\x1b[31mNot connected.\x1b[0m");
+      term.writeln(`\x1b[31mNot connected.\x1b[0m \x1b[2m${pretty(prefs.binds.refresh)} tries again\x1b[0m`);
       setAlive(false);
       return;
     }
@@ -116,7 +116,7 @@
       id = await api.termOpen(tab.host, term.cols, term.rows, ch);
       term.focus();
     } catch (e) {
-      term.writeln(`\x1b[31m${errText(e)}\x1b[0m`);
+      term.writeln(`\x1b[31m${errText(e)}\x1b[0m \x1b[2m${pretty(prefs.binds.refresh)} tries again\x1b[0m`);
       setAlive(false);
     }
   }
@@ -126,7 +126,7 @@
     ch.onmessage = (m) => {
       if (m.kind === "data") term.write(decode(m.b64));
       else {
-        term.writeln(`\r\n\x1b[2m[session closed${m.code != null ? `, exit ${m.code}` : ""}]\x1b[0m`);
+        term.writeln(`\r\n\x1b[2m[session closed${m.code != null ? `, exit ${m.code}` : ""} · ${pretty(prefs.binds.refresh)} reconnects]\x1b[0m`);
         setAlive(false);
         id = 0;
       }
@@ -140,9 +140,17 @@
       id = await api.termOpenLocal(tab.local!, term.cols, term.rows, channel());
       term.focus();
     } catch (e) {
-      term.writeln(`\x1b[31m${errText(e)}\x1b[0m`);
+      term.writeln(`\x1b[31m${errText(e)}\x1b[0m \x1b[2m${pretty(prefs.binds.refresh)} tries again\x1b[0m`);
       setAlive(false);
     }
+  }
+
+  // Ctrl R en una pestaña sin conexion vuelve a conectar, en la misma pestaña.
+  function onRefresh(e: Event) {
+    if ((e as CustomEvent).detail !== tab.key || id) return;
+    term.writeln(`\r\n\x1b[2mReconnecting...\x1b[0m`);
+    setAlive(true);
+    connect();
   }
 
   function setAlive(v: boolean) {
@@ -185,6 +193,7 @@
     });
     ro.observe(el);
     window.addEventListener("themechange", onTheme);
+    window.addEventListener("ethereon:refresh", onRefresh);
     connect();
     return () => ro.disconnect();
   });
@@ -206,6 +215,7 @@
 
   onDestroy(() => {
     window.removeEventListener("themechange", onTheme);
+    window.removeEventListener("ethereon:refresh", onRefresh);
     if (id) api.termClose(id);
     term?.dispose();
   });

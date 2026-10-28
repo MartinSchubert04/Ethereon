@@ -246,6 +246,8 @@ pub fn run() {
             commands::import_ssh_config,
             commands::import_key_file,
             commands::import_bitwarden,
+            commands::import_detect,
+            commands::import_auto,
             commands::export_data,
             commands::backup_vault,
             commands::app_version,

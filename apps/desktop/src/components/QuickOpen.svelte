@@ -58,7 +58,7 @@
 
 <div class="scrim" role="presentation" onclick={close} transition:fadeQuick|global></div>
 <div class="center"><div class="box card" role="dialog" transition:pop|global>
-  <div class="search">
+  <div class="search inbox bare">
     <Search size={15} />
     <input
       bind:this={input}
@@ -133,15 +133,7 @@
     padding: 14px 0;
     font-size: 14px;
   }
-  /* El buscador tiene el foco para que escribir funcione al toque, pero sin anillo:
-     ya es lo unico que hay en pantalla. */
-  .box .search input:focus,
-  .box .search input:focus-visible {
-    outline: none !important;
-    box-shadow: none !important;
-    border: 0 !important;
-    background: none !important;
-  }
+
   kbd {
     font: inherit;
     font-size: 11px;

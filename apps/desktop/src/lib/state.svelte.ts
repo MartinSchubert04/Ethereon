@@ -79,9 +79,15 @@ export function start() {
   started = true;
   listen("vault", () => refresh());
   listen("data", () => refresh());
-  listen<Approval[]>("approvals", (e) => (app.approvals = e.payload));
-  listen<Alert[]>("alerts", (e) => (app.alerts = e.payload));
-  listen<UpdateInfo | null>("update", (e) => (app.update = e.payload));
+  listen<Approval[]>("approvals", (e) => {
+    app.approvals = e.payload;
+  });
+  listen<Alert[]>("alerts", (e) => {
+    app.alerts = e.payload;
+  });
+  listen<UpdateInfo | null>("update", (e) => {
+    app.update = e.payload;
+  });
   api.updateStatus().then((u) => (app.update = u));
   // Usar la interfaz posterga el autobloqueo (como mucho un aviso cada 30 s).
   let last = 0;

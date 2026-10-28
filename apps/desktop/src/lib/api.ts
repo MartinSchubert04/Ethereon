@@ -247,6 +247,9 @@ export const api = {
   localMkdir: (path: string) => invoke<void>("local_mkdir", { path }),
   localRename: (from: string, to: string) => invoke<void>("local_rename", { from, to }),
   localRemove: (paths: string[]) => invoke<void>("local_remove", { paths }),
+  importDetect: (path: string) =>
+    invoke<{ kind: string; label: string; needs_password: boolean }>("import_detect", { path }),
+  importAuto: (path: string, password: string | null) => invoke<ImportSummary>("import_auto", { path, password }),
   localShells: () => invoke<LocalShell[]>("local_shells"),
   termOpenLocal: (shell: string, cols: number, rows: number, onEvent: Channel<TermEvent>) =>
     invoke<number>("term_open_local", { shell, cols, rows, onEvent }),

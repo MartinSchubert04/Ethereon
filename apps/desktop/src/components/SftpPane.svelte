@@ -12,6 +12,8 @@
   import { app, toast, type TermTab } from "../lib/state.svelte";
   import { ask } from "../lib/confirm.svelte";
   import { rise } from "../lib/motion";
+  import { prefs } from "../lib/prefs.svelte";
+  import { desktopDir } from "@tauri-apps/api/path";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
 
@@ -36,6 +38,20 @@
   }
   let xfers = $state<Xfer[]>([]);
 
+  // Donde arranca el panel de esta PC (Settings → Files). Si la carpeta no existe, la
+  // del usuario.
+  async function localStart(): Promise<string> {
+    const f = prefs.files;
+    try {
+      const p = f.localStart === "custom" && f.customPath ? f.customPath : f.localStart === "home" ? "" : await desktopDir();
+      if (p) {
+        await api.localList(p);
+        return p;
+      }
+    } catch {}
+    return api.localHome();
+  }
+
   const local: Fs = {
     side: "local",
     label: "This PC",
@@ -44,7 +60,7 @@
     mkdir: api.localMkdir,
     rename: api.localRename,
     remove: api.localRemove,
-    home: api.localHome,
+    home: localStart,
   };
   const remote: Fs = {
     side: "remote",
@@ -172,7 +188,20 @@
     });
   });
 
+  // Ctrl R: si no conecto, reintenta; si esta conectada, recarga las dos carpetas.
+  function onRefresh(e: Event) {
+    if ((e as CustomEvent).detail !== tab.key) return;
+    if (status === "failed") connect();
+    else if (status === "ready") {
+      localPanel?.refresh();
+      remotePanel?.refresh();
+      toast("Refreshed");
+    }
+  }
+  window.addEventListener("ethereon:refresh", onRefresh);
+
   onDestroy(() => {
+    window.removeEventListener("ethereon:refresh", onRefresh);
     unlisten?.();
     for (const x of xfers) if (x.state === "running" && x.tid) api.sftpCancel(x.tid);
     if (id) api.sftpClose(id);
