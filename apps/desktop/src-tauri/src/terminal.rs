@@ -169,6 +169,7 @@ pub fn term_open_local(
     if let Some(p) = cmd.get_env("PATH").and_then(|p| p.to_str()).map(expand_vars) {
         cmd.env("PATH", p);
     }
+    scrub_env(&mut cmd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     let child = pty.slave.spawn_command(cmd).map_err(pty_err)?;
@@ -198,6 +199,43 @@ pub fn term_open_local(
         map.lock().unwrap().remove(&id);
     });
     Ok(id)
+}
+
+/// Saca las variables que hablan de la terminal desde la que se lanzo Ethereon y no de
+/// esta: si Ethereon arranco desde Windows Terminal o desde Claude Code, la shell heredaba
+/// WT_SESSION (el perfil activa cosas de Windows Terminal, como imagenes Sixel), NO_COLOR
+/// (PowerShell saca los colores) y las de Claude Code. NO_COLOR y FORCE_COLOR se respetan
+/// si la persona las puso en las variables de Windows. La shell sabe que esta en Ethereon
+/// por TERM_PROGRAM.
+fn scrub_env(cmd: &mut CommandBuilder) {
+    let keys: Vec<String> = cmd.iter_full_env_as_str().map(|(k, _)| k.to_string()).collect();
+    for k in keys {
+        let up = k.to_ascii_uppercase();
+        let foreign = up.starts_with("WT_")
+            || up.starts_with("CLAUDE")
+            || up.starts_with("TERM_PROGRAM")
+            || ((up == "NO_COLOR" || up == "FORCE_COLOR") && !set_in_windows(&k));
+        if foreign {
+            cmd.env_remove(&k);
+        }
+    }
+    cmd.env("TERM_PROGRAM", "Ethereon");
+    cmd.env("TERM_PROGRAM_VERSION", env!("CARGO_PKG_VERSION"));
+}
+
+/// Si la variable esta puesta en las variables de entorno de Windows (usuario o sistema).
+#[cfg(windows)]
+fn set_in_windows(name: &str) -> bool {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+    let user = RegKey::predef(HKEY_CURRENT_USER).open_subkey("Environment");
+    let system = RegKey::predef(HKEY_LOCAL_MACHINE).open_subkey(r"System\CurrentControlSet\Control\Session Manager\Environment");
+    [user, system].into_iter().flatten().any(|k| k.get_raw_value(name).is_ok())
+}
+
+#[cfg(not(windows))]
+fn set_in_windows(_: &str) -> bool {
+    false
 }
 
 /// Reemplaza %VAR% por su valor; las que no existen quedan como estaban.

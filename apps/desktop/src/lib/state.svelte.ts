@@ -63,18 +63,21 @@ export async function attempt(f: () => Promise<unknown>, ok?: string): Promise<b
 }
 
 /** Pedido de abrir PowerShell en una carpeta; espera a que el vault este abierto. */
-let openHere: string | null = null;
+let openHere: { cwd: string; reuse: boolean } | null = null;
 
 async function takeOpenHere() {
   const r = await api.takeOpenHere().catch(() => null);
-  if (r) openHere = r.cwd;
+  if (r) openHere = r;
   flushOpenHere();
 }
 
 async function flushOpenHere() {
   if (!openHere || !app.status?.unlocked) return;
-  const cwd = openHere;
+  const { cwd, reuse } = openHere;
   openHere = null;
+  // Atajo sin carpeta y ya hay una terminal local: se va a esa.
+  const existing = reuse ? app.terms.findIndex((t) => t.local) : -1;
+  if (existing >= 0) return goToTab(existing + 1);
   const shells = await api.localShells().catch(() => []);
   const sh = shells.find((s) => s.id === "pwsh") ?? shells[0];
   if (!sh) return toast("No local shell found", true);

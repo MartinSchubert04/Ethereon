@@ -4,6 +4,7 @@
   import { Terminal, type ITheme } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
   import { WebglAddon } from "@xterm/addon-webgl";
+  import { ImageAddon } from "@xterm/addon-image";
   import { Channel } from "@tauri-apps/api/core";
   import { api, errText, type TermEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
@@ -205,6 +206,9 @@
       gl.onContextLoss(() => gl.dispose());
       term.loadAddon(gl);
     } catch {}
+    // Imagenes en la terminal: Sixel (lo que usa Windows Terminal) y el protocolo de iTerm2
+    // (WezTerm y otros). Con esto se ven los splash, chafa -f sixel, img2sixel, etc.
+    term.loadAddon(new ImageAddon({ sixelSupport: true, iipSupport: true, storageLimit: 64 }));
     term.attachCustomKeyEventHandler(onTermKey);
     term.onSelectionChange(() => {
       if (prefs.term.copyOnSelect && term.hasSelection()) copySelection(false);

@@ -22,6 +22,9 @@ pub const DEFAULT: &str = "Ctrl+Shift+Alt+T";
 #[derive(Clone, Debug, Serialize)]
 pub struct OpenHere {
     pub cwd: String,
+    /// Sin carpeta del Explorador: si ya hay una terminal local abierta se va a esa en vez
+    /// de abrir otra (apretar el atajo varias veces no apila pestañas).
+    pub reuse: bool,
 }
 
 #[derive(Default)]
@@ -74,9 +77,12 @@ fn pressed(app: &AppHandle) {
             return;
         }
     }
-    if let Some(dir) = folder {
-        *app.state::<AppState>().hotkey.pending.lock().unwrap() = Some(OpenHere { cwd: dir.to_string_lossy().to_string() });
-    }
+    // Con carpeta: una terminal ahi. Sin carpeta: PowerShell en el Escritorio.
+    let open = match folder {
+        Some(dir) => Some(OpenHere { cwd: dir.to_string_lossy().to_string(), reuse: false }),
+        None => desktop_dir().map(|d| OpenHere { cwd: d.to_string_lossy().to_string(), reuse: true }),
+    };
+    *app.state::<AppState>().hotkey.pending.lock().unwrap() = open;
     let h = app.clone();
     // Igual que desde la bandeja: la ventana se crea fuera de este callback.
     tauri::async_runtime::spawn(async move {
@@ -143,8 +149,8 @@ pub fn active_folder() -> Option<PathBuf> {
     };
     use windows::Win32::System::Variant::VARIANT;
     use windows::Win32::UI::Shell::{
-        IFolderView, IPersistFolder2, IShellBrowser, IShellWindows, IWebBrowser2, SHGetKnownFolderPath, SHGetNameFromIDList,
-        FOLDERID_Desktop, KF_FLAG_DEFAULT, SID_STopLevelBrowser, SIGDN_FILESYSPATH, ShellWindows,
+        IFolderView, IPersistFolder2, IShellBrowser, IShellWindows, IWebBrowser2, SHGetNameFromIDList, SID_STopLevelBrowser,
+        SIGDN_FILESYSPATH, ShellWindows,
     };
     use windows::Win32::UI::WindowsAndMessaging::{FindWindowExW, GetClassNameW, GetForegroundWindow};
 
@@ -158,10 +164,7 @@ pub fn active_folder() -> Option<PathBuf> {
         let class = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
 
         if class == "Progman" || class == "WorkerW" {
-            let p = SHGetKnownFolderPath(&FOLDERID_Desktop, KF_FLAG_DEFAULT, None).ok()?;
-            let out = p.to_string().ok().map(PathBuf::from);
-            CoTaskMemFree(Some(p.0 as _));
-            return out;
+            return desktop_dir();
         }
         if class != "CabinetWClass" {
             return None;
@@ -204,5 +207,23 @@ pub fn active_folder() -> Option<PathBuf> {
 
 #[cfg(not(windows))]
 pub fn active_folder() -> Option<PathBuf> {
+    None
+}
+
+/// El Escritorio de la persona (sigue la carpeta aunque este en OneDrive).
+#[cfg(windows)]
+pub fn desktop_dir() -> Option<PathBuf> {
+    use windows::Win32::System::Com::CoTaskMemFree;
+    use windows::Win32::UI::Shell::{SHGetKnownFolderPath, FOLDERID_Desktop, KF_FLAG_DEFAULT};
+    unsafe {
+        let p = SHGetKnownFolderPath(&FOLDERID_Desktop, KF_FLAG_DEFAULT, None).ok()?;
+        let out = p.to_string().ok().map(PathBuf::from);
+        CoTaskMemFree(Some(p.0 as _));
+        out.filter(|d| d.is_dir())
+    }
+}
+
+#[cfg(not(windows))]
+pub fn desktop_dir() -> Option<PathBuf> {
     None
 }

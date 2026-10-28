@@ -254,7 +254,7 @@ export const api = {
   localShells: () => invoke<LocalShell[]>("local_shells"),
   termOpenLocal: (shell: string, cols: number, rows: number, cwd: string | null, onEvent: Channel<TermEvent>) =>
     invoke<number>("term_open_local", { shell, cols, rows, cwd, onEvent }),
-  takeOpenHere: () => invoke<{ cwd: string } | null>("take_open_here"),
+  takeOpenHere: () => invoke<{ cwd: string; reuse: boolean } | null>("take_open_here"),
   hotkeyGet: () => invoke<string | null>("hotkey_get"),
   hotkeySet: (combo: string | null) => invoke<void>("hotkey_set", { combo }),
   openInGet: () => invoke<{ mode: "wt" | "tab"; wt_installed: boolean }>("open_in_get"),

@@ -38,7 +38,8 @@ crates/ethereon-core/src/   broker sin interfaz
   import.rs, export.rs    ssh config, claves, Bitwarden; OpenSSH, Bitwarden, CSV, JSON
   files.rs                SFTP y disco local para la persona (no para el agente)
 crates/ethereon-core/tests/ pruebas de aceptación y los contenedores SSH de prueba
-apps/desktop/src-tauri/   bandeja, ventana, comandos de la interfaz (commands.rs), terminal (SSH y local), files.rs (SFTP)
+apps/desktop/src-tauri/   bandeja, ventana, comandos de la interfaz (commands.rs), terminal (SSH y local), files.rs (SFTP),
+                          hotkey.rs (atajo global), conpty/ (ConPTY de Windows Terminal, ver su README)
 apps/desktop/src/         interfaz: views/ (una por sección), components/, lib/, styles/
 ```
 

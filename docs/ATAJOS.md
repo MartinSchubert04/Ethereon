@@ -7,7 +7,7 @@ Los atajos marcados con ✎ se cambian en **Settings → Keyboard shortcuts**; l
 
 | Atajo | Qué hace |
 |---|---|
-| `Ctrl Shift Alt T` | Trae Ethereon al frente, aunque esté cerrado en la bandeja. Si la ventana activa es una carpeta del Explorador (o el Escritorio), en cambio abre una terminal en esa carpeta, como "Abrir en Terminal" |
+| `Ctrl Shift Alt T` | Si la ventana activa es una carpeta del Explorador (o el Escritorio), abre una terminal en esa carpeta, como "Abrir en Terminal". Si no, trae Ethereon al frente (aunque esté cerrado en la bandeja) con PowerShell en tu Escritorio; si ya hay una terminal local abierta, va a esa en vez de abrir otra |
 
 Se cambia o se apaga en **Settings → Startup and updates**. Si otra app ya usa la combinación,
 avisa y queda la anterior. Ahí mismo se elige dónde se abre la carpeta:
@@ -73,6 +73,11 @@ navegador.
 | `Ctrl =` / `Ctrl -` ✎ | Letra más grande / más chica |
 | `Ctrl 0` ✎ | Volver al tamaño del tema |
 
+- Las terminales locales no heredan variables de la terminal desde la que se abrió Ethereon
+  (`WT_SESSION`, `NO_COLOR`…) y se presentan como `TERM_PROGRAM=Ethereon`, para que el perfil de
+  PowerShell sepa dónde está.
+- Muestran imágenes Sixel (`chafa -f sixel`, `img2sixel`…). Para eso Ethereon usa la ConPTY de
+  Windows Terminal (`apps/desktop/src-tauri/conpty`): la de Windows descarta las imágenes.
 - Las terminales locales usan la shell real de Windows (PowerShell 7, Windows PowerShell, CMD, WSL,
   Git Bash, las que estén instaladas), con tu perfil, oh-my-posh incluido.
 - Los bloques y las líneas de caja (`█ ▀ ▄ ─ │`), y también los sextantes y octantes que usan
