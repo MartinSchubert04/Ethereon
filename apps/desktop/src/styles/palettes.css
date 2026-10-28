@@ -323,6 +323,35 @@
   --term-selection: color-mix(in srgb, #3366cc 25%, transparent);
 }
 
+[data-theme="poolsuite"][data-palette="mono"] {
+  --bg-image: repeating-conic-gradient(rgba(60,40,20,.07) 0 25%, transparent 0 50%) 0 0 / 3px 3px, radial-gradient(ellipse 80% 70% at 30% 20%, #dcc8a2, #c6aa7b 75%);
+  --accent: #1c1714;
+  --accent-ink: #f4ecd8;
+  --primary-bg: #1c1714;
+  --sidebar: #efe6d0;
+  --panel: #f4ecd8;
+  --panel-2: #e6dbc1;
+  --term-bg: #f4ecd8;
+  --term-cursor: #1c1714;
+  --hover: rgba(28,23,20,.07);
+  --term-selection: rgba(28,23,20,.2);
+  --line: #1c1714;
+  --line-strong: #1c1714;
+  --text: #1c1714;
+  --text-2: #4a3f35;
+  --text-3: #7d6f5f;
+  --card-shadow: 3px 3px 0 #1c1714;
+  --pop-shadow: 6px 6px 0 #1c1714;
+  --danger: #8f2d1f;
+  --warn: #8a6414;
+  --ok: #3d5a3a;
+  --env-prod: #8f2d1f;
+  --env-test: #8a6414;
+  --env-dev: #3b4f5c;
+  --term-fg: #1c1714;
+  --titlebar: repeating-linear-gradient(180deg, #1c1714 0 2px, transparent 2px 5px);
+}
+
 [data-theme="poolsuite"][data-palette="vellum"] {
   --bg-image: linear-gradient(180deg, #f3ead3 0%, #ece1c6 55%, #d3c6a3 100%);
   --accent: #7c5510;

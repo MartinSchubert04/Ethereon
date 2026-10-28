@@ -166,6 +166,17 @@ PALETTES = {
          pool("linear-gradient(180deg, #7fd3ff 0%, #bfeaff 45%, #fff1c1 100%)", "#0077ff", "#f7fcff", "#fdfeff", "#eaf6ff")),
         ("platinum", "Platinum", ["#bdbdbd", "#eeeeee", "#3366cc"],
          {**pool("linear-gradient(180deg, #cfcfcf, #bdbdbd)", "#3366cc", "#e3e3e3", "#eeeeee", "#dddddd"), "--term-bg": "#ffffff"}),
+        # La app nueva de Poolsuite: crema y casi negro sobre papel tramado, botones negros.
+        ("mono", "Monochrome", ["#c9ae82", "#f2e9d4", "#1c1714"],
+         {**pool("repeating-conic-gradient(rgba(60,40,20,.07) 0 25%, transparent 0 50%) 0 0 / 3px 3px, "
+                 "radial-gradient(ellipse 80% 70% at 30% 20%, #dcc8a2, #c6aa7b 75%)",
+                 "#1c1714", "#efe6d0", "#f4ecd8", "#e6dbc1", ink="#f4ecd8"),
+          "--line": "#1c1714", "--line-strong": "#1c1714", "--text": "#1c1714", "--text-2": "#4a3f35", "--text-3": "#7d6f5f",
+          "--hover": "rgba(28,23,20,.07)", "--card-shadow": "3px 3px 0 #1c1714", "--pop-shadow": "6px 6px 0 #1c1714",
+          "--danger": "#8f2d1f", "--warn": "#8a6414", "--ok": "#3d5a3a",
+          "--env-prod": "#8f2d1f", "--env-test": "#8a6414", "--env-dev": "#3b4f5c",
+          "--term-fg": "#1c1714", "--term-selection": "rgba(28,23,20,.2)",
+          "--titlebar": "repeating-linear-gradient(180deg, #1c1714 0 2px, transparent 2px 5px)"}),
         ("vellum", "Vellum", ["#ece1c6", "#f3ead3", "#7c5510"],
          {**pool("linear-gradient(180deg, #f3ead3 0%, #ece1c6 55%, #d3c6a3 100%)", "#7c5510", "#f3ead3", "#fbf5e6", "#ece1c6"),
           "--line": "#1f1914", "--line-strong": "#1f1914", "--text": "#1f1914", "--text-2": "#473c30", "--text-3": "#6e5f4c",

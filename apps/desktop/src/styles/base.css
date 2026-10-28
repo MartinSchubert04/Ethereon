@@ -9,8 +9,8 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
-  background-image: var(--bg-image);
+  /* Forma corta: --bg-image puede traer tamaño por capa (tramas como "0 0 / 3px 3px"). */
+  background: var(--bg-image), var(--bg);
   background-attachment: fixed;
   color: var(--text);
   font-family: var(--font);

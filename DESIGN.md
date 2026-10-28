@@ -36,7 +36,7 @@ genera `styles/palettes.css` y `lib/palettes.gen.ts`; cada tema recuerda la suya
 |---|---|
 | Default | Mint, Nord, Dracula, Tokyo Night, Catppuccin, Gruvbox, Paper (clara) |
 | Warp | Violet, Solar Flare, Pink City, Jellyfish, Leafy, Red Rock |
-| Poolsuite FM | Sunset, Mint Pool, Tropicana, Lavender, Beach, Platinum (Mac OS 9) |
+| Poolsuite FM | Sunset, Mint Pool, Tropicana, Lavender, Beach, Platinum (Mac OS 9), Monochrome (la app nueva de Poolsuite: crema y negro sobre papel tramado), Vellum |
 | Haze | Cream, Peach, Rose, Mauve, Sky, Sage, Amber (acentos de Catppuccin, con la bruma teñida a juego) |
 | Athanor | Srcery, Umber, Cinnabar, Vellum (clara), Orpiment (clara): las de portfolio-athanor |
 
