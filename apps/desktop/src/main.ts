@@ -2,11 +2,23 @@ import { mount } from "svelte";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/geist-mono";
 import "@fontsource/jacquard-24/latin-400.css";
+// Fuentes que se pueden elegir para la terminal (solo latin, normal y negrita).
+import "@fontsource/jetbrains-mono/latin-400.css";
+import "@fontsource/jetbrains-mono/latin-700.css";
+import "@fontsource/fira-code/latin-400.css";
+import "@fontsource/fira-code/latin-700.css";
+import "@fontsource/ibm-plex-mono/latin-400.css";
+import "@fontsource/ibm-plex-mono/latin-700.css";
+import "@fontsource/source-code-pro/latin-400.css";
+import "@fontsource/source-code-pro/latin-700.css";
+import "@fontsource/cascadia-mono/latin-400.css";
+import "@fontsource/cascadia-mono/latin-700.css";
 import "@xterm/xterm/css/xterm.css";
 import "./styles/themes.css";
 import "./styles/palettes.css";
 import "./styles/base.css";
 import "./styles/athanor.css";
+import "./styles/term-fonts.css";
 import App from "./App.svelte";
 import { applyTheme, currentTheme } from "./lib/themes";
 

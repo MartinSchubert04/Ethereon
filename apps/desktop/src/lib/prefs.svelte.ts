@@ -57,6 +57,8 @@ const defaults = () => ({
     ctrlWToShell: true,
     /** 0 = lo que diga el tema. */
     fontSize: 0,
+    /** Vacio = la del tema. Si no, una o varias familias separadas por coma. */
+    fontFamily: "",
   },
   files: {
     /** Donde arranca el panel de esta PC en SFTP: el Escritorio, la carpeta del usuario u otra. */

@@ -3,6 +3,7 @@
 
 mod commands;
 mod files;
+mod fonts;
 mod hotkey;
 mod terminal;
 mod updater;
@@ -278,6 +279,8 @@ pub fn run() {
             terminal::term_close,
             terminal::term_open_local,
             terminal::local_shells,
+            fonts::system_fonts,
+            fonts::wt_font,
             hotkey::take_open_here,
             hotkey::hotkey_get,
             hotkey::hotkey_set,

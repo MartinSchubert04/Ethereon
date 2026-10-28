@@ -73,6 +73,10 @@ navegador.
 | `Ctrl =` / `Ctrl -` ✎ | Letra más grande / más chica |
 | `Ctrl 0` ✎ | Volver al tamaño del tema |
 
+- La fuente se elige en **Settings → Terminal → Font**: la del tema, la misma de Windows Terminal
+  (copia fuente y tamaño), una de las incluidas (JetBrains Mono, Fira Code, IBM Plex Mono, Source
+  Code Pro, Cascadia Mono, y las de los temas) o cualquier instalada. Los iconos de Nerd Font se ven
+  con cualquiera. La fuente la pone la terminal, no la shell: el tema de PowerShell no la cambia.
 - Las terminales locales no heredan variables de la terminal desde la que se abrió Ethereon
   (`WT_SESSION`, `NO_COLOR`…) y se presentan como `TERM_PROGRAM=Ethereon`, para que el perfil de
   PowerShell sepa dónde está.

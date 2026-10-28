@@ -3,3 +3,4 @@
 Dockerfile text eol=lf
 *.dll binary
 *.exe binary
+*.ttf binary

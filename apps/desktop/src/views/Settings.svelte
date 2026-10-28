@@ -11,6 +11,7 @@
   import Seg from "../components/Seg.svelte";
   import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Power, Shield, ShieldCheck, SquareTerminal } from "@lucide/svelte";
   import { importPick } from "../lib/importer";
+  import { INCLUDED, ptToPx, systemFonts, wtFont, type WtFont } from "../lib/termfonts";
   import { THEMES, applyTheme, currentPalette, currentTheme, palettesOf, type ThemeId } from "../lib/themes";
 
   let theme = $state<ThemeId>(currentTheme());
@@ -88,6 +89,37 @@
     if (!path) return;
     if (await attempt(() => api.exportData(format, path, fmt.secrets ? exportPw : null).then((m) => m), "Exported")) {
       exportPw = "";
+    }
+  }
+
+  // ---- fuente de la terminal
+  const WT = "__wt__";
+  let wt = $state<WtFont | null>(null);
+  let installed = $state<string[]>([]);
+  wtFont().then((f) => (wt = f));
+  systemFonts().then((l) => (installed = l));
+  const fontOpts = $derived.by(() => {
+    const included = new Set(INCLUDED.map((f) => f.family.replace(/ Variable$/, "")));
+    const nerd = (f: string) => /nerd/i.test(f);
+    const others = installed.filter((f) => !included.has(f));
+    // La elegida puede ser una lista (la de Windows Terminal): se muestra tal cual.
+    const cur = prefs.term.fontFamily;
+    const listed = !cur || cur === WT || INCLUDED.some((f) => f.family === cur) || installed.includes(cur);
+    return [
+      { value: "", label: "Theme default" },
+      ...(listed ? [] : [{ value: cur, label: cur, hint: "chosen" }]),
+      ...(wt ? [{ value: WT, label: "Same as Windows Terminal", hint: `${wt.face} · ${ptToPx(wt.size)} px` }] : []),
+      ...INCLUDED.map((f) => ({ value: f.family, label: f.family.replace(/ Variable$/, ""), hint: f.note })),
+      ...others.filter(nerd).map((f) => ({ value: f, label: f, hint: "Nerd Font · installed" })),
+      ...others.filter((f) => !nerd(f)).map((f) => ({ value: f, label: f, hint: "installed" })),
+    ];
+  });
+  // "Same as Windows Terminal" copia fuente y tamaño; no queda guardado como opcion aparte.
+  function pickFont(v: string) {
+    if (v === WT && wt) {
+      prefs.term.fontFamily = wt.face;
+      prefs.term.fontSize = ptToPx(wt.size);
+      toast(`Using ${wt.face}, ${ptToPx(wt.size)} px`);
     }
   }
 
@@ -224,6 +256,10 @@
         <Switch bind:checked={prefs.term.ctrlWToShell}>Inside a terminal, Ctrl W goes to the shell (close the tab with Ctrl Shift W)</Switch>
       </div>
       <div class="grid2">
+        <div class="field">Font
+          <Select bind:value={prefs.term.fontFamily} options={fontOpts} onchange={pickFont} />
+          <span class="hint">Nerd Font icons work with any of them</span>
+        </div>
         <div class="field">Font size
           <Select
             bind:value={prefs.term.fontSize}

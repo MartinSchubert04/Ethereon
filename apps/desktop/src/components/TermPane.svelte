@@ -12,6 +12,7 @@
   import { comboOf, matches, prefs, pretty } from "../lib/prefs.svelte";
   import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { cssVar } from "../lib/themes";
+  import { termFont } from "../lib/termfonts";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
 
@@ -90,7 +91,7 @@
   const onTheme = () => {
     if (!term) return;
     term.options.theme = theme();
-    term.options.fontFamily = cssVar("--mono");
+    term.options.fontFamily = termFont();
     term.options.fontSize = fontSize();
     fitNow();
   };
@@ -113,7 +114,7 @@
   // poner la misma fuente no hace nada, por eso se cambia un instante y se devuelve.
   const refont = () => {
     if (!term) return;
-    const f = cssVar("--mono");
+    const f = termFont();
     term.options.fontFamily = "monospace";
     term.options.fontFamily = f;
     fitNow();
@@ -185,7 +186,7 @@
 
   onMount(() => {
     term = new Terminal({
-      fontFamily: cssVar("--mono"),
+      fontFamily: termFont(),
       fontSize: fontSize(),
       // Con 1 los bloques (█ ▀ ▄) y las lineas de caja se tocan entre filas, como en
       // cualquier terminal; con mas aire quedan rayas entre una fila y la otra.
@@ -222,7 +223,7 @@
     ro.observe(el);
     window.addEventListener("themechange", onTheme);
     document.fonts.addEventListener("loadingdone", refont);
-    document.fonts.load(`${fontSize()}px ${cssVar("--mono")}`).then(refont, () => {});
+    document.fonts.load(`${fontSize()}px ${termFont()}`).then(refont, () => {});
     window.addEventListener("ethereon:refresh", onRefresh);
     connect();
     return () => ro.disconnect();
@@ -231,6 +232,7 @@
   // Cambiar el tamaño de letra en Settings se aplica en vivo.
   $effect(() => {
     prefs.term.fontSize;
+    prefs.term.fontFamily;
     if (term) queueMicrotask(onTheme);
   });
 
