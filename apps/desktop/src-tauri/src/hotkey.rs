@@ -3,7 +3,9 @@
 //! carpeta del Explorador (o el Escritorio), la interfaz abre PowerShell 7 en esa ruta,
 //! como "Abrir en Terminal".
 //!
-//! La carpeta se lee antes de mostrar la ventana: despues, la activa ya es Ethereon.
+//! La carpeta se abre en Windows Terminal (con el perfil y el tema de la persona) o en una
+//! pestaña de Ethereon, segun Settings. La carpeta se lee antes de mostrar la ventana:
+//! despues, la activa ya es Ethereon.
 
 use serde::Serialize;
 use std::path::PathBuf;
@@ -26,6 +28,25 @@ pub struct OpenHere {
 pub struct HotkeyState {
     pub combo: Mutex<Option<String>>,
     pub pending: Mutex<Option<OpenHere>>,
+    /// Donde se abre la carpeta: "wt" (Windows Terminal) o "tab" (pestaña de Ethereon).
+    pub open_in: Mutex<String>,
+}
+
+/// Windows Terminal, si esta instalado (wt.exe es un alias en WindowsApps).
+fn wt_path() -> Option<PathBuf> {
+    let p = PathBuf::from(std::env::var_os("LOCALAPPDATA")?).join(r"Microsoft\WindowsApps\wt.exe");
+    std::fs::symlink_metadata(&p).is_ok().then_some(p)
+}
+
+/// Abre Windows Terminal en `dir`, en una ventana nueva y con el perfil por defecto.
+fn open_wt(dir: &std::path::Path) -> bool {
+    let Some(wt) = wt_path() else { return false };
+    // Una barra al final ("C:\") escaparia la comilla de cierre del argumento.
+    let mut d = dir.to_string_lossy().trim_end_matches('\\').to_string();
+    if d.ends_with(':') {
+        d.push_str("\\.");
+    }
+    std::process::Command::new(wt).args(["-w", "new", "-d", &d]).spawn().is_ok()
 }
 
 /// Registra `combo` (o nada) en lugar del atajo anterior.
@@ -45,6 +66,14 @@ pub fn register(app: &AppHandle, combo: Option<&str>) -> Result<(), String> {
 
 fn pressed(app: &AppHandle) {
     let folder = active_folder();
+    let st = app.state::<AppState>();
+    let in_wt = st.hotkey.open_in.lock().unwrap().as_str() == "wt";
+    // Con una carpeta y Windows Terminal elegido, se abre ahi y Ethereon no se muestra.
+    if let (Some(dir), true) = (&folder, in_wt) {
+        if open_wt(dir) {
+            return;
+        }
+    }
     if let Some(dir) = folder {
         *app.state::<AppState>().hotkey.pending.lock().unwrap() = Some(OpenHere { cwd: dir.to_string_lossy().to_string() });
     }
@@ -68,6 +97,27 @@ pub fn take_open_here(s: tauri::State<AppState>) -> Option<OpenHere> {
 #[tauri::command]
 pub fn hotkey_get(s: tauri::State<AppState>) -> Option<String> {
     s.hotkey.combo.lock().unwrap().clone()
+}
+
+#[derive(Serialize)]
+pub struct OpenIn {
+    mode: String,
+    wt_installed: bool,
+}
+
+#[tauri::command]
+pub fn open_in_get(s: tauri::State<AppState>) -> OpenIn {
+    OpenIn { mode: s.hotkey.open_in.lock().unwrap().clone(), wt_installed: wt_path().is_some() }
+}
+
+#[tauri::command]
+pub fn open_in_set(app: AppHandle, s: tauri::State<AppState>, mode: String) -> Result<(), ethereon_core::Error> {
+    if mode != "wt" && mode != "tab" {
+        return Err(ethereon_core::Error::Invalid(format!("unknown place: {mode}")));
+    }
+    *s.hotkey.open_in.lock().unwrap() = mode;
+    crate::save_config(&app);
+    Ok(())
 }
 
 /// `None` lo apaga. Se guarda en config.json (no afecta la seguridad).

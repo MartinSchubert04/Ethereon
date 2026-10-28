@@ -7,10 +7,14 @@ Los atajos marcados con ✎ se cambian en **Settings → Keyboard shortcuts**; l
 
 | Atajo | Qué hace |
 |---|---|
-| `Ctrl Shift Alt T` | Trae Ethereon al frente, aunque esté cerrado en la bandeja. Si la ventana activa es una carpeta del Explorador (o el Escritorio), además abre PowerShell 7 en esa carpeta, como "Abrir en Terminal". Con el vault bloqueado, la pestaña se abre al desbloquearlo |
+| `Ctrl Shift Alt T` | Trae Ethereon al frente, aunque esté cerrado en la bandeja. Si la ventana activa es una carpeta del Explorador (o el Escritorio), en cambio abre una terminal en esa carpeta, como "Abrir en Terminal" |
 
 Se cambia o se apaga en **Settings → Startup and updates**. Si otra app ya usa la combinación,
-avisa y queda la anterior.
+avisa y queda la anterior. Ahí mismo se elige dónde se abre la carpeta:
+
+- **Windows Terminal** (por defecto): con tu perfil, tu tema y tu fuente. Ethereon queda en la
+  bandeja.
+- **Ethereon**: una pestaña de PowerShell 7. Con el vault bloqueado, se abre al desbloquearlo.
 
 ## En toda la app
 
@@ -71,8 +75,9 @@ navegador.
 
 - Las terminales locales usan la shell real de Windows (PowerShell 7, Windows PowerShell, CMD, WSL,
   Git Bash, las que estén instaladas), con tu perfil, oh-my-posh incluido.
-- Los bloques y las líneas de caja (`█ ▀ ▄ ─ │`) se dibujan pixel exacto, sin rayas entre filas,
-  así que los MOTD con dibujos y las barras se ven como en cualquier terminal.
+- Los bloques y las líneas de caja (`█ ▀ ▄ ─ │`), y también los sextantes y octantes que usan
+  `chafa` y los MOTD con imágenes, se dibujan pixel exacto, sin rayas entre filas ni letras de otra
+  fuente. La tabla de sextantes y octantes sale de `apps/desktop/scripts/legacy_glyphs.py`.
 
 ## Archivos (SFTP)
 

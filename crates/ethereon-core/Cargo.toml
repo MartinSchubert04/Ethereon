@@ -1,6 +1,6 @@
 [package]
 name = "ethereon-core"
-version = "1.0.5"
+version = "1.1.0"
 edition = "2021"
 description = "Broker de Ethereon: vault, SSH, reglas, enmascarado, auditoria y servidor MCP. Sin interfaz."
 

@@ -8,6 +8,7 @@
   import Select from "../components/Select.svelte";
   import Switch from "../components/Switch.svelte";
   import Section from "../components/Section.svelte";
+  import Seg from "../components/Seg.svelte";
   import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Power, Shield, ShieldCheck, SquareTerminal } from "@lucide/svelte";
   import { importPick } from "../lib/importer";
   import { THEMES, applyTheme, currentPalette, currentTheme, palettesOf, type ThemeId } from "../lib/themes";
@@ -97,6 +98,16 @@
 
   async function setHotkey(combo: string | null) {
     if (await attempt(() => api.hotkeySet(combo), combo ? `Shortcut set: ${pretty(combo)}` : "Shortcut turned off")) hotkey = combo;
+  }
+
+  // Donde se abre la carpeta del Explorador: Windows Terminal (con el perfil y el tema de
+  // la persona) o una pestaña de Ethereon.
+  let openIn = $state<"wt" | "tab">("wt");
+  let wtInstalled = $state(true);
+  api.openInGet().then((o) => ((openIn = o.mode), (wtInstalled = o.wt_installed)));
+  async function setOpenIn(m: "wt" | "tab") {
+    if (m === "wt" && !wtInstalled) return toast("Windows Terminal is not installed", true);
+    if (await attempt(() => api.openInSet(m))) openIn = m;
   }
 
   // Graba la combinacion: hace falta Ctrl, Alt o Win, y una letra, numero o F1-F12.
@@ -270,8 +281,8 @@
         <div class="grow">
           <div>Show Ethereon from anywhere</div>
           <div class="faint small">
-            Works with the window closed. If a File Explorer folder (or the Desktop) is in front, it also opens PowerShell 7
-            in that folder.
+            Works with the window closed. If a File Explorer folder (or the Desktop) is in front, it opens a terminal in that
+            folder.
           </div>
         </div>
         {#if recordingHk}
@@ -287,6 +298,25 @@
           {/if}
         {/if}
       </div>
+      {#if hotkey}
+        <div class="grid2">
+          <div class="field">Open the folder in
+            <Seg
+              value={openIn}
+              options={[
+                { value: "wt", label: "Windows Terminal" },
+                { value: "tab", label: "Ethereon" },
+              ]}
+              onchange={setOpenIn}
+            />
+            <span class="hint">
+              {openIn === "wt"
+                ? "With your Windows Terminal profile, theme and font. Ethereon stays in the tray."
+                : "A PowerShell 7 tab in Ethereon."}
+            </span>
+          </div>
+        </div>
+      {/if}
       <div class="row">
         <span class="grow">Ethereon {version}</span>
         {#if app.update?.status === "ready"}

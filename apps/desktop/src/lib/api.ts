@@ -257,6 +257,8 @@ export const api = {
   takeOpenHere: () => invoke<{ cwd: string } | null>("take_open_here"),
   hotkeyGet: () => invoke<string | null>("hotkey_get"),
   hotkeySet: (combo: string | null) => invoke<void>("hotkey_set", { combo }),
+  openInGet: () => invoke<{ mode: "wt" | "tab"; wt_installed: boolean }>("open_in_get"),
+  openInSet: (mode: "wt" | "tab") => invoke<void>("open_in_set", { mode }),
 };
 
 export function defaultPolicy(): Policy {

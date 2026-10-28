@@ -30,11 +30,13 @@ pub struct LocalConfig {
     pub window: Option<window::WindowBox>,
     /// Atajo global para traer la ventana (None = apagado).
     pub hotkey: Option<String>,
+    /// Donde abre la carpeta del Explorador el atajo: "wt" o "tab".
+    pub open_in: String,
 }
 
 impl Default for LocalConfig {
     fn default() -> Self {
-        LocalConfig { port: DEFAULT_PORT, window: None, hotkey: Some(hotkey::DEFAULT.into()) }
+        LocalConfig { port: DEFAULT_PORT, window: None, hotkey: Some(hotkey::DEFAULT.into()), open_in: "wt".into() }
     }
 }
 
@@ -46,6 +48,7 @@ pub fn save_config(app: &AppHandle) {
     let mut cfg: LocalConfig = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     cfg.window = *st.window.lock().unwrap();
     cfg.hotkey = st.hotkey.combo.lock().unwrap().clone();
+    cfg.open_in = st.hotkey.open_in.lock().unwrap().clone();
     let _ = std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap());
 }
 
@@ -189,7 +192,11 @@ pub fn run() {
                 mcp_error: Mutex::new(None),
                 terms: Default::default(),
                 sftps: Default::default(),
-                hotkey: hotkey::HotkeyState { combo: Mutex::new(config.hotkey.clone()), pending: Default::default() },
+                hotkey: hotkey::HotkeyState {
+                    combo: Mutex::new(config.hotkey.clone()),
+                    pending: Default::default(),
+                    open_in: Mutex::new(config.open_in.clone()),
+                },
                 window: Mutex::new(config.window),
                 update: Mutex::new(Default::default()),
                 tray: Mutex::new(None),
@@ -274,6 +281,8 @@ pub fn run() {
             hotkey::take_open_here,
             hotkey::hotkey_get,
             hotkey::hotkey_set,
+            hotkey::open_in_get,
+            hotkey::open_in_set,
             files::sftp_open,
             files::sftp_close,
             files::sftp_list,

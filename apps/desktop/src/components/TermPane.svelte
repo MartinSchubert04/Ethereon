@@ -91,7 +91,31 @@
     term.options.theme = theme();
     term.options.fontFamily = cssVar("--mono");
     term.options.fontSize = fontSize();
+    fitNow();
+  };
+
+  // Ajusta filas y columnas al espacio. Cuando cambia la fuente, xterm actualiza el tamaño
+  // de la celda recien en el proximo cuadro: se vuelve a calcular ahi y, si no coincide, se
+  // corrige (si no, sobra media fila y lo de abajo queda cortado).
+  function fitNow() {
+    if (!term || !el?.offsetWidth) return;
     fit.fit();
+    requestAnimationFrame(() => {
+      const d = fit.proposeDimensions();
+      if (d && d.cols > 0 && d.rows > 0 && (d.cols !== term.cols || d.rows !== term.rows)) term.resize(d.cols, d.rows);
+    });
+  }
+
+  // La terminal mide las letras al abrirse. Si la fuente del tema (por ejemplo la de
+  // Athanor) todavia no cargo, mide con otra, calcula mal cuantas filas entran y lo de
+  // abajo queda fuera de la vista. Cuando terminan de cargar las fuentes se vuelve a medir:
+  // poner la misma fuente no hace nada, por eso se cambia un instante y se devuelve.
+  const refont = () => {
+    if (!term) return;
+    const f = cssVar("--mono");
+    term.options.fontFamily = "monospace";
+    term.options.fontFamily = f;
+    fitNow();
   };
 
   function decode(b64: string): Uint8Array {
@@ -189,10 +213,12 @@
     term.onData((d) => id && api.termWrite(id, d));
     term.onResize(({ cols, rows }) => id && api.termResize(id, cols, rows));
     const ro = new ResizeObserver(() => {
-      if (el.offsetWidth) fit.fit();
+      fitNow();
     });
     ro.observe(el);
     window.addEventListener("themechange", onTheme);
+    document.fonts.addEventListener("loadingdone", refont);
+    document.fonts.load(`${fontSize()}px ${cssVar("--mono")}`).then(refont, () => {});
     window.addEventListener("ethereon:refresh", onRefresh);
     connect();
     return () => ro.disconnect();
@@ -207,7 +233,7 @@
   $effect(() => {
     if (active && term) {
       queueMicrotask(() => {
-        fit.fit();
+        fitNow();
         term.focus();
       });
     }
@@ -215,6 +241,7 @@
 
   onDestroy(() => {
     window.removeEventListener("themechange", onTheme);
+    document.fonts.removeEventListener("loadingdone", refont);
     window.removeEventListener("ethereon:refresh", onRefresh);
     if (id) api.termClose(id);
     term?.dispose();
@@ -222,7 +249,10 @@
 </script>
 
 <div class="pane">
-  <div class="term card" bind:this={el}></div>
+  <!-- El relleno va en .term y la terminal en .host, sin relleno: FitAddon mide la altura
+       del contenedor directo y, con border-box, contaria el relleno como espacio libre
+       (sobraba una fila y lo de abajo quedaba cortado). -->
+  <div class="term card"><div class="host" bind:this={el}></div></div>
 </div>
 
 <style>
@@ -234,6 +264,10 @@
     height: 100%;
     padding: 10px 4px 4px 12px;
     background: var(--term-bg);
+    overflow: hidden;
+  }
+  .host {
+    height: 100%;
     overflow: hidden;
   }
   .term :global(.xterm-viewport) {
