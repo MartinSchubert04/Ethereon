@@ -239,8 +239,9 @@ export const api = {
   sftpMkdir: (id: number, path: string) => invoke<void>("sftp_mkdir", { id, path }),
   sftpRename: (id: number, from: string, to: string) => invoke<void>("sftp_rename", { id, from, to }),
   sftpRemove: (id: number, paths: string[]) => invoke<void>("sftp_remove", { id, paths }),
-  sftpTransfer: (id: number, upload: boolean, paths: string[], into: string, onEvent: Channel<XferEvent>) =>
-    invoke<number>("sftp_transfer", { id, upload, paths, into, onEvent }),
+  /** Cada lado es una sesion SFTP (su id) o esta PC (null). */
+  filesTransfer: (from: number | null, to: number | null, paths: string[], into: string, onEvent: Channel<XferEvent>) =>
+    invoke<number>("files_transfer", { from, to, paths, into, onEvent }),
   sftpCancel: (transfer: number) => invoke<void>("sftp_cancel", { transfer }),
   localHome: () => invoke<string>("local_home"),
   localList: (path: string) => invoke<FileEntry[]>("local_list", { path }),
@@ -251,8 +252,11 @@ export const api = {
     invoke<{ kind: string; label: string; needs_password: boolean }>("import_detect", { path }),
   importAuto: (path: string, password: string | null) => invoke<ImportSummary>("import_auto", { path, password }),
   localShells: () => invoke<LocalShell[]>("local_shells"),
-  termOpenLocal: (shell: string, cols: number, rows: number, onEvent: Channel<TermEvent>) =>
-    invoke<number>("term_open_local", { shell, cols, rows, onEvent }),
+  termOpenLocal: (shell: string, cols: number, rows: number, cwd: string | null, onEvent: Channel<TermEvent>) =>
+    invoke<number>("term_open_local", { shell, cols, rows, cwd, onEvent }),
+  takeOpenHere: () => invoke<{ cwd: string } | null>("take_open_here"),
+  hotkeyGet: () => invoke<string | null>("hotkey_get"),
+  hotkeySet: (combo: string | null) => invoke<void>("hotkey_set", { combo }),
 };
 
 export function defaultPolicy(): Policy {

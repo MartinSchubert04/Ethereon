@@ -18,12 +18,18 @@
     placeholder = "Select...",
     disabled = false,
     onchange,
+    ghost = false,
+    lead,
   }: {
     value: T;
     options: Option<T>[];
     placeholder?: string;
     disabled?: boolean;
     onchange?: (v: T) => void;
+    /** Sin caja: para usarlo como titulo (por ejemplo el origen de un panel SFTP). */
+    ghost?: boolean;
+    /** Algo antes del texto del boton (un icono). */
+    lead?: import("svelte").Snippet;
   } = $props();
 
   let open = $state(false);
@@ -46,7 +52,7 @@
     const r = trigger.getBoundingClientRect();
     const height = Math.min(300, options.length * 36 + (searchable ? 48 : 0) + 12);
     const up = r.bottom + height + 8 > window.innerHeight && r.top > height + 8;
-    pos = { left: r.left, top: up ? r.top - 6 : r.bottom + 6, width: r.width, up };
+    pos = { left: r.left, top: up ? r.top - 6 : r.bottom + 6, width: Math.max(r.width, ghost ? 220 : 0), up };
     query = "";
     active = Math.max(0, options.findIndex((o) => o.value === value));
     open = true;
@@ -123,6 +129,7 @@
   bind:this={trigger}
   type="button"
   class="select-trigger"
+  class:ghost
   class:open
   class:placeholder={!selected}
   {disabled}
@@ -131,7 +138,8 @@
   onclick={() => (open ? close() : show())}
   onkeydown={onKey}
 >
-  <span class="ellipsis">{selected?.label ?? placeholder}</span>
+  {#if lead}<span class="lead">{@render lead()}</span>{/if}
+  <span class="ellipsis label">{selected?.label ?? placeholder}</span>
   <span class="chev"><ChevronDown size={15} /></span>
 </button>
 
@@ -181,6 +189,28 @@
 {/if}
 
 <style>
+  /* Variante sin caja: el texto en negrita con la flecha al lado. */
+  :global(.select-trigger.ghost),
+  :global(.select-trigger.ghost:hover) {
+    width: auto;
+    max-width: 100%;
+    height: 30px;
+    padding: 0 6px;
+    gap: 7px;
+    background: none !important;
+    border-color: transparent !important;
+    box-shadow: none !important;
+    outline: none !important;
+    font-weight: 620;
+    border-radius: var(--radius-sm);
+  }
+  :global(.select-trigger.ghost:hover),
+  :global(.select-trigger.ghost.open) {
+    background: var(--hover) !important;
+  }
+  :global(.select-trigger.ghost:focus-visible) {
+    outline: 2px solid color-mix(in srgb, var(--accent) 70%, transparent) !important;
+  }
   .select-trigger {
     display: flex;
     align-items: center;
@@ -203,11 +233,15 @@
     border-color: var(--accent);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
   }
-  .select-trigger span:first-child {
+  .select-trigger .label {
     flex: 1;
     min-width: 0;
   }
-  .placeholder span:first-child {
+  .lead {
+    display: grid;
+    flex: none;
+  }
+  .placeholder .label {
     color: var(--text-3);
   }
   .chev {

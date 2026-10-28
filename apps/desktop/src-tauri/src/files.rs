@@ -141,33 +141,39 @@ impl Meter {
     }
 }
 
-/// `upload`: de rutas locales a la carpeta remota `into`. Si no, de rutas remotas a la
-/// carpeta local `into`. Devuelve el id de la transferencia (para cancelarla) y sigue en
+/// Pasa `paths` de un lado al otro. Cada lado es una sesion SFTP (su id) o esta PC
+/// (`None`): subir, bajar, de un servidor a otro (sin tocar el disco local) o copiar
+/// dentro de esta PC. Devuelve el id de la transferencia (para cancelarla) y sigue en
 /// segundo plano.
 #[tauri::command]
-pub async fn sftp_transfer(
+pub async fn files_transfer(
     s: State<'_, AppState>,
-    id: u32,
-    upload: bool,
+    from: Option<u32>,
+    to: Option<u32>,
     paths: Vec<String>,
     into: String,
     on_event: Channel<XferEvent>,
 ) -> Result<u32, Error> {
-    let (host, sftp) = session(&s, id)?;
-    let total = if upload {
-        paths.iter().map(|p| files::size_local(&PathBuf::from(p))).sum()
-    } else {
-        let mut t = 0;
-        for p in &paths {
-            t += sftp.size_of(p).await.unwrap_or(0);
+    let src = from.map(|id| session(&s, id)).transpose()?;
+    let dst = to.map(|id| session(&s, id)).transpose()?;
+    let total = match &src {
+        None => paths.iter().map(|p| files::size_local(&PathBuf::from(p))).sum(),
+        Some((_, sftp)) => {
+            let mut t = 0;
+            for p in &paths {
+                t += sftp.size_of(p).await.unwrap_or(0);
+            }
+            t
         }
-        t
     };
     let tid = s.sftps.next.fetch_add(1, Ordering::Relaxed) + 1;
     let cancel = Arc::new(AtomicBool::new(false));
     s.sftps.transfers.lock().unwrap().insert(tid, cancel.clone());
     let broker = s.broker.clone();
-    let what = format!("{} {} item(s) {} {into}", if upload { "upload" } else { "download" }, paths.len(), if upload { "to" } else { "to local" });
+    let name = |e: &Option<(String, Arc<Sftp>)>| e.as_ref().map(|(h, _)| h.clone()).unwrap_or_else(|| "this PC".into());
+    let what = format!("copy {} item(s) from {} to {}:{into}", paths.len(), name(&src), name(&dst));
+    // Queda en la auditoria de cada servidor que toca.
+    let hosts: Vec<String> = [&src, &dst].iter().filter_map(|e| e.as_ref().map(|(h, _)| h.clone())).collect();
     let meter = Meter { done: AtomicU64::new(0), total, last: Mutex::new(Instant::now() - Duration::from_secs(1)), ch: on_event.clone() };
     let _ = on_event.send(XferEvent::Progress { done: 0, total, file: String::new() });
 
@@ -176,23 +182,26 @@ pub async fn sftp_transfer(
         let progress = |n: u64, f: &str| meter.add(n, f);
         let mut result = Ok(());
         for p in &paths {
-            result = if upload {
-                sftp.upload(&PathBuf::from(p), &into, &progress, &cancel).await
-            } else {
-                sftp.download(p, &PathBuf::from(&into), &progress, &cancel).await
+            result = match (&src, &dst) {
+                (None, Some((_, b))) => b.upload(&PathBuf::from(p), &into, &progress, &cancel).await,
+                (Some((_, a)), None) => a.download(p, &PathBuf::from(&into), &progress, &cancel).await,
+                (Some((_, a)), Some((_, b))) => a.copy_to(b, p, &into, &progress, &cancel).await,
+                (None, None) => files::copy_local(&PathBuf::from(p), &PathBuf::from(&into), &progress, &cancel).await,
             };
             if result.is_err() {
                 break;
             }
         }
-        broker.audit_log(Entry {
-            device: "ui".into(),
-            host,
-            command: format!("[sftp] {what}: {}", paths.join(", ")),
-            decision: if result.is_ok() { "allowed" } else { "error" }.into(),
-            detail: result.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
-            ..Default::default()
-        });
+        for host in hosts {
+            broker.audit_log(Entry {
+                device: "ui".into(),
+                host,
+                command: format!("[sftp] {what}: {}", paths.join(", ")),
+                decision: if result.is_ok() { "allowed" } else { "error" }.into(),
+                detail: result.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
+                ..Default::default()
+            });
+        }
         let _ = on_event.send(match result {
             Ok(()) => XferEvent::Done,
             Err(e) => XferEvent::Error { message: e.to_string() },

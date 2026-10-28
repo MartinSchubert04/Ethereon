@@ -3,7 +3,8 @@
 
   /** Lo que un panel necesita de su disco: el local o el del servidor. */
   export interface Fs {
-    side: "local" | "remote";
+    /** El disco de esta PC o el de un servidor por SFTP. */
+    kind: "local" | "remote";
     label: string;
     sep: "/" | "\\";
     list(path: string): Promise<FileEntry[]>;
@@ -68,15 +69,28 @@
   import { toast } from "../lib/state.svelte";
   import { pop } from "../lib/motion";
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+  import Select from "./Select.svelte";
 
   let {
     fs,
+    slot,
+    sources = [],
+    source = null,
+    onsource,
+    otherLabel = "the other side",
     active = false,
     onfocus,
     ontransfer,
     ondropitems,
   }: {
     fs: Fs;
+    /** Que panel es (izquierdo o derecho): es lo que se mira al soltar algo. */
+    slot: "left" | "right";
+    /** Para cambiar el origen desde el titulo: esta PC (null) o un host. */
+    sources?: { value: string | null; label: string; hint?: string }[];
+    source?: string | null;
+    onsource?: (v: string | null) => void;
+    otherLabel?: string;
     active?: boolean;
     onfocus?: () => void;
     /** Mandar lo elegido al otro panel. */
@@ -249,7 +263,7 @@
     const dirs = entries.filter((e) => selected.includes(e.name) && e.dir).length;
     const ok = await ask({
       title: `Delete ${what}?`,
-      body: `${dirs ? "Folders are deleted with everything inside. " : ""}This cannot be undone${fs.side === "local" ? " (it does not go to the Recycle Bin)" : ""}.`,
+      body: `${dirs ? "Folders are deleted with everything inside. " : ""}This cannot be undone${fs.kind === "local" ? " (it does not go to the Recycle Bin)" : ""}.`,
       confirm: "Delete",
       danger: true,
     });
@@ -306,7 +320,7 @@
     else if (k === " " || (e.ctrlKey && k === "Enter")) selected.length && ontransfer?.(selPaths());
     else if (k === "Tab" && !e.shiftKey && !e.ctrlKey) {
       // Tab salta al otro panel (no recorre los botones de este).
-      const other = root.parentElement?.querySelector<HTMLElement>(`[data-side]:not([data-side="${fs.side}"])`);
+      const other = root.closest(".panes")?.querySelector<HTMLElement>(`[data-side]:not([data-side="${slot}"])`);
       if (!other) return;
       other.focus();
     } else if (k === "Enter") {
@@ -362,7 +376,7 @@
       document.querySelectorAll(".fp.drop-over, .row.drop-over").forEach((n) => n.classList.remove("drop-over"));
       const t = document.elementFromPoint(ev.clientX, ev.clientY);
       const panel = t?.closest<HTMLElement>("[data-side]");
-      if (panel && panel.dataset.side !== fs.side) {
+      if (panel && panel.dataset.side !== slot) {
         const row = t?.closest<HTMLElement>(".row[data-dir]");
         (row ?? panel).classList.add("drop-over");
       }
@@ -377,7 +391,7 @@
     if (!d.started) return;
     const t = document.elementFromPoint(ev.clientX, ev.clientY);
     const panel = t?.closest<HTMLElement>("[data-side]");
-    if (!panel || panel.dataset.side === fs.side) return;
+    if (!panel || panel.dataset.side === slot) return;
     const row = t?.closest<HTMLElement>(".row[data-dir]");
     ondropitems?.(d.paths, panel.dataset.side!, row?.dataset.path ?? null);
   }
@@ -402,7 +416,8 @@
 <div
   class="fp card"
   class:active
-  data-side={fs.side}
+  data-side={slot}
+  data-kind={fs.kind}
   tabindex="0"
   role="region"
   aria-label={fs.label}
@@ -412,10 +427,18 @@
   onpointerdown={() => onfocus?.()}
 >
   <header>
-    <span class="who">
-      {#if fs.side === "local"}<Laptop size={14} />{:else}<Server size={14} />{/if}
-      <span class="ellipsis">{fs.label}</span>
-    </span>
+    {#if sources.length}
+      <div class="who pick" title="Change what this side shows">
+        <Select ghost value={source} options={sources} onchange={(v) => onsource?.(v)}>
+          {#snippet lead()}{#if fs.kind === "local"}<Laptop size={14} />{:else}<Server size={14} />{/if}{/snippet}
+        </Select>
+      </div>
+    {:else}
+      <span class="who">
+        {#if fs.kind === "local"}<Laptop size={14} />{:else}<Server size={14} />{/if}
+        <span class="ellipsis">{fs.label}</span>
+      </span>
+    {/if}
     <span class="grow"></span>
     <label class="find inbox">
       <Search size={13} />
@@ -429,8 +452,8 @@
   </header>
 
   <div class="pathbar">
-    <button class="icon-btn" title="Up (Backspace)" disabled={fs.side === "remote" ? path === "/" : !path} onclick={() => go(parent(fs, path))}><ArrowUp size={15} /></button>
-    <button class="icon-btn" title={fs.side === "local" ? "Start folder (Settings → Files)" : "Home folder"} onclick={start}><House size={15} /></button>
+    <button class="icon-btn" title="Up (Backspace)" disabled={fs.kind === "remote" ? path === "/" : !path} onclick={() => go(parent(fs, path))}><ArrowUp size={15} /></button>
+    <button class="icon-btn" title={fs.kind === "local" ? "Start folder (Settings → Files)" : "Home folder"} onclick={start}><House size={15} /></button>
     <div class="crumbs">
       <input
         class="mono tight"
@@ -444,11 +467,11 @@
         title="Type a path and press Enter"
       />
       <div class="trail" aria-hidden="true">
-        {#if fs.side === "local"}
+        {#if fs.kind === "local"}
           <button class="crumb" onpointerdown={(e) => (e.preventDefault(), go(""))}><HardDrive size={12} /></button>
         {/if}
         {#each crumbs as c, i}
-          {#if i > 0 || fs.side === "local"}<span class="slash">›</span>{/if}
+          {#if i > 0 || fs.kind === "local"}<span class="slash">›</span>{/if}
           <button class="crumb" onpointerdown={(e) => (e.preventDefault(), go(c.path))}>{c.name}</button>
         {/each}
       </div>
@@ -526,7 +549,7 @@
       {@const one = selected.length === 1 ? entries.find((e) => e.name === selected[0]) : null}
       {#if one?.dir}<button role="menuitem" onclick={() => ((menu = null), one && open(one))}>Open<kbd>Enter</kbd></button>{/if}
       <button role="menuitem" onclick={() => ((menu = null), ontransfer?.(selPaths()))}>
-        {fs.side === "local" ? "Upload" : "Download"}<kbd>Space</kbd>
+        <span class="ellipsis">Copy to {otherLabel}</span><kbd>Space</kbd>
       </button>
       {#if selected.length === 1}<button role="menuitem" onclick={() => startRename()}>Rename<kbd>F2</kbd></button>{/if}
       <button role="menuitem" onclick={() => ((menu = null), writeText(selPaths().join("\n")), toast("Path copied"))}>Copy path</button>
@@ -574,6 +597,10 @@
     font-weight: 620;
     min-width: 0;
     color: var(--text);
+  }
+  .who.pick {
+    min-width: 0;
+    margin-left: -6px;
   }
   .who :global(svg) {
     color: var(--accent);

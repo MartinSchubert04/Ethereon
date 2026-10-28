@@ -137,7 +137,7 @@
   async function connectLocal() {
     try {
       fit.fit();
-      id = await api.termOpenLocal(tab.local!, term.cols, term.rows, channel());
+      id = await api.termOpenLocal(tab.local!, term.cols, term.rows, tab.cwd ?? null, channel());
       term.focus();
     } catch (e) {
       term.writeln(`\x1b[31m${errText(e)}\x1b[0m \x1b[2m${pretty(prefs.binds.refresh)} tries again\x1b[0m`);

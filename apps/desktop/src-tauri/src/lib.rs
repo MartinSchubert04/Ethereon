@@ -3,6 +3,7 @@
 
 mod commands;
 mod files;
+mod hotkey;
 mod terminal;
 mod updater;
 mod window;
@@ -27,11 +28,13 @@ pub const DEFAULT_PORT: u16 = 47321;
 pub struct LocalConfig {
     pub port: u16,
     pub window: Option<window::WindowBox>,
+    /// Atajo global para traer la ventana (None = apagado).
+    pub hotkey: Option<String>,
 }
 
 impl Default for LocalConfig {
     fn default() -> Self {
-        LocalConfig { port: DEFAULT_PORT, window: None }
+        LocalConfig { port: DEFAULT_PORT, window: None, hotkey: Some(hotkey::DEFAULT.into()) }
     }
 }
 
@@ -42,6 +45,7 @@ pub fn save_config(app: &AppHandle) {
     let path = st.broker.dir().join("config.json");
     let mut cfg: LocalConfig = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
     cfg.window = *st.window.lock().unwrap();
+    cfg.hotkey = st.hotkey.combo.lock().unwrap().clone();
     let _ = std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap());
 }
 
@@ -51,6 +55,7 @@ pub struct AppState {
     pub mcp_error: Mutex<Option<String>>,
     pub terms: terminal::Terms,
     pub sftps: files::Sftps,
+    pub hotkey: hotkey::HotkeyState,
     pub window: Mutex<Option<window::WindowBox>>,
     pub update: Mutex<updater::Pending>,
     tray: Mutex<Option<TrayItems>>,
@@ -162,6 +167,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
         .setup(|app| {
             let handle = app.handle().clone();
@@ -183,6 +189,7 @@ pub fn run() {
                 mcp_error: Mutex::new(None),
                 terms: Default::default(),
                 sftps: Default::default(),
+                hotkey: hotkey::HotkeyState { combo: Mutex::new(config.hotkey.clone()), pending: Default::default() },
                 window: Mutex::new(config.window),
                 update: Mutex::new(Default::default()),
                 tray: Mutex::new(None),
@@ -201,6 +208,10 @@ pub fn run() {
             });
 
             build_tray(&handle)?;
+            // Si otra app ya usa el atajo, Ethereon arranca igual y lo avisa en Settings.
+            if let Err(e) = hotkey::register(&handle, config.hotkey.as_deref()) {
+                log::warn!("{e}");
+            }
             updater::start(handle.clone());
             // Despues de una actualizacion vuelve como estaba; si no, respeta --hidden
             // (el arranque con Windows).
@@ -260,6 +271,9 @@ pub fn run() {
             terminal::term_close,
             terminal::term_open_local,
             terminal::local_shells,
+            hotkey::take_open_here,
+            hotkey::hotkey_get,
+            hotkey::hotkey_set,
             files::sftp_open,
             files::sftp_close,
             files::sftp_list,
@@ -267,7 +281,7 @@ pub fn run() {
             files::sftp_mkdir,
             files::sftp_rename,
             files::sftp_remove,
-            files::sftp_transfer,
+            files::files_transfer,
             files::sftp_cancel,
             files::local_home,
             files::local_list,

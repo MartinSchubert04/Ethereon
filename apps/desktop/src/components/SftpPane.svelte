@@ -1,45 +1,53 @@
 <script lang="ts">
-  // Pestaña de archivos de un host: esta PC a la izquierda, el servidor a la derecha.
-  // Se pasa arrastrando de un panel al otro, desde el Explorador de Windows, o con
-  // Espacio / el boton del medio. Las transferencias corren en segundo plano.
-  import { onDestroy, onMount } from "svelte";
+  // Pestaña de archivos con dos lados. Cada lado es esta PC o cualquier host, y se cambia
+  // desde su titulo: subir, bajar, de un servidor a otro o dentro de esta PC. Se pasa
+  // arrastrando entre paneles, desde el Explorador de Windows, con Espacio o con las
+  // flechas del medio. Las transferencias corren en segundo plano.
+  import { onDestroy, onMount, tick } from "svelte";
   import { Channel } from "@tauri-apps/api/core";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
-  import { ArrowLeft, ArrowRight, Check, CircleAlert, LoaderCircle, RotateCw, X } from "@lucide/svelte";
+  import { desktopDir } from "@tauri-apps/api/path";
+  import { ArrowLeft, ArrowRight, Check, CircleAlert, Laptop, LoaderCircle, RotateCw, Server, X } from "@lucide/svelte";
   import FilePanel, { human, type Fs } from "./FilePanel.svelte";
+  import Select from "./Select.svelte";
   import { api, errText, type XferEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
   import { app, toast, type TermTab } from "../lib/state.svelte";
   import { ask } from "../lib/confirm.svelte";
   import { rise } from "../lib/motion";
   import { prefs } from "../lib/prefs.svelte";
-  import { desktopDir } from "@tauri-apps/api/path";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
 
-  let id = $state(0);
-  let status = $state<"connecting" | "ready" | "failed">("connecting");
-  let failure = $state("");
-  let focused = $state<"local" | "remote">("remote");
-  let localPanel = $state<FilePanel>();
-  let remotePanel = $state<FilePanel>();
-  let wrap: HTMLDivElement;
-
-  interface Xfer {
-    tid: number;
-    upload: boolean;
-    label: string;
-    done: number;
-    total: number;
-    file: string;
-    state: "running" | "done" | "error" | "cancelled";
-    message: string;
-    started: number;
+  type Slot = "left" | "right";
+  interface Side {
+    /** null = esta PC */
+    host: string | null;
+    id: number;
+    home: string;
+    status: "connecting" | "ready" | "failed";
+    failure: string;
+    /** Cambia cuando cambia el origen: el panel se arma de nuevo. */
+    gen: number;
   }
-  let xfers = $state<Xfer[]>([]);
+  let gen = 0;
+  const side = (host: string | null): Side => ({ host, id: 0, home: "/", status: host ? "connecting" : "ready", failure: "", gen: ++gen });
+  // svelte-ignore state_referenced_locally
+  let sides = $state<Record<Slot, Side>>({ left: side(null), right: side(tab.host) });
+  let panels = $state<Record<Slot, FilePanel | undefined>>({ left: undefined, right: undefined });
+  let focused = $state<Slot>("right");
+  let wrap: HTMLDivElement;
+  const other = (s: Slot): Slot => (s === "left" ? "right" : "left");
+  const label = (s: Slot) => sides[s].host ?? "This PC";
 
-  // Donde arranca el panel de esta PC (Settings → Files). Si la carpeta no existe, la
-  // del usuario.
+  const sources = $derived([
+    { value: null as string | null, label: "This PC" },
+    ...(app.snap?.hosts ?? []).map((h) => ({ value: h.name as string | null, label: h.name, hint: h.group ?? "" })),
+  ]);
+
+  // ---- origen de cada lado
+
+  // Donde arranca esta PC (Settings → Files). Si la carpeta no existe, la del usuario.
   async function localStart(): Promise<string> {
     const f = prefs.files;
     try {
@@ -52,67 +60,112 @@
     return api.localHome();
   }
 
-  const local: Fs = {
-    side: "local",
-    label: "This PC",
-    sep: "\\",
-    list: api.localList,
-    mkdir: api.localMkdir,
-    rename: api.localRename,
-    remove: api.localRemove,
-    home: localStart,
-  };
-  const remote: Fs = {
-    side: "remote",
-    get label() {
-      return tab.host;
-    },
-    sep: "/",
-    list: (p) => api.sftpList(id, p),
-    mkdir: (p) => api.sftpMkdir(id, p),
-    rename: (a, b) => api.sftpRename(id, a, b),
-    remove: (p) => api.sftpRemove(id, p),
-    home: () => Promise.resolve(home),
-    real: (p) => api.sftpRealpath(id, p),
-  };
-  let home = "/";
+  function makeFs(slot: Slot, host: string | null): Fs {
+    if (host === null)
+      return {
+        kind: "local",
+        label: "This PC",
+        sep: "\\",
+        list: api.localList,
+        mkdir: api.localMkdir,
+        rename: api.localRename,
+        remove: api.localRemove,
+        home: localStart,
+      };
+    // El id se lee en cada llamada: al reconectar cambia sin rearmar el panel.
+    return {
+      kind: "remote",
+      label: host,
+      sep: "/",
+      list: (p) => api.sftpList(sides[slot].id, p),
+      mkdir: (p) => api.sftpMkdir(sides[slot].id, p),
+      rename: (a, b) => api.sftpRename(sides[slot].id, a, b),
+      remove: (p) => api.sftpRemove(sides[slot].id, p),
+      home: () => Promise.resolve(sides[slot].home),
+      real: (p) => api.sftpRealpath(sides[slot].id, p),
+    };
+  }
+  const fsLeft = $derived(makeFs("left", sides.left.host));
+  const fsRight = $derived(makeFs("right", sides.right.host));
 
-  async function connect() {
-    status = "connecting";
-    failure = "";
-    if (!(await testHost(tab.host, true))) {
-      status = "failed";
-      failure = "The host key was not accepted.";
-      return setAlive(false);
+  /** Conecta un lado (o reconecta). Con `keep`, el panel se queda en la carpeta en la que estaba. */
+  async function open(slot: Slot, keep = false) {
+    const s = sides[slot];
+    if (s.host === null) {
+      s.status = "ready";
+    } else {
+      const host = s.host;
+      if (!keep) s.status = "connecting";
+      s.failure = "";
+      if (!(await testHost(host, true))) {
+        s.status = "failed";
+        s.failure = "The host key was not accepted.";
+        return sync();
+      }
+      try {
+        const o = await api.sftpOpen(host);
+        if (sides[slot].host !== host) return void api.sftpClose(o.id); // se cambio mientras tanto
+        if (s.id) api.sftpClose(s.id);
+        s.id = o.id;
+        s.home = o.home;
+        s.status = "ready";
+      } catch (e) {
+        s.status = "failed";
+        s.failure = errText(e);
+        return sync();
+      }
     }
-    try {
-      const o = await api.sftpOpen(tab.host);
-      id = o.id;
-      home = o.home;
-      status = "ready";
-      setAlive(true);
-      await Promise.all([localPanel?.start(), remotePanel?.start()]);
-    } catch (e) {
-      status = "failed";
-      failure = errText(e);
-      setAlive(false);
-    }
+    sync();
+    await tick();
+    const p = panels[slot];
+    if (keep && p?.current()) await p.refresh();
+    else await p?.start();
   }
 
-  function setAlive(v: boolean) {
+  function setSource(slot: Slot, host: string | null) {
+    if (host === sides[slot].host) return;
+    if (sides[slot].id) api.sftpClose(sides[slot].id);
+    sides[slot] = side(host);
+    open(slot);
+  }
+
+  /** El titulo de la pestaña y si esta "viva" siguen a los dos lados. */
+  function sync() {
     const t = app.terms.find((x) => x.key === tab.key);
-    if (t) t.alive = v;
+    if (!t) return;
+    const l = sides.left.host,
+      r = sides.right.host;
+    t.title = l && r ? `${l} ⇄ ${r}` : `${r ?? l ?? "This PC"} · SFTP`;
+    t.alive = (["left", "right"] as Slot[]).every((s) => sides[s].status !== "failed");
   }
+
+  // ---- transferencias
+
+  interface Xfer {
+    tid: number;
+    from: Slot;
+    verb: string;
+    label: string;
+    done: number;
+    total: number;
+    file: string;
+    state: "running" | "done" | "error" | "cancelled";
+    message: string;
+    started: number;
+  }
+  let xfers = $state<Xfer[]>([]);
 
   const base = (p: string) => p.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? p;
 
-  /** Pasa `paths` del lado `from` a la carpeta `into` del otro lado. */
-  async function transfer(from: "local" | "remote", paths: string[], into?: string | null) {
-    if (!paths.length || status !== "ready") return;
-    const upload = from === "local";
-    const target = upload ? remotePanel : localPanel;
+  /** Pasa `paths` del lado `from` a la carpeta `into` del otro (o a la que tiene abierta). */
+  async function transfer(from: Slot, paths: string[], into?: string | null, external = false) {
+    const to = other(from);
+    const src = sides[from],
+      dst = sides[to];
+    if (!paths.length || dst.status !== "ready" || (!external && src.status !== "ready")) return;
+    const target = panels[to];
     const dest = into ?? target?.current() ?? "";
-    if (!dest) return toast(upload ? "Open a folder on the server first" : "Open a local folder first (not the drive list)", true);
+    if (!dest) return toast(dst.host ? "Open a folder on that side first" : "Open a folder first (not the drive list)", true);
     // Si ya existe algo con el mismo nombre, se pregunta antes de pisarlo.
     if (!into || into === target?.current()) {
       const names = new Set(target?.names() ?? []);
@@ -127,10 +180,13 @@
         if (!ok) return;
       }
     }
-    const label = paths.length === 1 ? base(paths[0]) : `${paths.length} items`;
+    const fromLocal = external || !src.host;
+    const verb = fromLocal && dst.host ? "Upload" : !fromLocal && !dst.host ? "Download" : "Copy";
     const ch = new Channel<XferEvent>();
-    const x: Xfer = { tid: 0, upload, label, done: 0, total: 0, file: "", state: "running", message: "", started: Date.now() };
-    xfers = [x, ...xfers];
+    xfers = [
+      { tid: 0, from, verb, label: paths.length === 1 ? base(paths[0]) : `${paths.length} items`, done: 0, total: 0, file: "", state: "running", message: "", started: Date.now() },
+      ...xfers,
+    ];
     const item = xfers[0];
     ch.onmessage = (m) => {
       if (m.kind === "progress") {
@@ -148,7 +204,7 @@
       }
     };
     try {
-      item.tid = await api.sftpTransfer(id, upload, paths, dest, ch);
+      item.tid = await api.filesTransfer(fromLocal ? null : src.id, dst.host ? dst.id : null, paths, dest, ch);
     } catch (e) {
       item.state = "error";
       item.message = errText(e);
@@ -162,40 +218,38 @@
   }
   const running = $derived(xfers.filter((x) => x.state === "running").length);
 
-  // Soltar archivos del Explorador de Windows sobre el panel del servidor.
+  // ---- soltar archivos del Explorador sobre cualquiera de los dos paneles
+
   let unlisten: (() => void) | undefined;
-  let osOver = $state(false);
+  let osOver = $state<Slot | null>(null);
   onMount(async () => {
-    connect();
+    open("left");
+    open("right");
     unlisten = await getCurrentWebview().onDragDropEvent((ev) => {
-      if (!active || status !== "ready") return;
+      if (!active) return;
       const p = ev.payload;
       const at = (pos: { x: number; y: number }) => {
         const r = devicePixelRatio || 1;
-        return document.elementFromPoint(pos.x / r, pos.y / r);
+        const el = document.elementFromPoint(pos.x / r, pos.y / r);
+        return el && wrap.contains(el) ? el : null;
       };
       if (p.type === "over" || p.type === "enter") {
-        const el = at(p.position);
-        osOver = !!el?.closest('[data-side="remote"]') && wrap.contains(el);
+        osOver = ((at(p.position)?.closest<HTMLElement>("[data-side]")?.dataset.side as Slot) ?? null) || null;
       } else if (p.type === "drop") {
-        osOver = false;
+        osOver = null;
         const el = at(p.position);
-        if (el && wrap.contains(el) && el.closest('[data-side="remote"]')) {
-          const row = el.closest<HTMLElement>(".row[data-dir]");
-          transfer("local", p.paths, row?.dataset.path ?? null);
-        }
-      } else osOver = false;
+        const slot = el?.closest<HTMLElement>("[data-side]")?.dataset.side as Slot | undefined;
+        if (slot) transfer(other(slot), p.paths, el?.closest<HTMLElement>(".row[data-dir]")?.dataset.path ?? null, true);
+      } else osOver = null;
     });
   });
 
-  // Ctrl R: si no conecto, reintenta; si esta conectada, recarga las dos carpetas.
+  // Ctrl R: un lado que no conecto reintenta; los conectados recargan su carpeta.
   function onRefresh(e: Event) {
     if ((e as CustomEvent).detail !== tab.key) return;
-    if (status === "failed") connect();
-    else if (status === "ready") {
-      localPanel?.refresh();
-      remotePanel?.refresh();
-      toast("Refreshed");
+    for (const s of ["left", "right"] as Slot[]) {
+      if (sides[s].status === "failed") open(s);
+      else if (sides[s].status === "ready") panels[s]?.refresh();
     }
   }
   window.addEventListener("ethereon:refresh", onRefresh);
@@ -204,76 +258,75 @@
     window.removeEventListener("ethereon:refresh", onRefresh);
     unlisten?.();
     for (const x of xfers) if (x.state === "running" && x.tid) api.sftpCancel(x.tid);
-    if (id) api.sftpClose(id);
+    for (const s of ["left", "right"] as Slot[]) if (sides[s].id) api.sftpClose(sides[s].id);
   });
 
-  // Al bloquear el vault la sesion SFTP deja de servir; al desbloquear se abre otra y
-  // los paneles quedan donde estaban.
+  // Al bloquear el vault las sesiones dejan de servir; al desbloquear se abren otras y los
+  // paneles quedan donde estaban.
   let wasUnlocked = true;
   $effect(() => {
     const now = !!app.status?.unlocked;
-    if (now && !wasUnlocked && status !== "connecting") reconnect();
+    if (now && !wasUnlocked) for (const s of ["left", "right"] as Slot[]) if (sides[s].host) open(s, true);
     wasUnlocked = now;
   });
 
-  async function reconnect() {
-    try {
-      const o = await api.sftpOpen(tab.host);
-      if (id) api.sftpClose(id);
-      id = o.id;
-      home = o.home;
-      status = "ready";
-      setAlive(true);
-      if (!localPanel?.current() && !remotePanel?.current()) await Promise.all([localPanel?.start(), remotePanel?.start()]);
-      else await Promise.all([localPanel?.refresh(), remotePanel?.refresh()]);
-    } catch (e) {
-      status = "failed";
-      failure = errText(e);
-      setAlive(false);
-    }
-  }
-
   // Al volver a la pestaña, el foco va al panel que estaba activo.
   $effect(() => {
-    if (active && status === "ready") queueMicrotask(() => wrap?.querySelector<HTMLElement>(`[data-side="${focused}"]`)?.focus());
+    if (active) queueMicrotask(() => wrap?.querySelector<HTMLElement>(`[data-side="${focused}"]`)?.focus());
   });
 </script>
 
-<div class="sftp" bind:this={wrap} class:os-over={osOver}>
-  {#if status !== "ready"}
-    <div class="state" in:rise>
-      {#if status === "connecting"}
-        <LoaderCircle size={22} class="spin" />
-        <div>Opening SFTP on <b>{tab.host}</b>...</div>
-      {:else}
-        <CircleAlert size={22} />
-        <div class="bad">{failure}</div>
-        <button class="btn" onclick={connect}><RotateCw size={14} /> Try again</button>
-      {/if}
-    </div>
-  {/if}
+{#snippet pane(slot: Slot)}
+  {@const s = sides[slot]}
+  {#key s.gen}
+    {#if s.status === "ready"}
+      <FilePanel
+        bind:this={panels[slot]}
+        fs={slot === "left" ? fsLeft : fsRight}
+        {slot}
+        {sources}
+        source={s.host}
+        onsource={(h) => setSource(slot, h)}
+        otherLabel={label(other(slot))}
+        active={focused === slot}
+        onfocus={() => (focused = slot)}
+        ontransfer={(p) => transfer(slot, p)}
+        ondropitems={(p, target, dir) => target !== slot && transfer(slot, p, dir)}
+      />
+    {:else}
+      <div class="fp-wait card" data-side={slot} in:rise>
+        <div class="pick">
+          <Select ghost value={s.host} options={sources} onchange={(h) => setSource(slot, h)}>
+            {#snippet lead()}{#if s.host}<Server size={14} />{:else}<Laptop size={14} />{/if}{/snippet}
+          </Select>
+        </div>
+        <div class="state">
+          {#if s.status === "connecting"}
+            <LoaderCircle size={22} class="spin" />
+            <div>Opening SFTP on <b>{s.host}</b>...</div>
+          {:else}
+            <CircleAlert size={22} />
+            <div class="bad">{s.failure}</div>
+            <button class="btn" onclick={() => open(slot)}><RotateCw size={14} /> Try again</button>
+          {/if}
+        </div>
+      </div>
+    {/if}
+  {/key}
+{/snippet}
 
-  <div class="panes" class:hidden={status !== "ready"}>
-    <FilePanel
-      bind:this={localPanel}
-      fs={local}
-      active={focused === "local"}
-      onfocus={() => (focused = "local")}
-      ontransfer={(p) => transfer("local", p)}
-      ondropitems={(p, side, dir) => side === "remote" && transfer("local", p, dir)}
-    />
+<div class="sftp" bind:this={wrap} class:over-left={osOver === "left"} class:over-right={osOver === "right"}>
+  <div class="panes">
+    {@render pane("left")}
     <div class="mid">
-      <button class="icon-btn" title="Upload what is selected on the left (Space)" onclick={() => transfer("local", localPanel?.selection() ?? [])}><ArrowRight size={16} /></button>
-      <button class="icon-btn" title="Download what is selected on the right (Space)" onclick={() => transfer("remote", remotePanel?.selection() ?? [])}><ArrowLeft size={16} /></button>
+      <button class="icon-btn" title="Copy what is selected on the left to the right (Space)" onclick={() => transfer("left", panels.left?.selection() ?? [])}
+        ><ArrowRight size={16} /></button
+      >
+      <button class="icon-btn" title="Copy what is selected on the right to the left (Space)" onclick={() => transfer("right", panels.right?.selection() ?? [])}
+        ><ArrowLeft size={16} /></button
+      >
     </div>
-    <FilePanel
-      bind:this={remotePanel}
-      fs={remote}
-      active={focused === "remote"}
-      onfocus={() => (focused = "remote")}
-      ontransfer={(p) => transfer("remote", p)}
-      ondropitems={(p, side, dir) => side === "local" && transfer("remote", p, dir)}
-    />
+    {@render pane("right")}
   </div>
 
   {#if xfers.length}
@@ -288,9 +341,9 @@
       <div class="xlist">
         {#each xfers as x (x)}
           <div class="xfer" class:bad={x.state === "error"}>
-            <span class="dir">{#if x.upload}<ArrowRight size={13} />{:else}<ArrowLeft size={13} />{/if}</span>
+            <span class="dir">{#if x.from === "left"}<ArrowRight size={13} />{:else}<ArrowLeft size={13} />{/if}</span>
             <span class="xl ellipsis" title={x.message || x.file}>
-              {x.upload ? "Upload" : "Download"} {x.label}
+              {x.verb} {x.label}
               {#if x.state === "running" && x.file && x.file !== x.label}<span class="faint"> · {x.file}</span>{/if}
               {#if x.state === "error"}<span> · {x.message}</span>{/if}
               {#if x.state === "cancelled"}<span class="faint"> · cancelled</span>{/if}
@@ -322,15 +375,25 @@
     gap: 10px;
     min-height: 0;
   }
+  .fp-wait {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .fp-wait .pick {
+    padding: 8px 8px 6px 6px;
+  }
   .state {
     margin: auto;
     display: flex;
     flex-direction: column;
     align-items: center;
     gap: 10px;
+    padding: 16px;
     color: var(--text-2);
     text-align: center;
-    max-width: 480px;
+    max-width: 420px;
   }
   .state .bad {
     color: var(--danger);
@@ -342,9 +405,6 @@
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
     gap: 6px;
   }
-  .panes.hidden {
-    display: none;
-  }
   .mid {
     display: flex;
     flex-direction: column;
@@ -352,7 +412,8 @@
     gap: 6px;
     color: var(--text-3);
   }
-  .os-over :global([data-side="remote"]) {
+  .over-left :global([data-side="left"]),
+  .over-right :global([data-side="right"]) {
     box-shadow: 0 0 0 2px var(--accent) inset;
   }
   .xfers {

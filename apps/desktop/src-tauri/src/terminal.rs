@@ -142,15 +142,26 @@ pub fn local_shells() -> Vec<LocalShell> {
 }
 
 #[tauri::command]
-pub fn term_open_local(s: State<'_, AppState>, shell: String, cols: u32, rows: u32, on_event: Channel<TermEvent>) -> Result<u32, Error> {
+pub fn term_open_local(
+    s: State<'_, AppState>,
+    shell: String,
+    cols: u32,
+    rows: u32,
+    cwd: Option<String>,
+    on_event: Channel<TermEvent>,
+) -> Result<u32, Error> {
     let (_, path, args) = shells().into_iter().find(|(x, ..)| x.id == shell).ok_or(Error::NotFound(shell))?;
     let pty = native_pty_system()
         .openpty(PtySize { rows: rows as u16, cols: cols as u16, pixel_width: 0, pixel_height: 0 })
         .map_err(pty_err)?;
     let mut cmd = CommandBuilder::new(&path);
     cmd.args(&args);
-    if let Some(home) = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")) {
-        cmd.cwd(home);
+    // La carpeta pedida (por ejemplo la del Explorador) o la del usuario.
+    let start = cwd.map(PathBuf::from).filter(|p| p.is_dir()).or_else(|| {
+        std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(PathBuf::from)
+    });
+    if let Some(dir) = start {
+        cmd.cwd(dir);
     }
     // portable-pty arma el PATH leyendo el registro, pero no expande entradas como
     // %USERPROFILE%\AppData\Local\Microsoft\WindowsApps: sin esto no aparecen oh-my-posh,

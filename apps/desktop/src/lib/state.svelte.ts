@@ -10,6 +10,8 @@ export interface TermTab {
   host: string;
   /** Id de la shell local (pwsh, cmd, wsl...); vacio para SSH. */
   local?: string;
+  /** Carpeta donde arranca una shell local. */
+  cwd?: string;
   /** Pestaña de archivos (SFTP) en vez de terminal. */
   sftp?: boolean;
   title: string;
@@ -60,8 +62,29 @@ export async function attempt(f: () => Promise<unknown>, ok?: string): Promise<b
   }
 }
 
+/** Pedido de abrir PowerShell en una carpeta; espera a que el vault este abierto. */
+let openHere: string | null = null;
+
+async function takeOpenHere() {
+  const r = await api.takeOpenHere().catch(() => null);
+  if (r) openHere = r.cwd;
+  flushOpenHere();
+}
+
+async function flushOpenHere() {
+  if (!openHere || !app.status?.unlocked) return;
+  const cwd = openHere;
+  openHere = null;
+  const shells = await api.localShells().catch(() => []);
+  const sh = shells.find((s) => s.id === "pwsh") ?? shells[0];
+  if (!sh) return toast("No local shell found", true);
+  const folder = cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || cwd;
+  openTerminal(`${sh.label} · ${folder}`, sh.id, cwd);
+}
+
 export async function refresh() {
   app.status = await api.status();
+  flushOpenHere();
   if (app.status.unlocked) {
     const [snap, approvals, alerts] = await Promise.all([api.snapshot(), api.approvals(), api.alerts()]);
     app.snap = snap;
@@ -85,6 +108,9 @@ export function start() {
   listen<Alert[]>("alerts", (e) => {
     app.alerts = e.payload;
   });
+  // El atajo global (Ctrl Shift Alt T) con una carpeta del Explorador activa.
+  listen("open-here", () => takeOpenHere());
+  takeOpenHere();
   listen<UpdateInfo | null>("update", (e) => {
     app.update = e.payload;
   });
@@ -103,11 +129,11 @@ export function start() {
   refresh();
 }
 
-export function openTerminal(host: string, local?: string) {
+export function openTerminal(host: string, local?: string, cwd?: string) {
   rememberVaultView(app.view);
   const key = Date.now();
   const n = app.terms.filter((t) => t.host === host).length;
-  app.terms.push({ key, host, local, title: n ? `${host} (${n + 1})` : host, alive: true });
+  app.terms.push({ key, host, local, cwd, title: n ? `${host} (${n + 1})` : host, alive: true });
   app.activeTerm = key;
   app.view = "terminal";
 }

@@ -3,7 +3,8 @@
 //! en la auditoria.
 //!
 //! Las transferencias recorren carpetas con una pila (sin recursion async), avisan el
-//! progreso por un callback y se pueden cancelar con un flag.
+//! progreso por un callback y se pueden cancelar con un flag. Van en las cuatro
+//! direcciones: subir, bajar, de un servidor a otro y dentro de esta PC.
 
 use russh_sftp::client::SftpSession;
 use serde::Serialize;
@@ -256,6 +257,99 @@ impl Sftp {
         }
         Ok(())
     }
+
+    /// Copia un archivo o carpeta de este servidor a la carpeta `into` de otro, sin pasar
+    /// por el disco de esta PC (lee de uno y escribe en el otro de a pedazos).
+    pub async fn copy_to(&self, other: &Sftp, remote: &str, into: &str, progress: &(dyn Fn(u64, &str) + Sync), cancel: &AtomicBool) -> Result<()> {
+        let mut stack = vec![(remote.to_string(), rjoin(into, rname(remote)))];
+        while let Some((src, dst)) = stack.pop() {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(Error::Invalid("cancelled".into()));
+            }
+            self.conn.touch();
+            other.conn.touch();
+            let meta = self.s.metadata(&src).await.map_err(sftp_err)?;
+            if meta.is_dir() {
+                if !other.s.try_exists(&dst).await.unwrap_or(false) {
+                    other.s.create_dir(&dst).await.map_err(sftp_err)?;
+                }
+                for e in self.s.read_dir(&src).await.map_err(sftp_err)? {
+                    let n = e.file_name();
+                    if n == "." || n == ".." {
+                        continue;
+                    }
+                    stack.push((rjoin(&src, &n), rjoin(&dst, &n)));
+                }
+            } else {
+                let mut from = self.s.open(&src).await.map_err(sftp_err)?;
+                let mut to = other.s.create(&dst).await.map_err(sftp_err)?;
+                let mut buf = vec![0u8; CHUNK];
+                loop {
+                    if cancel.load(Ordering::Relaxed) {
+                        drop(to);
+                        let _ = other.s.remove_file(&dst).await;
+                        return Err(Error::Invalid("cancelled".into()));
+                    }
+                    let n = from.read(&mut buf).await.map_err(sftp_err)?;
+                    if n == 0 {
+                        break;
+                    }
+                    to.write_all(&buf[..n]).await.map_err(sftp_err)?;
+                    progress(n as u64, rname(&src));
+                }
+                to.shutdown().await.map_err(sftp_err)?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Copia un archivo o carpeta de esta PC a otra carpeta de esta PC.
+pub async fn copy_local(src: &Path, into: &Path, progress: &(dyn Fn(u64, &str) + Sync), cancel: &AtomicBool) -> Result<()> {
+    let name = src.file_name().ok_or_else(|| Error::Invalid("bad file name".into()))?;
+    let target = into.join(name);
+    // Una carpeta adentro de si misma no termina nunca.
+    if let (Ok(a), Ok(b)) = (src.canonicalize(), into.canonicalize()) {
+        if b.starts_with(&a) {
+            return Err(Error::Invalid("cannot copy a folder into itself".into()));
+        }
+        if a == b.join(name) {
+            return Err(Error::Invalid("it is already in that folder".into()));
+        }
+    }
+    let mut stack = vec![(src.to_path_buf(), target)];
+    while let Some((from, to)) = stack.pop() {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(Error::Invalid("cancelled".into()));
+        }
+        if from.is_dir() {
+            std::fs::create_dir_all(&to).map_err(io_err)?;
+            for e in std::fs::read_dir(&from).map_err(io_err)? {
+                let e = e.map_err(io_err)?;
+                stack.push((e.path(), to.join(e.file_name())));
+            }
+        } else {
+            let mut a = tokio::fs::File::open(&from).await.map_err(io_err)?;
+            let mut b = tokio::fs::File::create(&to).await.map_err(io_err)?;
+            let label = from.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            let mut buf = vec![0u8; CHUNK];
+            loop {
+                if cancel.load(Ordering::Relaxed) {
+                    drop(b);
+                    let _ = std::fs::remove_file(&to);
+                    return Err(Error::Invalid("cancelled".into()));
+                }
+                let n = a.read(&mut buf).await.map_err(io_err)?;
+                if n == 0 {
+                    break;
+                }
+                b.write_all(&buf[..n]).await.map_err(io_err)?;
+                progress(n as u64, &label);
+            }
+            b.flush().await.map_err(io_err)?;
+        }
+    }
+    Ok(())
 }
 
 // ---- disco local
@@ -358,5 +452,25 @@ mod tests {
         assert_eq!(size_local(&dir), 15);
         remove_local(&dir).unwrap();
         assert!(!dir.exists());
+    }
+
+    #[tokio::test]
+    async fn local_copy_and_guards() {
+        let base = std::env::temp_dir().join(format!("eth-copy-{}", std::process::id()));
+        let src = base.join("src");
+        std::fs::create_dir_all(src.join("in")).unwrap();
+        std::fs::write(src.join("in/a.txt"), b"abc").unwrap();
+        let dst = base.join("dst");
+        std::fs::create_dir_all(&dst).unwrap();
+        let no = AtomicBool::new(false);
+        let done = std::sync::atomic::AtomicU64::new(0);
+        let prog = |n: u64, _: &str| {
+            done.fetch_add(n, Ordering::Relaxed);
+        };
+        copy_local(&src, &dst, &prog, &no).await.unwrap();
+        assert_eq!(std::fs::read(dst.join("src/in/a.txt")).unwrap(), b"abc");
+        assert_eq!(done.load(Ordering::Relaxed), 3);
+        assert!(copy_local(&src, &src.join("in"), &prog, &no).await.is_err(), "into itself");
+        remove_local(&base).unwrap();
     }
 }

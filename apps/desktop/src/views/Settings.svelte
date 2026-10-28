@@ -2,9 +2,9 @@
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { open, save } from "@tauri-apps/plugin-dialog";
   import { api, type ExportFormat, type Settings } from "../lib/api";
-  import { app, attempt } from "../lib/state.svelte";
+  import { app, attempt, toast } from "../lib/state.svelte";
   import KeyBinds from "../components/KeyBinds.svelte";
-  import { matches, prefs } from "../lib/prefs.svelte";
+  import { comboOf, matches, prefs, pretty } from "../lib/prefs.svelte";
   import Select from "../components/Select.svelte";
   import Switch from "../components/Switch.svelte";
   import Section from "../components/Section.svelte";
@@ -88,6 +88,41 @@
     if (await attempt(() => api.exportData(format, path, fmt.secrets ? exportPw : null).then((m) => m), "Exported")) {
       exportPw = "";
     }
+  }
+
+  // ---- atajo global para traer la ventana
+  let hotkey = $state<string | null>(null);
+  api.hotkeyGet().then((h) => (hotkey = h));
+  let recordingHk = $state(false);
+
+  async function setHotkey(combo: string | null) {
+    if (await attempt(() => api.hotkeySet(combo), combo ? `Shortcut set: ${pretty(combo)}` : "Shortcut turned off")) hotkey = combo;
+  }
+
+  // Graba la combinacion: hace falta Ctrl, Alt o Win, y una letra, numero o F1-F12.
+  function onHkKey(e: KeyboardEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === "Escape") return stopRecordHk();
+    const c = comboOf(e);
+    if (!c) return;
+    const key = c.split("+").pop()!;
+    if (!(e.ctrlKey || e.altKey || e.metaKey) || !/^([A-Z0-9]|F([1-9]|1[0-2]))$/.test(key)) {
+      toast("Use Ctrl, Alt or Win plus a letter, a number or F1 to F12", true);
+      return;
+    }
+    stopRecordHk();
+    setHotkey(c.replace("Win", "Super"));
+  }
+  function startRecordHk() {
+    recordingHk = true;
+    prefs.recording = true;
+    window.addEventListener("keydown", onHkKey, true);
+  }
+  function stopRecordHk() {
+    recordingHk = false;
+    prefs.recording = false;
+    window.removeEventListener("keydown", onHkKey, true);
   }
 
   async function pickStart() {
@@ -231,6 +266,27 @@
     >
       <Switch checked={autostart} onchange={toggleAutostart}>Start with Windows, hidden in the tray</Switch>
       <div class="faint small">Closing the window keeps Ethereon in the tray. Quit from the tray menu.</div>
+      <div class="hk">
+        <div class="grow">
+          <div>Show Ethereon from anywhere</div>
+          <div class="faint small">
+            Works with the window closed. If a File Explorer folder (or the Desktop) is in front, it also opens PowerShell 7
+            in that folder.
+          </div>
+        </div>
+        {#if recordingHk}
+          <span class="kbd rec">Press the keys...</span>
+          <button class="btn" onclick={stopRecordHk}>Cancel</button>
+        {:else}
+          <span class="kbd" class:off={!hotkey}>{hotkey ? pretty(hotkey) : "Off"}</span>
+          <button class="btn" onclick={startRecordHk}>Change</button>
+          {#if hotkey}
+            <button class="btn" onclick={() => setHotkey(null)}>Turn off</button>
+          {:else}
+            <button class="btn" onclick={() => setHotkey("Ctrl+Shift+Alt+T")}>Use Ctrl Shift Alt T</button>
+          {/if}
+        {/if}
+      </div>
       <div class="row">
         <span class="grow">Ethereon {version}</span>
         {#if app.update?.status === "ready"}
@@ -339,6 +395,29 @@
     height: 56px;
     border-radius: var(--radius-sm);
     border: 1px solid rgba(127, 127, 127, 0.25);
+  }
+  .hk {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding-top: 4px;
+  }
+  .kbd {
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: var(--radius-sm);
+    border: var(--border) solid var(--line);
+    background: var(--panel-2);
+    white-space: nowrap;
+  }
+  .kbd.off {
+    color: var(--text-3);
+  }
+  .kbd.rec {
+    border-color: var(--accent);
+    color: var(--accent);
   }
   .path-btn {
     justify-content: flex-start;

@@ -3,6 +3,15 @@
 Todo lo que se puede hacer con el teclado (y algunos gestos con el mouse) en Ethereon.
 Los atajos marcados con ✎ se cambian en **Settings → Keyboard shortcuts**; los demás son fijos.
 
+## Desde cualquier lado de Windows
+
+| Atajo | Qué hace |
+|---|---|
+| `Ctrl Shift Alt T` | Trae Ethereon al frente, aunque esté cerrado en la bandeja. Si la ventana activa es una carpeta del Explorador (o el Escritorio), además abre PowerShell 7 en esa carpeta, como "Abrir en Terminal". Con el vault bloqueado, la pestaña se abre al desbloquearlo |
+
+Se cambia o se apaga en **Settings → Startup and updates**. Si otra app ya usa la combinación,
+avisa y queda la anterior.
+
 ## En toda la app
 
 | Atajo | Qué hace |
@@ -67,8 +76,11 @@ navegador.
 
 ## Archivos (SFTP)
 
-Se abre con el botón **SFTP** de cada host o con `Shift Enter` en el buscador. A la izquierda está
-esta PC; a la derecha, el servidor.
+Se abre con el botón **SFTP** de cada host o con `Shift Enter` en el buscador. Arranca con esta PC a
+la izquierda y el servidor a la derecha, pero **cada lado se cambia desde su título**: esta PC o
+cualquier host. Así se sube, se baja, se copia de un servidor a otro (directo, sin pasar por el disco
+de esta PC) o dentro de esta PC. Si un lado no conecta, el otro sigue andando y desde el mismo título
+se elige otro.
 
 | Atajo | Qué hace |
 |---|---|
@@ -77,7 +89,7 @@ esta PC; a la derecha, el servidor.
 | Clic / `Ctrl` clic / `Shift` clic | Elegir uno / sumar o sacar / elegir un rango |
 | `Ctrl A` | Elegir todo |
 | `Enter` / doble clic | Abrir la carpeta; en un archivo, mandarlo al otro lado |
-| `Espacio` o `Ctrl Enter` | Mandar lo elegido al otro lado (subir o bajar) |
+| `Espacio` o `Ctrl Enter` | Copiar lo elegido al otro lado |
 | `Backspace` / `Alt ←` | Subir una carpeta |
 | `F2` | Renombrar |
 | `Supr` | Borrar (pregunta antes; las carpetas se borran con todo) |
@@ -90,7 +102,7 @@ esta PC; a la derecha, el servidor.
 
 - **Arrastrar** archivos de un panel al otro los transfiere. Soltarlos sobre una carpeta los mete
   ahí adentro.
-- También se pueden **arrastrar desde el Explorador de Windows** al panel del servidor.
+- También se pueden **arrastrar desde el Explorador de Windows** a cualquiera de los dos paneles.
 - Clic derecho abre un menú con todas las acciones.
 - El panel de esta PC arranca en el Escritorio. Se cambia en **Settings → Files (SFTP)**: Escritorio,
   carpeta del usuario u otra carpeta. El botón de la casita vuelve ahí.
