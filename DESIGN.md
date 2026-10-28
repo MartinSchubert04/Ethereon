@@ -37,7 +37,11 @@ genera `styles/palettes.css` y `lib/palettes.gen.ts`; cada tema recuerda la suya
 | Default | Mint, Nord, Dracula, Tokyo Night, Catppuccin, Gruvbox, Paper (clara) |
 | Warp | Violet, Solar Flare, Pink City, Jellyfish, Leafy, Red Rock |
 | Poolsuite FM | Sunset, Mint Pool, Tropicana, Lavender, Beach, Platinum (Mac OS 9) |
-| Haze | Cream, Peach, Rose, Mauve, Sky, Sage (acentos de Catppuccin, con la bruma teñida a juego) |
+| Haze | Cream, Peach, Rose, Mauve, Sky, Sage, Amber (acentos de Catppuccin, con la bruma teñida a juego) |
+| Athanor | Srcery, Umber, Cinnabar, Vellum (clara), Orpiment (clara): las de portfolio-athanor |
+
+Cada tema tiene además una paleta "a la athanor" (Srcery, Ember, Vellum, Amber): negro cálido,
+crema y un solo acento ámbar.
 
 | Tema | Fondo | Acento | Rasgo |
 |---|---|---|---|
@@ -45,11 +49,16 @@ genera `styles/palettes.css` y `lib/palettes.gen.ts`; cada tema recuerda la suya
 | Warp | negro con luces violeta y cian | gradiente `#8b5cf6 → #22d3ee` | Paneles translúcidos con desenfoque |
 | Poolsuite FM | atardecer pastel (cielo, rosa, durazno) | rosa `#ff4f9a` | Claro, bordes negros de 2 px, sombras duras, barra de ventana rayada como el Mac clásico |
 | Haze | bruma cálida y fría sobre gris azulado | crema `#f9e2af` | Vidrio, igual que la app Haze |
+| Athanor | `#1C1B19` (Srcery) | ámbar `#FBB829` | Pixel clay: esquinas en escalera, biseles duros, sombras tramadas en damero; fuente bitmap |
 
 ## 3. Tipografía
 
 Inter Variable para todo y Geist Mono Variable para comandos, direcciones, huellas y la terminal.
-Las dos vienen empaquetadas (sin red). No se usan fuentes pixel ni manuscritas en ningún tema.
+Las dos vienen empaquetadas (sin red).
+
+**Excepción: Athanor**, pedido así a propósito para que sea igual al portfolio. Todo el texto en
+PxPlus IBM VGA 8x16 a 16 px exactos y sin suavizado (es bitmap: a otro tamaño se ve borrosa), sin
+negrita ni cursiva; los títulos en Jacquard 24 a 48 px. Ver `styles/athanor.css` y `src/fonts/`.
 
 | Uso | Tamaño | Peso |
 |---|---|---|
@@ -72,6 +81,13 @@ Las dos vienen empaquetadas (sin red). No se usan fuentes pixel ni manuscritas e
   editable en mono, y las acciones.
 - **Alerta de huella:** franja arriba del contenido; roja si la clave cambió.
 - **Botón Agent access:** siempre visible abajo en la barra lateral; verde encendido, rojo apagado.
+- **Select** (`components/Select.svelte`): reemplaza al `<select>` nativo. Lista flotante con
+  check en el elegido, pista en gris por opción, flechas / Enter / Esc / escribir para saltar, y
+  buscador si hay más de 7 opciones.
+- **Switch**: reemplaza a las casillas de un solo ajuste. **Seg**: control segmentado con píldora
+  que se desliza. Las casillas que quedan (listas) son propias, con tilde animada.
+- **Campos**: la ayuda va debajo del campo (`.field .hint`), así los campos de una fila quedan
+  alineados aunque uno tenga ayuda y otro no.
 
 ## 5. Layout
 
@@ -87,6 +103,23 @@ terminales quedan montadas aunque se cambie de pestaña (no se pierde la sesión
 
 "New tab" (Ctrl T) abre un buscador de hosts; Enter abre la terminal. Los atajos están en
 `lib/shortcuts.ts` y se listan en Settings.
+
+## 5b. Movimiento
+
+Todas las animaciones pasan por `lib/motion.ts` y duran 0 con "reducir animaciones" de Windows.
+
+| Qué | Cómo |
+|---|---|
+| Cambiar de vista | sube 6 px y aparece (220 ms) |
+| Cajón | entra desde la derecha con un poco de resorte; el fondo se desenfoca |
+| Diálogos, buscador, desplegables | crecen desde 95 % (160 ms) |
+| Tarjetas de hosts | aparecen escalonadas (35 ms entre una y otra) y se elevan 2 px al pasar |
+| Botones | suben 1 px al pasar, se hunden al apretar; el principal tiene un brillo que lo cruza |
+| Interruptor | el pulgar rebota y se estira al apretar |
+| Contraseña incorrecta | la tarjeta tiembla |
+| Avisos | entran desde abajo y se reacomodan (flip) |
+
+En Athanor el movimiento es por pasos (`steps()`), como el pixel art.
 
 ## 6. Profundidad
 

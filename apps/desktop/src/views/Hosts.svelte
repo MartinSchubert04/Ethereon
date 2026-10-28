@@ -6,6 +6,7 @@
   import { api, MODE_LABEL, type Group, type Host, type ImportSummary } from "../lib/api";
   import { app, attempt, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
+  import { pop } from "../lib/motion";
 
   let query = $state("");
   let editing = $state<Host | null | undefined>(undefined); // undefined = cerrado, null = nuevo
@@ -71,7 +72,7 @@
     <div class="menu-wrap">
       <button class="btn" onclick={() => (importOpen = !importOpen)}><Upload size={14} /> Import</button>
       {#if importOpen}
-        <div class="menu card">
+        <div class="menu card" transition:pop|global>
           <button onclick={() => importFrom("ssh")}><FolderInput size={14} /> ~/.ssh/config of this PC</button>
           <button onclick={() => importFrom("ssh-file")}><FolderInput size={14} /> SSH config file (Termius export)</button>
           <button onclick={() => importFrom("key")}><FileKey size={14} /> Private key file</button>
@@ -104,8 +105,8 @@
           {/if}
         </div>
         <div class="grid">
-          {#each g.hosts as h (h.name)}
-            <div class="host card" role="button" tabindex="0" ondblclick={() => openTerminal(h.name)} onkeydown={(e) => e.key === "Enter" && openTerminal(h.name)}>
+          {#each g.hosts as h, i (h.name)}
+            <div class="host card lift stagger" style="--i: {i}" role="button" tabindex="0" ondblclick={() => openTerminal(h.name)} onkeydown={(e) => e.key === "Enter" && openTerminal(h.name)}>
               <div class="top">
                 <div class="badge {h.env}"><Server size={16} /></div>
                 <div class="grow info">
@@ -163,6 +164,7 @@
     position: relative;
   }
   .menu {
+    transform-origin: top right;
     position: absolute;
     top: 38px;
     right: 0;

@@ -2,6 +2,7 @@
   // Confirmar una huella nueva o una que cambio.
   import { Fingerprint, TriangleAlert } from "@lucide/svelte";
   import type { SshError } from "../lib/api";
+  import { fadeQuick, pop } from "../lib/motion";
 
   let {
     error,
@@ -12,8 +13,8 @@
   const changed = $derived(error.kind === "host_key_changed");
 </script>
 
-<div class="scrim" role="presentation" onclick={oncancel}></div>
-<div class="dialog card" class:changed role="dialog">
+<div class="scrim" role="presentation" onclick={oncancel} transition:fadeQuick|global></div>
+<div class="wrap-center"><div class="dialog card" class:changed role="dialog" transition:pop|global>
   <div class="icon">
     {#if changed}<TriangleAlert size={22} />{:else}<Fingerprint size={22} />{/if}
   </div>
@@ -37,7 +38,7 @@
       {changed ? "Trust the new key" : "Trust"}
     </button>
   </div>
-</div>
+</div></div>
 
 <style>
   .scrim {
@@ -46,12 +47,17 @@
     background: rgba(0, 0, 0, 0.45);
     z-index: 60;
   }
-  .dialog {
+  /* Centrado con grid: el transform queda libre para la animacion. */
+  .wrap-center {
     position: fixed;
+    inset: 0;
     z-index: 61;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+  }
+  .dialog {
+    pointer-events: auto;
     width: min(520px, calc(100vw - 32px));
     padding: 22px;
     background: var(--sidebar);

@@ -11,6 +11,10 @@
   --titlebar          relleno de las barras de titulo de paneles y cajones
   --primary-bg        fondo del boton principal (puede ser un gradiente)
   --term-*            colores de la terminal
+  --display           fuente de los titulos (Athanor usa Jacquard 24)
+  --term-font-size    tamaño de la terminal (la fuente VGA solo es nitida a 16 px)
+
+  Athanor ademas cambia formas (pixel clay): eso esta en athanor.css.
 */
 
 :root,
@@ -45,6 +49,8 @@
   --titlebar: transparent;
   --font: "Inter Variable", system-ui, "Segoe UI", sans-serif;
   --mono: "Geist Mono Variable", ui-monospace, Consolas, monospace;
+  --display: var(--font);
+  --term-font-size: 13px;
   --term-bg: #0a0c10;
   --term-fg: #e7e9ee;
   --term-cursor: #6ee7b7;
@@ -157,4 +163,54 @@
   --term-fg: #f1f1f1;
   --term-cursor: #f9e2af;
   --term-selection: rgba(249, 226, 175, 0.25);
+}
+
+/* Athanor: el portfolio-athanor (paleta Srcery del tema de terminal athanor). Fuente
+   bitmap IBM VGA, titulos en Jacquard 24, superficies de "pixel clay": esquinas en
+   escalera, biseles duros y sombras tramadas en vez de difuminadas. Un solo acento. */
+[data-theme="athanor"] {
+  color-scheme: dark;
+  --bg: #1c1b19;
+  --bg-image: none;
+  --sidebar: #1c1b19;
+  --panel: #2a2824;
+  --panel-2: #3c3a36;
+  --hover: #2a2824;
+  --blur: none;
+  --line: #3c3a36;
+  --line-strong: #5c4c39;
+  --border: 2px;
+  --text: #fce8c3;
+  --text-2: #baa67f;
+  --text-3: #918175;
+  --accent: #fbb829;
+  --accent-ink: #1c1b19;
+  --primary-bg: #fbb829;
+  --danger: #f75341;
+  --warn: #fbb829;
+  --ok: #fed06e;
+  --env-prod: #f75341;
+  --env-test: #fbb829;
+  --env-dev: #baa67f;
+  --radius: 0px;
+  --radius-sm: 0px;
+  --card-shadow: none;
+  --pop-shadow: 8px 8px 0 #5c4c39;
+  --titlebar: transparent;
+  --font: "PxPlus IBM VGA 8x16", "Cascadia Mono", Consolas, monospace;
+  --mono: "PxPlus IBM VGA 8x16", "Cascadia Mono", Consolas, monospace;
+  --display: "Jacquard 24", "PxPlus IBM VGA 8x16", serif;
+  --term-font-size: 16px;
+  --term-bg: #1c1b19;
+  --term-fg: #fce8c3;
+  --term-cursor: #fbb829;
+  --term-selection: rgba(251, 184, 41, 0.3);
+  /* Tokens del pixel clay */
+  --ink-deep: #121110;
+  --clay-hi: #3c3a36;
+  --umber: #5c4c39;
+  --accent-hi: #fed06e;
+  --accent-lo: #a8760f;
+  --clay-glow: rgb(252 232 195 / 0.12);
+  --clay-shade: rgb(0 0 0 / 0.4);
 }

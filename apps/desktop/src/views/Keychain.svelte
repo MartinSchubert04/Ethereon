@@ -2,6 +2,7 @@
   import { FileKey, KeyRound, Pencil, Plus } from "@lucide/svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import Drawer from "../components/Drawer.svelte";
+  import Select from "../components/Select.svelte";
   import { api, KIND_LABEL, type CredKind, type CredView } from "../lib/api";
   import { app, attempt, toast } from "../lib/state.svelte";
 
@@ -100,12 +101,8 @@
 {#if editing !== undefined}
   <Drawer title={editing ? `Edit ${editing.id}` : "New credential"} onclose={() => (editing = undefined)}>
     <div class="grid2">
-      <label class="field">Name <span class="hint">e.g. bastion-key</span><input bind:value={id} class="mono" /></label>
-      <label class="field">Type
-        <select bind:value={kind}>
-          {#each kinds as k}<option value={k}>{KIND_LABEL[k]}</option>{/each}
-        </select>
-      </label>
+      <label class="field">Name<input bind:value={id} class="mono" placeholder="bastion-key" /></label>
+      <div class="field">Type<Select bind:value={kind} options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} /></div>
     </div>
     {#if isKey}
       <label class="field">Private key <span class="hint">OpenSSH, PEM or PuTTY</span>

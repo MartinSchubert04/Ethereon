@@ -7,6 +7,7 @@
   import { api } from "../lib/api";
   import { onMount } from "svelte";
   import { app, closeTerminal, goToTab, toggleSidebar } from "../lib/state.svelte";
+  import { pop } from "../lib/motion";
 
   let { locked = false }: { locked?: boolean } = $props();
 
@@ -39,6 +40,7 @@
       </button>
       {#each app.terms as t, i (t.key)}
         <div
+          in:pop={{ start: 0.85 }}
           class="tab"
           class:on={onTerm && app.activeTerm === t.key}
           role="button"
@@ -172,6 +174,11 @@
     display: grid;
     color: var(--accent);
     flex: none;
+  }
+  /* Sobre una pestaña activa pintada con el acento, el icono va en el color de tinta. */
+  :global([data-theme="athanor"]) .tab.on .dot,
+  :global([data-theme="poolsuite"]) .tab.on .dot {
+    color: var(--accent-ink);
   }
   .dot.dead {
     color: var(--text-3);

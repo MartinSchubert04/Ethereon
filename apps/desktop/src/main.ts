@@ -1,10 +1,12 @@
 import { mount } from "svelte";
 import "@fontsource-variable/inter";
 import "@fontsource-variable/geist-mono";
+import "@fontsource/jacquard-24/latin-400.css";
 import "@xterm/xterm/css/xterm.css";
 import "./styles/themes.css";
 import "./styles/palettes.css";
 import "./styles/base.css";
+import "./styles/athanor.css";
 import App from "./App.svelte";
 import { applyTheme, currentTheme } from "./lib/themes";
 

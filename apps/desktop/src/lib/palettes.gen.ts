@@ -63,6 +63,15 @@ export const PALETTES: Record<string, { id: string; name: string; swatch: string
         "#ffffff",
         "#0f9d6f"
       ]
+    },
+    {
+      "id": "srcery",
+      "name": "Srcery",
+      "swatch": [
+        "#1c1b19",
+        "#5c4c39",
+        "#fbb829"
+      ]
     }
   ],
   "warp": [
@@ -118,6 +127,15 @@ export const PALETTES: Record<string, { id: string; name: string; swatch: string
         "#000000",
         "#ef4444",
         "#f97316"
+      ]
+    },
+    {
+      "id": "ember",
+      "name": "Ember",
+      "swatch": [
+        "#1c1b19",
+        "#fbb829",
+        "#f75341"
       ]
     }
   ],
@@ -175,6 +193,15 @@ export const PALETTES: Record<string, { id: string; name: string; swatch: string
         "#eeeeee",
         "#3366cc"
       ]
+    },
+    {
+      "id": "vellum",
+      "name": "Vellum",
+      "swatch": [
+        "#ece1c6",
+        "#f3ead3",
+        "#7c5510"
+      ]
     }
   ],
   "haze": [
@@ -230,6 +257,62 @@ export const PALETTES: Record<string, { id: string; name: string; swatch: string
         "#1b2126",
         "#546e54",
         "#a6e3a1"
+      ]
+    },
+    {
+      "id": "amber",
+      "name": "Amber",
+      "swatch": [
+        "#1c1b19",
+        "#5c4c39",
+        "#fbb829"
+      ]
+    }
+  ],
+  "athanor": [
+    {
+      "id": "srcery",
+      "name": "Srcery",
+      "swatch": [
+        "#1c1b19",
+        "#2a2824",
+        "#fbb829"
+      ]
+    },
+    {
+      "id": "umber",
+      "name": "Umber",
+      "swatch": [
+        "#16120e",
+        "#5c4c39",
+        "#d49a3a"
+      ]
+    },
+    {
+      "id": "cinnabar",
+      "name": "Cinnabar",
+      "swatch": [
+        "#1c0e0c",
+        "#6e3428",
+        "#e2a24a"
+      ]
+    },
+    {
+      "id": "vellum",
+      "name": "Vellum",
+      "swatch": [
+        "#ece1c6",
+        "#b9aa86",
+        "#7c5510"
+      ]
+    },
+    {
+      "id": "orpiment",
+      "name": "Orpiment",
+      "swatch": [
+        "#eddca8",
+        "#c9b27a",
+        "#7a4f06"
       ]
     }
   ]

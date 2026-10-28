@@ -7,6 +7,7 @@ export const THEMES = [
   { id: "warp", name: "Warp" },
   { id: "poolsuite", name: "Poolsuite FM" },
   { id: "haze", name: "Haze" },
+  { id: "athanor", name: "Athanor" },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];

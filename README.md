@@ -20,12 +20,16 @@ credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
   cadena firmada que detecta si alguien la edita. Búsqueda y exportación a CSV.
 - **Importar y exportar:** `~/.ssh/config`, archivos de clave y Bitwarden. Exporta a OpenSSH (lo que
   importa Termius), Bitwarden, CSV, JSON, o un respaldo cifrado.
-- **Temas:** Default, Warp, Poolsuite FM y Haze, cada uno con varias paletas (Nord, Dracula, Tokyo
-  Night, Solar Flare, Lavender, Platinum...).
+- **Temas:** Default, Warp, Poolsuite FM, Haze y Athanor (fuente bitmap IBM VGA y "pixel clay",
+  como el portfolio-athanor), cada uno con varias paletas (Nord, Dracula, Tokyo Night, Srcery, Solar
+  Flare, Lavender, Vellum...).
+- **Terminal:** copiar y pegar como en Windows Terminal (Ctrl C con selección, Ctrl V, clic derecho,
+  copiar al seleccionar), todo configurable en Settings, igual que el tamaño de letra.
 - **Como Termius:** barra de arriba con pestañas (Vault + una por terminal), "New tab" con buscador
   de hosts, y la ventana vuelve con el mismo tamaño y lugar.
 - **Atajos:** Ctrl T nueva pestaña, Ctrl W cerrar (Ctrl Shift W dentro de una terminal), Ctrl Tab /
-  Ctrl Shift Tab, Ctrl 1…9, Ctrl B barra lateral, Ctrl F buscar, Ctrl , ajustes, Ctrl Shift L bloquear.
+  Ctrl Shift Tab, Ctrl 1…9, Ctrl B barra lateral, Ctrl F buscar, Ctrl , ajustes, Ctrl Shift L bloquear,
+  Ctrl Shift C / V en la terminal. Se reasignan en Settings → Keyboard shortcuts.
 
 ## Conectar Claude Code
 

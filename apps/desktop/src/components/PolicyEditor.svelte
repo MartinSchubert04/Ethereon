@@ -2,6 +2,8 @@
   // Editor de reglas de un host o grupo.
   import { MODE_LABEL, type Mode, type Policy } from "../lib/api";
   import { app } from "../lib/state.svelte";
+  import Seg from "./Seg.svelte";
+  import Switch from "./Switch.svelte";
 
   let { policy = $bindable() }: { policy: Policy } = $props();
 
@@ -21,11 +23,7 @@
 </script>
 
 <div class="stack">
-  <div class="seg">
-    {#each modes as m}
-      <button class:on={policy.mode === m} onclick={() => (policy.mode = m)}>{MODE_LABEL[m]}</button>
-    {/each}
-  </div>
+  <Seg bind:value={policy.mode} options={modes.map((m) => ({ value: m, label: MODE_LABEL[m] }))} />
   <div class="faint">{help[policy.mode]}</div>
 
   {#if policy.mode === "read_only"}
@@ -57,7 +55,7 @@
       <label class="field">Max output (KB)<input type="number" min="1" bind:value={policy.max_output_kb} /></label>
       <label class="field">Commands / min<input type="number" min="1" bind:value={policy.max_per_minute} /></label>
     </div>
-    <label class="row"><input type="checkbox" bind:checked={policy.allow_sudo} /> Allow sudo (Ethereon types the password)</label>
+    <Switch bind:checked={policy.allow_sudo}>Allow sudo (Ethereon types the password)</Switch>
   {/if}
 </div>
 

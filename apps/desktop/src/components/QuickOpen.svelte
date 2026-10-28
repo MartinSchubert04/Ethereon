@@ -2,6 +2,7 @@
   // "New tab": buscar un host y abrir su terminal. Flechas para elegir, Enter para abrir.
   import { Search, Server } from "@lucide/svelte";
   import { app, openTerminal } from "../lib/state.svelte";
+  import { fadeQuick, pop } from "../lib/motion";
 
   let query = $state("");
   let sel = $state(0);
@@ -37,8 +38,8 @@
   }
 </script>
 
-<div class="scrim" role="presentation" onclick={close}></div>
-<div class="box card" role="dialog">
+<div class="scrim" role="presentation" onclick={close} transition:fadeQuick|global></div>
+<div class="center"><div class="box card" role="dialog" transition:pop|global>
   <div class="search">
     <Search size={15} />
     <input
@@ -64,7 +65,7 @@
       <div class="none faint">No hosts match.</div>
     {/each}
   </div>
-</div>
+</div></div>
 
 <style>
   .scrim {
@@ -73,12 +74,17 @@
     background: rgba(0, 0, 0, 0.35);
     z-index: 70;
   }
-  .box {
+  .center {
     position: fixed;
+    inset: 76px 0 auto;
     z-index: 71;
-    top: 76px;
-    left: 50%;
-    transform: translateX(-50%);
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .box {
+    pointer-events: auto;
+    transform-origin: top center;
     width: min(560px, calc(100vw - 32px));
     background: var(--sidebar);
     box-shadow: var(--pop-shadow);
@@ -118,6 +124,7 @@
     padding: 8px 10px;
     border-radius: var(--radius-sm);
     text-align: left;
+    transition: background 0.08s;
   }
   .item.on {
     background: var(--panel-2);

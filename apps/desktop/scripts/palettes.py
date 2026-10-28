@@ -84,6 +84,28 @@ def hz(accent, a, b, c):
     }
 
 
+def ath(ink, deep, clay, clayhi, rule, umber, dim, tan, cream, amber, ahi, alo, blood, light=False):
+    """Una paleta de athanor (src/index.css del portfolio-athanor) en los tokens de Ethereon."""
+    v = {
+        "--bg": ink, "--sidebar": ink, "--panel": clay, "--panel-2": clayhi, "--hover": clay,
+        "--line": rule, "--line-strong": umber, "--text": cream, "--text-2": tan, "--text-3": dim,
+        "--accent": amber, "--accent-ink": ink, "--primary-bg": amber, "--danger": blood, "--warn": amber,
+        "--ok": ahi, "--env-prod": blood, "--env-test": amber, "--env-dev": tan,
+        "--term-bg": ink, "--term-fg": cream, "--term-cursor": amber,
+        "--term-selection": f"color-mix(in srgb, {amber} 30%, transparent)",
+        "--ink-deep": deep, "--clay-hi": clayhi, "--umber": umber,
+        "--accent-hi": ahi, "--accent-lo": alo, "--pop-shadow": f"8px 8px 0 {umber}",
+    }
+    if light:
+        v.update({"color-scheme": "light", "--clay-glow": "rgb(255 255 255 / 0.5)",
+                  "--clay-shade": f"color-mix(in srgb, {cream} 12%, transparent)"})
+    return v
+
+
+# La misma paleta Srcery "a la athanor" para los otros temas, con sus formas.
+SRCERY_DEFAULT = dark("#1c1b19", "#161513", "#22211e", "#2a2824", "#3c3a36", "#5c4c39", "#fce8c3", "#baa67f", "#918175",
+                      "#fbb829", "#1c1b19", "#f75341", "#fbb829", "#fed06e", "#fbb829", "#baa67f", "rgba(251,184,41,.3)")
+
 PAPER = {
     **dark("#f6f7f9", "#eef0f3", "#ffffff", "#f1f3f6", "#dfe3e8", "#c9cfd8", "#1b1f24", "#59636e", "#8a939e",
            "#0f9d6f", "#ffffff", "#d1343e", "#b7791f", "#0f9d6f", "#b7791f", "#2563eb", "rgba(15,157,111,.18)"),
@@ -113,6 +135,7 @@ PALETTES = {
          dark("#1d2021", "#1d2021", "#282828", "#32302f", "#3c3836", "#504945", "#ebdbb2", "#bdae93", "#7c6f64",
               "#fabd2f", "#1d2021", "#fb4934", "#fe8019", "#b8bb26", "#fe8019", "#83a598", "rgba(250,189,47,.22)")),
         ("paper", "Paper", ["#f6f7f9", "#ffffff", "#0f9d6f"], PAPER),
+        ("srcery", "Srcery", ["#1c1b19", "#5c4c39", "#fbb829"], SRCERY_DEFAULT),
     ],
     "warp": [
         ("violet", "Violet", ["#000000", "#8b5cf6", "#22d3ee"], {}),
@@ -126,6 +149,10 @@ PALETTES = {
          warp("#22c55e", "#a3e635", "#4ade80", "#05140a", "rgba(34,197,94,.18)", "rgba(163,230,53,.1)", "rgba(74,222,128,.28)")),
         ("redrock", "Red Rock", ["#000000", "#ef4444", "#f97316"],
          warp("#ef4444", "#f97316", "#f87171", "#ffffff", "rgba(239,68,68,.2)", "rgba(249,115,22,.1)", "rgba(248,113,113,.3)")),
+        ("ember", "Ember", ["#1c1b19", "#fbb829", "#f75341"],
+         {**warp("#fbb829", "#f75341", "#fbb829", "#1c1b19", "rgba(251,184,41,.16)", "rgba(247,83,65,.1)", "rgba(251,184,41,.3)"),
+          "--bg": "#121110", "--text": "#fce8c3", "--text-2": "#baa67f", "--text-3": "#918175",
+          "--env-prod": "#f75341", "--env-test": "#fbb829", "--env-dev": "#baa67f", "--term-bg": "#121110", "--term-fg": "#fce8c3"}),
     ],
     "poolsuite": [
         ("sunset", "Sunset", ["#aee2ff", "#ffd3e1", "#ff4f9a"], {}),
@@ -139,6 +166,12 @@ PALETTES = {
          pool("linear-gradient(180deg, #7fd3ff 0%, #bfeaff 45%, #fff1c1 100%)", "#0077ff", "#f7fcff", "#fdfeff", "#eaf6ff")),
         ("platinum", "Platinum", ["#bdbdbd", "#eeeeee", "#3366cc"],
          {**pool("linear-gradient(180deg, #cfcfcf, #bdbdbd)", "#3366cc", "#e3e3e3", "#eeeeee", "#dddddd"), "--term-bg": "#ffffff"}),
+        ("vellum", "Vellum", ["#ece1c6", "#f3ead3", "#7c5510"],
+         {**pool("linear-gradient(180deg, #f3ead3 0%, #ece1c6 55%, #d3c6a3 100%)", "#7c5510", "#f3ead3", "#fbf5e6", "#ece1c6"),
+          "--line": "#1f1914", "--line-strong": "#1f1914", "--text": "#1f1914", "--text-2": "#473c30", "--text-3": "#6e5f4c",
+          "--card-shadow": "3px 3px 0 #1f1914", "--pop-shadow": "6px 6px 0 #1f1914", "--danger": "#9a3522", "--env-prod": "#9a3522",
+          "--env-test": "#7c5510", "--env-dev": "#473c30", "--term-fg": "#1f1914",
+          "--titlebar": "repeating-linear-gradient(180deg, #1f1914 0 2px, transparent 2px 5px)"}),
     ],
     "haze": [
         ("cream", "Cream", ["#1b2126", "#7a6c58", "#f9e2af"], {}),
@@ -152,6 +185,25 @@ PALETTES = {
          hz("#89dceb", "rgba(64,104,118,.42)", "rgba(60,82,120,.38)", "rgba(30,58,72,.5)")),
         ("sage", "Sage", ["#1b2126", "#546e54", "#a6e3a1"],
          hz("#a6e3a1", "rgba(84,110,84,.42)", "rgba(52,86,86,.4)", "rgba(34,58,48,.5)")),
+        ("amber", "Amber", ["#1c1b19", "#5c4c39", "#fbb829"],
+         {**hz("#fbb829", "rgba(120,94,58,.45)", "rgba(92,76,57,.4)", "rgba(42,40,36,.55)"),
+          "--text": "#fce8c3", "--text-2": "rgba(252,232,195,.66)", "--text-3": "rgba(252,232,195,.42)",
+          "--danger": "#f75341", "--env-prod": "#f75341", "--env-dev": "#baa67f"}),
+    ],
+    "athanor": [
+        ("srcery", "Srcery", ["#1c1b19", "#2a2824", "#fbb829"], {}),
+        ("umber", "Umber", ["#16120e", "#5c4c39", "#d49a3a"],
+         ath("#16120e", "#0d0b08", "#231d16", "#3a3126", "#3a3126", "#5c4c39", "#8d7d65", "#cfc1a3", "#e3d6b8",
+             "#d49a3a", "#e8bd6a", "#8f6520", "#dd7357")),
+        ("cinnabar", "Cinnabar", ["#1c0e0c", "#6e3428", "#e2a24a"],
+         ath("#1c0e0c", "#120807", "#2c1613", "#4a2420", "#4a2420", "#6e3428", "#a8857a", "#d8c4ac", "#ecd9c0",
+             "#e2a24a", "#f2be6e", "#9a6a26", "#ff7a56")),
+        ("vellum", "Vellum", ["#ece1c6", "#b9aa86", "#7c5510"],
+         ath("#ece1c6", "#d3c6a3", "#f3ead3", "#fbf5e6", "#b9aa86", "#b9aa86", "#6e5f4c", "#473c30", "#1f1914",
+             "#7c5510", "#a57a2a", "#553a08", "#9a3522", light=True)),
+        ("orpiment", "Orpiment", ["#eddca8", "#c9b27a", "#7a4f06"],
+         ath("#eddca8", "#d4bd80", "#f4e7bd", "#fbf2d6", "#c9b27a", "#c9b27a", "#6a5737", "#473922", "#241a0c",
+             "#7a4f06", "#a3700f", "#553604", "#9a3522", light=True)),
     ],
 }
 

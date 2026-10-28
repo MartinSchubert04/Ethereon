@@ -3,6 +3,12 @@
   // El formulario trabaja sobre una copia: se monta de nuevo cada vez que se abre.
   import Drawer from "./Drawer.svelte";
   import PolicyEditor from "./PolicyEditor.svelte";
+  import Select from "./Select.svelte";
+  import Seg from "./Seg.svelte";
+  import Switch from "./Switch.svelte";
+  import { X } from "@lucide/svelte";
+  import { flip } from "svelte/animate";
+  import { flipMs, pop } from "../lib/motion";
   import { api, defaultPolicy, newHost, type Env, type Host } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
 
@@ -13,7 +19,7 @@
   const original = init?.name ?? null;
   let h = $state<Host>(init ? structuredClone($state.snapshot(init)) : newHost());
   let tags = $state(h.tags.join(", "));
-  let jump = $state(h.jump.join(", "));
+  let jump = $state<string[]>([...h.jump]);
   let ownRules = $state(h.policy !== null);
   let policy = $state(h.policy ?? defaultPolicy());
 
@@ -22,8 +28,24 @@
     (app.snap?.credentials ?? []).filter((c) => ["password", "private_key", "certificate"].includes(c.kind)),
   );
   const sudoCreds = $derived((app.snap?.credentials ?? []).filter((c) => c.kind === "sudo_password" || c.kind === "password"));
-  const others = $derived((app.snap?.hosts ?? []).filter((x) => x.name !== original).map((x) => x.name));
-  const envs: Env[] = ["prod", "test", "dev"];
+  const others = $derived((app.snap?.hosts ?? []).filter((x) => x.name !== original && !jump.includes(x.name)));
+  const envs: { value: Env; label: string }[] = [
+    { value: "prod", label: "prod" },
+    { value: "test", label: "test" },
+    { value: "dev", label: "dev" },
+  ];
+  const groupOpts = $derived([
+    { value: null as string | null, label: "No group" },
+    ...(app.snap?.groups ?? []).map((g) => ({ value: g.name as string | null, label: g.name, hint: g.policy.mode.replace("_", " ") })),
+  ]);
+  const credOpts = $derived(
+    loginCreds.map((c) => ({ value: c.id, label: c.id, hint: c.kind.replace("_", " ") })),
+  );
+  const sudoOpts = $derived([
+    { value: null as string | null, label: "None" },
+    ...sudoCreds.map((c) => ({ value: c.id as string | null, label: c.id, hint: c.kind.replace("_", " ") })),
+  ]);
+  let addJump = $state<string | null>(null);
 
   const split = (s: string) =>
     s
@@ -36,7 +58,7 @@
       ...h,
       port: Number(h.port) || 22,
       tags: split(tags),
-      jump: split(jump),
+      jump: [...jump],
       group: h.group || null,
       sudo_credential: h.sudo_credential || null,
       policy: ownRules ? policy : null,
@@ -53,13 +75,8 @@
 
 <Drawer title={original ? `Edit ${original}` : "New host"} {onclose}>
   <div class="grid2">
-    <label class="field">Name <span class="hint">What the agent calls it</span><input bind:value={h.name} placeholder="web-1" /></label>
-    <label class="field">Group
-      <select bind:value={h.group}>
-        <option value={null}>No group</option>
-        {#each app.snap?.groups ?? [] as g}<option value={g.name}>{g.name}</option>{/each}
-      </select>
-    </label>
+    <label class="field">Name<input bind:value={h.name} placeholder="web-1" /><span class="hint">What the agent calls it</span></label>
+    <div class="field">Group<Select bind:value={h.group} options={groupOpts} /></div>
   </div>
   <div class="addr">
     <label class="field">Hostname or IP<input bind:value={h.hostname} placeholder="10.0.0.5" /></label>
@@ -67,37 +84,48 @@
   </div>
   <div class="grid2">
     <label class="field">User<input bind:value={h.user} placeholder="deploy" /></label>
-    <label class="field">Credential
-      <select bind:value={h.credential}>
-        <option value="">Pick one</option>
-        {#each loginCreds as c}<option value={c.id}>{c.id}</option>{/each}
-      </select>
-    </label>
+    <div class="field">Credential<Select bind:value={h.credential} options={credOpts} placeholder="Pick one" /></div>
   </div>
   <div class="grid2">
-    <label class="field">Sudo password
-      <select bind:value={h.sudo_credential}>
-        <option value={null}>None</option>
-        {#each sudoCreds as c}<option value={c.id}>{c.id}</option>{/each}
-      </select>
-    </label>
-    <label class="field">Environment
-      <div class="seg">
-        {#each envs as e}<button class:on={h.env === e} onclick={() => (h.env = e)}>{e}</button>{/each}
-      </div>
-    </label>
+    <div class="field">Sudo password<Select bind:value={h.sudo_credential} options={sudoOpts} /></div>
+    <div class="field">Environment<Seg bind:value={h.env} options={envs} /></div>
   </div>
-  <label class="field">Jump through <span class="hint">Host names in order, comma separated ({others.join(", ") || "none yet"})</span>
-    <input bind:value={jump} placeholder="bastion" />
-  </label>
-  <label class="field">Tags <span class="hint">Comma separated</span><input bind:value={tags} placeholder="nginx, docker" /></label>
-  <label class="field">Description <span class="hint">The agent reads this: what the host is for, what runs there</span>
+  <div class="field">
+    Jump through
+    <div class="jumps">
+      {#each jump as j, i (j)}
+        <span class="jchip" animate:flip={{ duration: flipMs() }} transition:pop>
+          <span class="n">{i + 1}</span>{j}
+          <button type="button" aria-label="Remove {j}" onclick={() => (jump = jump.filter((x) => x !== j))}><X size={12} /></button>
+        </span>
+      {/each}
+      {#if others.length}
+        <div class="add">
+          <Select
+            bind:value={addJump}
+            options={others.map((o) => ({ value: o.name as string | null, label: o.name, hint: o.hostname }))}
+            placeholder={jump.length ? "Then through..." : "Connect directly"}
+            onchange={(v) => {
+              if (v) jump = [...jump, v];
+              addJump = null;
+            }}
+          />
+        </div>
+      {/if}
+    </div>
+    <span class="hint">Bastions in order. The first one is reached from this PC.</span>
+  </div>
+  <label class="field">Tags<input bind:value={tags} placeholder="nginx, docker" /><span class="hint">Comma separated</span></label>
+  <label class="field">Description
     <textarea bind:value={h.description} rows="3" placeholder="Public web server. Nginx in front of the app in Docker."></textarea>
+    <span class="hint">The agent reads this: what the host is for, what runs there</span>
   </label>
 
   <div class="section-title">Agent rules</div>
-  <label class="row"><input type="checkbox" bind:checked={ownRules} /> Own rules for this host {#if !ownRules}<span class="faint">(uses the group's, or Approval)</span>{/if}</label>
-  {#if ownRules}<PolicyEditor bind:policy />{/if}
+  <Switch bind:checked={ownRules}>
+    Own rules for this host {#if !ownRules}<span class="faint">(uses the group's, or Approval)</span>{/if}
+  </Switch>
+  {#if ownRules}<div transition:pop={{ start: 0.98 }}><PolicyEditor bind:policy /></div>{/if}
 
   {#snippet footer()}
     {#if original}<button class="btn danger" onclick={remove}>Delete</button>{/if}
@@ -108,6 +136,50 @@
 </Drawer>
 
 <style>
+  .jumps {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .jchip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 6px 0 6px;
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    border: var(--border) solid var(--line-strong);
+    color: var(--text);
+    font-weight: 550;
+  }
+  .jchip .n {
+    display: grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    font-size: 11px;
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  .jchip button {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
+    color: var(--text-3);
+  }
+  .jchip button:hover {
+    background: var(--hover);
+    color: var(--danger);
+  }
+  .add {
+    flex: 1;
+    min-width: 180px;
+  }
   .addr {
     display: grid;
     grid-template-columns: 1fr 90px;

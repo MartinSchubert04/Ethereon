@@ -2,6 +2,7 @@
   // Panel lateral para formularios (crear/editar).
   import { X } from "@lucide/svelte";
   import type { Snippet } from "svelte";
+  import { fadeQuick, slideIn, slideOut } from "../lib/motion";
 
   let { title, onclose, children, footer }: { title: string; onclose: () => void; children: Snippet; footer?: Snippet } =
     $props();
@@ -9,8 +10,8 @@
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
 
-<div class="scrim" onclick={onclose} role="presentation"></div>
-<aside class="drawer card">
+<div class="scrim" onclick={onclose} role="presentation" transition:fadeQuick|global></div>
+<aside class="drawer card" in:slideIn|global out:slideOut|global>
   <header class="titlebar">
     <h2>{title}</h2>
     <button class="icon-btn" onclick={onclose} aria-label="Close"><X size={16} /></button>
@@ -24,6 +25,7 @@
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(2px);
     z-index: 40;
   }
   .drawer {
@@ -37,17 +39,10 @@
     flex-direction: column;
     background: var(--sidebar);
     box-shadow: var(--pop-shadow);
-    animation: slide 0.18s ease-out;
   }
   :global([data-theme="warp"]) .drawer,
   :global([data-theme="haze"]) .drawer {
     background: color-mix(in srgb, var(--bg) 82%, transparent);
-  }
-  @keyframes slide {
-    from {
-      transform: translateX(24px);
-      opacity: 0;
-    }
   }
   header {
     display: flex;

@@ -6,7 +6,9 @@
   import { Channel } from "@tauri-apps/api/core";
   import { api, errText, type TermEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
-  import { app, type TermTab } from "../lib/state.svelte";
+  import { app, toast, type TermTab } from "../lib/state.svelte";
+  import { comboOf, matches, prefs } from "../lib/prefs.svelte";
+  import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { cssVar } from "../lib/themes";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
@@ -27,7 +29,69 @@
     };
   }
 
-  const onTheme = () => term && (term.options.theme = theme());
+  const fontSize = () => prefs.term.fontSize || parseInt(cssVar("--term-font-size")) || 13;
+
+  // ---- portapapeles (cada comportamiento se prende o apaga en Settings → Terminal)
+
+  async function copySelection(announce = true) {
+    const text = term.getSelection();
+    if (!text) return;
+    await writeText(text);
+    if (announce) toast("Copied");
+  }
+
+  async function paste() {
+    const text = await readText().catch(() => "");
+    if (text) term.paste(text); // respeta el "bracketed paste" de la shell
+    term.focus();
+  }
+
+  function onTermKey(e: KeyboardEvent): boolean {
+    if (e.type !== "keydown") return true;
+    if (matches(e, "termCopy")) {
+      e.preventDefault();
+      copySelection();
+      return false;
+    }
+    if (matches(e, "termPaste")) {
+      e.preventDefault();
+      paste();
+      return false;
+    }
+    const c = comboOf(e);
+    if (c === "Ctrl+C" && prefs.term.ctrlCCopy && term.hasSelection()) {
+      e.preventDefault();
+      copySelection();
+      term.clearSelection();
+      return false;
+    }
+    if (c === "Ctrl+V") {
+      // Se frena siempre el pegado nativo del navegador: o pega Ethereon, o la shell
+      // recibe Ctrl V.
+      e.preventDefault();
+      if (prefs.term.ctrlVPaste) {
+        paste();
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function onContextMenu(e: MouseEvent) {
+    if (!prefs.term.rightClick) return;
+    e.preventDefault();
+    if (term.hasSelection()) {
+      copySelection();
+      term.clearSelection();
+    } else paste();
+  }
+  const onTheme = () => {
+    if (!term) return;
+    term.options.theme = theme();
+    term.options.fontFamily = cssVar("--mono");
+    term.options.fontSize = fontSize();
+    fit.fit();
+  };
 
   function decode(b64: string): Uint8Array {
     const s = atob(b64);
@@ -71,7 +135,7 @@
   onMount(() => {
     term = new Terminal({
       fontFamily: cssVar("--mono"),
-      fontSize: 13,
+      fontSize: fontSize(),
       lineHeight: 1.25,
       cursorBlink: true,
       allowTransparency: true,
@@ -81,6 +145,11 @@
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
+    term.attachCustomKeyEventHandler(onTermKey);
+    term.onSelectionChange(() => {
+      if (prefs.term.copyOnSelect && term.hasSelection()) copySelection(false);
+    });
+    el.addEventListener("contextmenu", onContextMenu);
     term.onData((d) => id && api.termWrite(id, d));
     term.onResize(({ cols, rows }) => id && api.termResize(id, cols, rows));
     const ro = new ResizeObserver(() => {
@@ -90,6 +159,12 @@
     window.addEventListener("themechange", onTheme);
     connect();
     return () => ro.disconnect();
+  });
+
+  // Cambiar el tamaño de letra en Settings se aplica en vivo.
+  $effect(() => {
+    prefs.term.fontSize;
+    if (term) queueMicrotask(onTheme);
   });
 
   $effect(() => {

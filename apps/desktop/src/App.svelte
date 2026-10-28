@@ -28,6 +28,9 @@
   import TermPane from "./components/TermPane.svelte";
   import Titlebar from "./components/Titlebar.svelte";
   import QuickOpen from "./components/QuickOpen.svelte";
+  import { flip } from "svelte/animate";
+  import { fade } from "svelte/transition";
+  import { flipMs, rise, toastIn } from "./lib/motion";
 
   start();
   installShortcuts();
@@ -105,6 +108,8 @@
       {/each}
 
       <div class="view">
+        {#key app.view}
+        <div class="view-page" in:rise={{ y: 6 }}>
         {#if app.view === "hosts"}<Hosts />
         {:else if app.view === "keychain"}<Keychain />
         {:else if app.view === "rules"}<Rules />
@@ -113,6 +118,8 @@
         {:else if app.view === "audit"}<Audit />
         {:else if app.view === "settings"}<Settings />
         {/if}
+        </div>
+        {/key}
         <!-- Las terminales quedan montadas para no perder la sesion al cambiar de vista. -->
         {#each app.terms as t (t.key)}
           <div class="term-wrap" class:shown={app.view === "terminal" && app.activeTerm === t.key}>
@@ -135,7 +142,7 @@
 
 <div class="toasts">
   {#each app.toasts as t (t.id)}
-    <div class="toast card" class:bad={t.bad}>{t.text}</div>
+    <div class="toast card" class:bad={t.bad} in:toastIn out:fade={{ duration: 150 }} animate:flip={{ duration: flipMs() }}>{t.text}</div>
   {/each}
 </div>
 
@@ -258,6 +265,10 @@
     flex: 1;
     min-height: 0;
     position: relative;
+  }
+  .view-page {
+    position: absolute;
+    inset: 0;
   }
   .term-wrap {
     position: absolute;

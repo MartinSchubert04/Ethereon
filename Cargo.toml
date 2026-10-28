@@ -10,3 +10,14 @@ lto = "thin"
 opt-level = "s"
 panic = "abort"
 strip = true
+
+# En desarrollo, la cripto optimizada: Argon2 sin optimizar tarda varios segundos en
+# desbloquear el vault con `npm run dev`.
+[profile.dev.package.argon2]
+opt-level = 3
+[profile.dev.package.blake2]
+opt-level = 3
+[profile.dev.package.aes-gcm]
+opt-level = 3
+[profile.dev.package.aes]
+opt-level = 3

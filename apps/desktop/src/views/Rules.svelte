@@ -1,6 +1,7 @@
 <script lang="ts">
   import { api, MODE_LABEL } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
+  import Select from "../components/Select.svelte";
 
   let deny = $state((app.snap?.denylist ?? []).join("\n"));
   let host = $state(app.snap?.hosts[0]?.name ?? "");
@@ -46,9 +47,7 @@
       <div class="card box">
         <h3>Try a command</h3>
         <div class="row">
-          <select bind:value={host} class="host">
-            {#each app.snap?.hosts ?? [] as h}<option value={h.name}>{h.name}</option>{/each}
-          </select>
+          <div class="host"><Select bind:value={host} options={(app.snap?.hosts ?? []).map((h) => ({ value: h.name, label: h.name, hint: h.env }))} /></div>
           <input class="mono" placeholder="cat /etc/passwd | grep root" bind:value={command} onkeydown={(e) => e.key === "Enter" && test()} />
           <button class="btn" onclick={test}>Check</button>
         </div>

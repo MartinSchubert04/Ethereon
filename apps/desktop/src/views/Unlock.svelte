@@ -8,6 +8,7 @@
   let confirm = $state("");
   let error = $state("");
   let busy = $state(false);
+  let shake = $state(false);
 
   async function submit(e: Event) {
     e.preventDefault();
@@ -23,6 +24,9 @@
       await refresh();
     } catch (err) {
       error = errText(err);
+      // Contraseña incorrecta: la tarjeta tiembla, como en macOS.
+      shake = false;
+      requestAnimationFrame(() => (shake = true));
     } finally {
       busy = false;
     }
@@ -30,7 +34,7 @@
 </script>
 
 <div class="wrap">
-  <form class="card box" onsubmit={submit}>
+  <form class="card box stagger" class:shake onsubmit={submit} onanimationend={() => (shake = false)}>
     <div class="logo titlebar"><span><Lock size={20} /></span></div>
     <h1>{creating ? "Create your vault" : "Ethereon is locked"}</h1>
     <p class="muted">

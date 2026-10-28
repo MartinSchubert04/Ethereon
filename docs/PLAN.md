@@ -71,4 +71,8 @@ Ordenados por cuánto aportan contra cuánto cuestan.
 | En una terminal, Ctrl W va a la shell y la pestaña se cierra con Ctrl Shift W; bloquear es Ctrl Shift L | Ctrl W y Ctrl L siempre para la app | En bash, Ctrl W borra la palabra anterior y Ctrl L limpia la pantalla: cerrar la sesión sin querer cuesta más que un modificador |
 | Paletas generadas por un script de Python | Escribirlas a mano en CSS | 25 paletas son cientos de variables; en el script cada una es una línea |
 | Actualizaciones como Haze: `latest.json` en GitHub Releases, firmadas, de fondo | Avisar y que la persona baje el instalador | Es el flujo que ya funciona en Haze. Diferencia: solo se instala sola con la ventana cerrada, el vault bloqueado y sin comandos del agente, porque reiniciar bloquea el vault |
-| Tipografía Inter + Geist Mono en todos los temas | Una fuente pixel para Poolsuite | La personalidad de cada tema va en colores, bordes y sombras; las letras quedan legibles |
+| Select, Switch y Seg propios | `<select>` y casillas nativas | En Windows el `<select>` nativo no se puede estilar: rompía todos los temas |
+| Portapapeles con `tauri-plugin-clipboard-manager` | `navigator.clipboard` | En el WebView leer el portapapeles pide permisos o falla según el origen; el plugin anda siempre |
+| Atajos y opciones de la terminal en el almacenamiento del WebView | Dentro del vault | No afectan la seguridad, y así se pueden cambiar con el vault bloqueado |
+| Argon2 y AES optimizados también en `dev` | Todo sin optimizar | Sin optimizar, desbloquear el vault con `npm run dev` tardaba varios segundos |
+| Tipografía Inter + Geist Mono en todos los temas salvo Athanor | Una fuente pixel para Poolsuite | La personalidad de cada tema va en colores, bordes y sombras; las letras quedan legibles |

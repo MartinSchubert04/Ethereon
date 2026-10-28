@@ -3,7 +3,10 @@
   import { save } from "@tauri-apps/plugin-dialog";
   import { api, type ExportFormat, type Settings } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
-  import { SHORTCUTS } from "../lib/shortcuts";
+  import KeyBinds from "../components/KeyBinds.svelte";
+  import { prefs } from "../lib/prefs.svelte";
+  import Select from "../components/Select.svelte";
+  import Switch from "../components/Switch.svelte";
   import { THEMES, applyTheme, currentPalette, currentTheme, palettesOf, type ThemeId } from "../lib/themes";
 
   let theme = $state<ThemeId>(currentTheme());
@@ -125,7 +128,7 @@
       <label class="field">Keep idle SSH connections (minutes)
         <input type="number" min="1" bind:value={s.keep_alive_minutes} />
       </label>
-      <label class="row chk"><input type="checkbox" bind:checked={s.audit_output} /> Save the (masked) output in the audit log, not only its hash</label>
+      <div class="chk"><Switch bind:checked={s.audit_output}>Save the (masked) output in the audit log, not only its hash</Switch></div>
     </div>
     <div><button class="btn primary" onclick={saveSettings}>Save</button></div>
   </div>
@@ -141,7 +144,7 @@
 
   <div class="section-title">Startup</div>
   <div class="card box">
-    <label class="row"><input type="checkbox" checked={autostart} onchange={toggleAutostart} /> Start with Windows, hidden in the tray</label>
+    <Switch checked={autostart} onchange={toggleAutostart}>Start with Windows, hidden in the tray</Switch>
     <div class="faint small">Closing the window keeps Ethereon in the tray. Quit from the tray menu.</div>
   </div>
 
@@ -164,24 +167,41 @@
     </div>
   </div>
 
+  <div class="section-title">Terminal</div>
+  <div class="card box">
+    <div class="term-opts">
+      <Switch bind:checked={prefs.term.ctrlCCopy}>Ctrl C copies when there is a selection (otherwise it stops the command)</Switch>
+      <Switch bind:checked={prefs.term.ctrlVPaste}>Ctrl V pastes</Switch>
+      <Switch bind:checked={prefs.term.rightClick}>Right click copies the selection, or pastes when nothing is selected</Switch>
+      <Switch bind:checked={prefs.term.copyOnSelect}>Copy as soon as text is selected</Switch>
+      <Switch bind:checked={prefs.term.ctrlWToShell}>Inside a terminal, Ctrl W goes to the shell (close the tab with Ctrl Shift W)</Switch>
+    </div>
+    <div class="grid2">
+      <div class="field">Font size
+        <Select
+          bind:value={prefs.term.fontSize}
+          options={[
+            { value: 0, label: "Theme default" },
+            ...[12, 13, 14, 15, 16, 18, 20].map((n) => ({ value: n, label: `${n} px` })),
+          ]}
+        />
+      </div>
+    </div>
+  </div>
+
   <div class="section-title">Keyboard shortcuts</div>
-  <div class="card box keys">
-    {#each SHORTCUTS as [k, what]}
-      <kbd>{k}</kbd><span class="muted">{what}</span>
-    {/each}
+  <div class="card box">
+    <KeyBinds />
   </div>
 
   <div class="section-title">Export</div>
   <div class="card box">
     <div class="grid2">
-      <label class="field">Format
-        <select bind:value={format}>
-          {#each formats as f}<option value={f.id}>{f.label}</option>{/each}
-        </select>
-      </label>
+      <div class="field">Format<Select bind:value={format} options={formats.map((f) => ({ value: f.id, label: f.label }))} /></div>
       {#if fmt.secrets}
-        <label class="field">Master password <span class="hint">The export has your secrets in plain text</span>
+        <label class="field">Master password
           <input type="password" bind:value={exportPw} />
+          <span class="hint">The export has your secrets in plain text</span>
         </label>
       {/if}
     </div>
@@ -261,20 +281,10 @@
     flex-direction: column;
     gap: 12px;
   }
-  .keys {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    gap: 9px 16px;
-    align-items: center;
-  }
-  kbd {
-    font-family: var(--mono);
-    font-size: 11.5px;
-    padding: 2px 8px;
-    border-radius: 5px;
-    border: var(--border) solid var(--line-strong);
-    background: var(--panel-2);
-    justify-self: start;
+  .term-opts {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
   .chk {
     align-self: end;

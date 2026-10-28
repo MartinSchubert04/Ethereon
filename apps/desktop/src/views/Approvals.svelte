@@ -2,6 +2,9 @@
   import { Inbox, TriangleAlert } from "@lucide/svelte";
   import { api, type Approval } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
+  import { flip } from "svelte/animate";
+  import { slide } from "svelte/transition";
+  import { flipMs, rise } from "../lib/motion";
 
   // Texto editado y patron por pedido (se pierden si el pedido se va).
   const edits = $state<Record<number, string>>({});
@@ -42,7 +45,7 @@
   {:else}
     <div class="stack">
       {#each app.approvals as a (a.id)}
-        <div class="card item">
+        <div class="card item" in:rise out:slide={{ duration: flipMs() }} animate:flip={{ duration: flipMs() }}>
           <div class="row head">
             <b>{a.host}</b>
             <span class="chip {a.env}">{a.env}</span>

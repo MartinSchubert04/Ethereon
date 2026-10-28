@@ -1,22 +1,16 @@
-// Atajos de teclado. La lista de SHORTCUTS es lo que muestra Ajustes: si se cambia un
-// atajo, se cambia ahi y en `onKey`.
+// Atajos de teclado de la app. Las combinaciones salen de prefs (se cambian en Settings);
+// los de copiar y pegar de la terminal los maneja TermPane.
 import { api } from "./api";
+import { comboOf, matches, prefs } from "./prefs.svelte";
 import { app, closeTerminal, currentTabIndex, goToTab, toggleSidebar } from "./state.svelte";
-
-export const SHORTCUTS: [string, string][] = [
-  ["Ctrl T", "New tab (pick a host)"],
-  ["Ctrl W", "Close tab (in a terminal: Ctrl Shift W, Ctrl W goes to the shell)"],
-  ["Ctrl Tab / Ctrl Shift Tab", "Next / previous tab"],
-  ["Ctrl 1 … 9", "Go to tab (1 is the vault)"],
-  ["Ctrl B", "Show or hide the sidebar"],
-  ["Ctrl F", "Search hosts"],
-  ["Ctrl ,", "Settings"],
-  ["Ctrl Shift L", "Lock the vault"],
-  ["Esc", "Close a panel or dialog"],
-];
 
 function inTerminal(e: KeyboardEvent) {
   return !!(e.target as HTMLElement | null)?.closest?.(".xterm");
+}
+
+function typing(e: KeyboardEvent) {
+  const t = e.target as HTMLElement | null;
+  return !!t?.closest?.("input, textarea, [contenteditable]");
 }
 
 function tabCount() {
@@ -24,28 +18,31 @@ function tabCount() {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (!app.status?.unlocked || !e.ctrlKey || e.altKey) return;
-  const k = e.key.toLowerCase();
+  if (!app.status?.unlocked || prefs.recording) return;
+  const combo = comboOf(e);
+  if (!combo) return;
+  // Un atajo sin Ctrl/Alt no corre mientras se escribe en un campo.
+  if (!e.ctrlKey && !e.altKey && !e.metaKey && typing(e)) return;
   const term = inTerminal(e);
   let handled = true;
 
-  if (k === "t" && !e.shiftKey) app.quickOpen = true;
-  else if (k === "w" && (e.shiftKey || !term)) {
+  if (matches(e, "newTab")) app.quickOpen = true;
+  else if (matches(e, "closeTabAnywhere") || (matches(e, "closeTab") && !(term && prefs.term.ctrlWToShell))) {
     if (app.view === "terminal" && app.activeTerm) closeTerminal(app.activeTerm);
     else handled = false;
-  } else if (e.key === "Tab") {
-    const n = tabCount();
-    goToTab((currentTabIndex() + (e.shiftKey ? n - 1 : 1)) % n);
-  } else if (/^[1-9]$/.test(e.key) && !e.shiftKey) goToTab(Math.min(Number(e.key), tabCount()) - 1);
-  else if (k === "b" && !e.shiftKey && !term) toggleSidebar();
-  else if (k === "," && !term) {
+  } else if (matches(e, "nextTab")) goToTab((currentTabIndex() + 1) % tabCount());
+  else if (matches(e, "prevTab")) goToTab((currentTabIndex() + tabCount() - 1) % tabCount());
+  else if (e.ctrlKey && !e.shiftKey && !e.altKey && /^Digit[1-9]$/.test(e.code))
+    goToTab(Math.min(Number(e.code.slice(5)), tabCount()) - 1);
+  else if (matches(e, "sidebar") && !term) toggleSidebar();
+  else if (matches(e, "settings") && !term) {
     goToTab(0);
     app.view = "settings";
-  } else if (k === "f" && !e.shiftKey && !term) {
+  } else if (matches(e, "search") && !term) {
     goToTab(0);
     app.view = "hosts";
-    queueMicrotask(() => document.querySelector<HTMLInputElement>("[data-host-search]")?.focus());
-  } else if (k === "l" && e.shiftKey) api.lock();
+    setTimeout(() => document.querySelector<HTMLInputElement>("[data-host-search]")?.focus(), 30);
+  } else if (matches(e, "lock")) api.lock();
   else handled = false;
 
   if (handled) {

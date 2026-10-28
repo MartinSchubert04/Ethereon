@@ -2,6 +2,8 @@
   import { Check, Copy, Plus } from "@lucide/svelte";
   import { api } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
+  import Select from "../components/Select.svelte";
+  import Switch from "../components/Switch.svelte";
 
   let name = $state("Claude Code on this PC");
   let expires = $state<string>("90");
@@ -64,17 +66,20 @@
     {:else}
       <div class="grid2">
         <label class="field">Name<input bind:value={name} /></label>
-        <label class="field">Expires
-          <select bind:value={expires}>
-            <option value="7">In 7 days</option>
-            <option value="30">In 30 days</option>
-            <option value="90">In 90 days</option>
-            <option value="365">In a year</option>
-            <option value="never">Never</option>
-          </select>
-        </label>
+        <div class="field">Expires
+          <Select
+            bind:value={expires}
+            options={[
+              { value: "7", label: "In 7 days" },
+              { value: "30", label: "In 30 days" },
+              { value: "90", label: "In 90 days" },
+              { value: "365", label: "In a year" },
+              { value: "never", label: "Never" },
+            ]}
+          />
+        </div>
       </div>
-      <label class="row"><input type="checkbox" bind:checked={limitHosts} /> Only some hosts</label>
+      <Switch bind:checked={limitHosts}>Only some hosts</Switch>
       {#if limitHosts}
         <div class="hosts">
           {#each app.snap?.hosts ?? [] as h}
