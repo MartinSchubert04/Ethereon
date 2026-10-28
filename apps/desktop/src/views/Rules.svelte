@@ -47,7 +47,7 @@
       <div class="card box">
         <h3>Try a command</h3>
         <div class="row">
-          <div class="host"><Select bind:value={host} options={(app.snap?.hosts ?? []).map((h) => ({ value: h.name, label: h.name, hint: h.env }))} /></div>
+          <div class="host"><Select bind:value={host} options={(app.snap?.hosts ?? []).map((h) => ({ value: h.name, label: h.name, hint: h.env === "none" ? "" : h.env }))} /></div>
           <input class="mono" placeholder="cat /etc/passwd | grep root" bind:value={command} onkeydown={(e) => e.key === "Enter" && test()} />
           <button class="btn" onclick={test}>Check</button>
         </div>

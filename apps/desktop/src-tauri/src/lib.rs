@@ -2,6 +2,7 @@
 //! descartable: al cerrarla se destruye el WebView entero y queda solo el proceso Rust.
 
 mod commands;
+mod files;
 mod terminal;
 mod updater;
 mod window;
@@ -49,6 +50,7 @@ pub struct AppState {
     pub config: LocalConfig,
     pub mcp_error: Mutex<Option<String>>,
     pub terms: terminal::Terms,
+    pub sftps: files::Sftps,
     pub window: Mutex<Option<window::WindowBox>>,
     pub update: Mutex<updater::Pending>,
     tray: Mutex<Option<TrayItems>>,
@@ -180,6 +182,7 @@ pub fn run() {
                 config: config.clone(),
                 mcp_error: Mutex::new(None),
                 terms: Default::default(),
+                sftps: Default::default(),
                 window: Mutex::new(config.window),
                 update: Mutex::new(Default::default()),
                 tray: Mutex::new(None),
@@ -253,6 +256,22 @@ pub fn run() {
             terminal::term_write,
             terminal::term_resize,
             terminal::term_close,
+            terminal::term_open_local,
+            terminal::local_shells,
+            files::sftp_open,
+            files::sftp_close,
+            files::sftp_list,
+            files::sftp_realpath,
+            files::sftp_mkdir,
+            files::sftp_rename,
+            files::sftp_remove,
+            files::sftp_transfer,
+            files::sftp_cancel,
+            files::local_home,
+            files::local_list,
+            files::local_mkdir,
+            files::local_rename,
+            files::local_remove,
         ])
         .build(tauri::generate_context!())
         .expect("no se pudo iniciar Ethereon")

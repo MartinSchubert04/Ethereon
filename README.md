@@ -54,6 +54,7 @@ El token se ve una sola vez; Ethereon guarda solo su hash. Se puede revocar al i
 | `apps/desktop/src/` | La interfaz (Svelte 5). Al cerrar la ventana se destruye el WebView entero |
 | `docs/PLAN.md` | Etapas, qué falta y por qué se eligió cada cosa |
 | `docs/spec.md` | La spec original |
+| `docs/ATAJOS.md` | Todos los atajos de teclado y comodidades (terminal, SFTP, formularios) |
 
 ## Desarrollo
 

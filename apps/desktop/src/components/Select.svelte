@@ -103,6 +103,14 @@
     e.stopPropagation();
   }
 
+  // La lista se cuelga de <body>: si quedara dentro de una tarjeta con blur (Haze) o
+  // con transform (las que se levantan al pasar el mouse), "position: fixed" se mide
+  // desde esa tarjeta y la lista aparece corrida y recortada.
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return { destroy: () => node.remove() };
+  }
+
   function outside(e: PointerEvent) {
     const t = e.target as Node;
     if (open && !trigger.contains(t) && !list?.contains(t)) close(false);
@@ -130,6 +138,7 @@
 {#if open}
   <div
     bind:this={list}
+    use:portal
     class="select-pop"
     class:up={pos.up}
     role="listbox"

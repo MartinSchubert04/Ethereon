@@ -3,7 +3,7 @@
   // de Windows) y a la vez la tira de pestañas. Se arrastra desde cualquier hueco y doble
   // clic maximiza (data-tauri-drag-region).
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { ArrowDownToLine, Bell, Copy, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
+  import { ArrowDownToLine, Bell, Copy, FolderOpen, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
   import { api } from "../lib/api";
   import { onMount } from "svelte";
   import { app, closeTerminal, goToTab, toggleSidebar } from "../lib/state.svelte";
@@ -50,7 +50,7 @@
           onkeydown={(e) => e.key === "Enter" && goToTab(i + 1)}
           onauxclick={(e) => e.button === 1 && closeTerminal(t.key)}
         >
-          <span class="dot" class:dead={!t.alive}><SquareTerminal size={14} /></span>
+          <span class="dot" class:dead={!t.alive}>{#if t.sftp}<FolderOpen size={14} />{:else}<SquareTerminal size={14} />{/if}</span>
           <span class="label ellipsis">{t.title}</span>
           <button class="x" aria-label="Close tab" title="Close (Ctrl W)" onclick={(e) => (e.stopPropagation(), closeTerminal(t.key))}>
             <X size={12} />

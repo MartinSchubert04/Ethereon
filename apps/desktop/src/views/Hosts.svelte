@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { FileKey, FolderInput, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
+  import { FileKey, FolderInput, FolderOpen, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
   import { open } from "@tauri-apps/plugin-dialog";
   import HostForm from "../components/HostForm.svelte";
   import GroupForm from "../components/GroupForm.svelte";
-  import { api, MODE_LABEL, type Group, type Host, type ImportSummary } from "../lib/api";
-  import { app, attempt, openTerminal, toast } from "../lib/state.svelte";
+  import { api, MODE_LABEL, userOf, type Group, type Host, type ImportSummary } from "../lib/api";
+  import { app, attempt, openSftp, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
   import { pop } from "../lib/motion";
   import { ask } from "../lib/confirm.svelte";
@@ -12,6 +12,14 @@
   let query = $state("");
   let editing = $state<Host | null | undefined>(undefined); // undefined = cerrado, null = nuevo
   let editingGroup = $state<Group | null | undefined>(undefined);
+
+  // Ctrl N desde cualquier lado abre un host nuevo.
+  $effect(() => {
+    if (app.pendingNew === "host") {
+      app.pendingNew = null;
+      editing = null;
+    }
+  });
   let importOpen = $state(false);
 
   const hosts = $derived(
@@ -218,7 +226,7 @@
                   <div class="badge {h.env}"><Server size={16} /></div>
                   <div class="grow info">
                     <div class="name ellipsis">{h.name}</div>
-                    <div class="addr mono ellipsis">{h.user}@{h.hostname}{h.port !== 22 ? `:${h.port}` : ""}</div>
+                    <div class="addr mono ellipsis">{userOf(h, app.snap?.credentials)}@{h.hostname}{h.port !== 22 ? `:${h.port}` : ""}</div>
                   </div>
                   <div class="actions">
                     <button class="icon-btn" title="Test connection" onclick={() => testHost(h.name)}><Plug size={14} /></button>
@@ -227,12 +235,15 @@
                 </div>
                 {#if h.description}<div class="desc faint">{h.description}</div>{/if}
                 <div class="chips">
-                  <span class="chip {h.env}">{h.env}</span>
+                  {#if h.env !== "none"}<span class="chip {h.env}">{h.env}</span>{/if}
                   <span class="chip">{MODE_LABEL[mode(h)]}</span>
                   {#if h.jump.length}<span class="chip">via {h.jump.join(" → ")}</span>{/if}
                   {#each h.tags as t}<span class="chip">{t}</span>{/each}
                 </div>
-                <button class="btn sm connect" onclick={() => openTerminal(h.name)}>Connect</button>
+                <div class="connect-row">
+                  <button class="btn sm connect" onclick={() => openTerminal(h.name)}>Connect</button>
+                  <button class="btn sm" title="Browse files (SFTP)" onclick={() => openSftp(h.name)}><FolderOpen size={13} /> SFTP</button>
+                </div>
               </div>
             {/each}
             {#if drag?.started && (drag.host.group ?? null) !== g.name}
@@ -424,6 +435,11 @@
     background: color-mix(in srgb, var(--env-dev) 18%, transparent);
     color: var(--env-dev);
   }
+  /* Sin ambiente: neutro, con el color del texto. */
+  .badge.none {
+    background: var(--panel-2);
+    color: var(--text-2);
+  }
   .badge.prod {
     background: color-mix(in srgb, var(--env-prod) 18%, transparent);
     color: var(--env-prod);
@@ -465,7 +481,8 @@
     flex-wrap: wrap;
     gap: 5px;
   }
-  .connect {
-    align-self: flex-start;
+  .connect-row {
+    display: flex;
+    gap: 6px;
   }
 </style>

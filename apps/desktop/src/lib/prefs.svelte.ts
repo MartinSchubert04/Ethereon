@@ -3,6 +3,12 @@
 
 export type Action =
   | "newTab"
+  | "newLocal"
+  | "save"
+  | "newItem"
+  | "zoomIn"
+  | "zoomOut"
+  | "zoomReset"
   | "closeTab"
   | "closeTabAnywhere"
   | "nextTab"
@@ -15,7 +21,8 @@ export type Action =
   | "termPaste";
 
 export const ACTIONS: { id: Action; label: string; def: string }[] = [
-  { id: "newTab", label: "New tab (pick a host)", def: "Ctrl+T" },
+  { id: "newTab", label: "New tab (pick a host or local shell)", def: "Ctrl+T" },
+  { id: "newLocal", label: "New local terminal (first shell in the list)", def: "Ctrl+Shift+T" },
   { id: "closeTab", label: "Close tab", def: "Ctrl+W" },
   { id: "closeTabAnywhere", label: "Close tab, also from inside a terminal", def: "Ctrl+Shift+W" },
   { id: "nextTab", label: "Next tab", def: "Ctrl+Tab" },
@@ -24,6 +31,11 @@ export const ACTIONS: { id: Action; label: string; def: string }[] = [
   { id: "search", label: "Search hosts", def: "Ctrl+F" },
   { id: "settings", label: "Settings", def: "Ctrl+," },
   { id: "lock", label: "Lock the vault", def: "Ctrl+Shift+L" },
+  { id: "save", label: "Save the open form (host, group, credential)", def: "Ctrl+S" },
+  { id: "newItem", label: "New host (in Keychain: new credential)", def: "Ctrl+N" },
+  { id: "zoomIn", label: "Terminal: bigger text", def: "Ctrl+=" },
+  { id: "zoomOut", label: "Terminal: smaller text", def: "Ctrl+-" },
+  { id: "zoomReset", label: "Terminal: text size of the theme", def: "Ctrl+0" },
   { id: "termCopy", label: "Terminal: copy selection", def: "Ctrl+Shift+C" },
   { id: "termPaste", label: "Terminal: paste", def: "Ctrl+Shift+V" },
 ];

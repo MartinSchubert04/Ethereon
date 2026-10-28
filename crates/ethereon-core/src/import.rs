@@ -44,6 +44,7 @@ pub fn key_file(path: &Path) -> Result<Credential, String> {
     Ok(Credential {
         id: cred_id(&path.to_string_lossy()),
         kind: if certificate.is_empty() { CredentialKind::PrivateKey } else { CredentialKind::Certificate },
+        username: String::new(),
         secret,
         passphrase: String::new(),
         certificate,
@@ -157,14 +158,15 @@ pub fn bitwarden(text: &str) -> Result<Imported, String> {
                 if pw.is_empty() {
                     continue;
                 }
-                out.credentials.push(Credential { id, kind: CredentialKind::Password, secret: pw.into(), passphrase: String::new(), certificate: String::new(), note });
+                let username = it.pointer("/login/username").and_then(|p| p.as_str()).unwrap_or("").to_string();
+                out.credentials.push(Credential { id, kind: CredentialKind::Password, username, secret: pw.into(), passphrase: String::new(), certificate: String::new(), note });
             }
             Some(5) => {
                 let key = it.pointer("/sshKey/privateKey").and_then(|p| p.as_str()).unwrap_or("");
                 if key.is_empty() {
                     continue;
                 }
-                out.credentials.push(Credential { id, kind: CredentialKind::PrivateKey, secret: key.into(), passphrase: String::new(), certificate: String::new(), note });
+                out.credentials.push(Credential { id, kind: CredentialKind::PrivateKey, username: String::new(), secret: key.into(), passphrase: String::new(), certificate: String::new(), note });
             }
             _ => {}
         }

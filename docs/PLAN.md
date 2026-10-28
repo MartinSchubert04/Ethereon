@@ -30,7 +30,7 @@ Ordenados por cuánto aportan contra cuánto cuestan.
 
 | Qué | Etapa | Notas |
 |---|---|---|
-| Opcionales por host: sesión persistente, leer archivos, subir/bajar, túneles | 1 | Agregar `features` al `Host` y una herramienta MCP por cada una. Subir/bajar por SFTP (`russh-sftp`). Sesión persistente: una shell por sesión MCP que guarda `cwd` y variables |
+| Opcionales por host: sesión persistente, leer archivos, subir/bajar, túneles | 1 | Agregar `features` al `Host` y una herramienta MCP por cada una. Subir/bajar por SFTP: la persona ya lo tiene (`files.rs`, pestaña SFTP); falta exponerlo al agente con reglas propias. Sesión persistente: una shell por sesión MCP que guarda `cwd` y variables |
 | Proteger el vault con DPAPI (Windows) o Keychain (Mac) | 1 | Envolver la clave derivada con DPAPI para desbloquear sin escribir la contraseña; la contraseña maestra sigue siendo la llave de respaldo |
 | Notificación al celular | 2 | POST a un tema de ntfy configurado en Ajustes |
 | Grabar las sesiones de terminal | 4 | Guardar el flujo de salida (asciicast v2) junto a la auditoría, cifrado con la clave del vault |

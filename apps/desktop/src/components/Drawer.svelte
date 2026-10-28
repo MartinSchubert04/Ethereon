@@ -3,12 +3,32 @@
   import { X } from "@lucide/svelte";
   import type { Snippet } from "svelte";
   import { fadeQuick, slideIn, slideOut } from "../lib/motion";
+  import { matches, pretty, prefs } from "../lib/prefs.svelte";
 
-  let { title, onclose, children, footer }: { title: string; onclose: () => void; children: Snippet; footer?: Snippet } =
-    $props();
+  let {
+    title,
+    onclose,
+    onsave,
+    children,
+    footer,
+  }: { title: string; onclose: () => void; onsave?: () => void; children: Snippet; footer?: Snippet } = $props();
+
+  // Esc cierra y Ctrl S (o Ctrl Enter) guarda. Con un dialogo de confirmacion encima,
+  // las teclas son de ese dialogo.
+  function onKey(e: KeyboardEvent) {
+    if (e.defaultPrevented || document.querySelector("[role=alertdialog]")) return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onclose();
+    } else if (onsave && (matches(e, "save") || (e.ctrlKey && e.key === "Enter"))) {
+      e.preventDefault();
+      (document.activeElement as HTMLElement | null)?.blur?.(); // que el ultimo campo se guarde
+      onsave();
+    }
+  }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
+<svelte:window onkeydown={onKey} />
 
 <div class="scrim" onclick={onclose} role="presentation" transition:fadeQuick|global></div>
 <aside class="drawer card" in:slideIn|global out:slideOut|global>
@@ -17,7 +37,12 @@
     <button class="icon-btn" onclick={onclose} aria-label="Close"><X size={16} /></button>
   </header>
   <div class="body">{@render children()}</div>
-  {#if footer}<footer>{@render footer()}</footer>{/if}
+  {#if footer}
+    <footer>
+      {#if onsave}<span class="keys">{pretty(prefs.binds.save)} saves · Esc closes</span>{/if}
+      {@render footer()}
+    </footer>
+  {/if}
 </aside>
 
 <style>
@@ -74,7 +99,15 @@
     display: flex;
     gap: 8px;
     justify-content: flex-end;
-    padding: 12px 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    padding: 10px 16px 12px;
     border-top: var(--border) solid var(--line);
+  }
+  .keys {
+    flex-basis: 100%;
+    font-size: 11px;
+    color: var(--text-3);
+    text-align: right;
   }
 </style>

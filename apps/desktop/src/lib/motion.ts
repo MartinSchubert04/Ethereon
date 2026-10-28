@@ -1,7 +1,7 @@
 // Animaciones de la interfaz. Todas pasan por aca para respetar "reducir animaciones"
 // de Windows: con eso prendido duran 0.
 import { cubicOut, backOut } from "svelte/easing";
-import { fade, fly, scale } from "svelte/transition";
+import { fade, fly, scale, slide } from "svelte/transition";
 
 const reduce = () => typeof matchMedia !== "undefined" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 const ms = (n: number) => (reduce() ? 0 : n);
@@ -24,3 +24,6 @@ export const fadeQuick = (node: Element) => fade(node, { duration: ms(140) });
 export const toastIn = (node: Element) => fly(node, { y: 16, duration: ms(240), easing: backOut });
 
 export const flipMs = () => ms(200);
+
+/** Abrir o cerrar una seccion desplegable. */
+export const expand = (node: Element) => slide(node, { duration: ms(240), easing: cubicOut });

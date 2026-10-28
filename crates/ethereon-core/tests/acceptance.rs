@@ -19,7 +19,7 @@ const PW: &str = "tester-pass-123";
 const VAULT_TOKEN: &str = "Sup3r-S3cret-Value";
 
 fn cred(id: &str, kind: CredentialKind, secret: &str) -> Credential {
-    Credential { id: id.into(), kind, secret: secret.into(), passphrase: String::new(), certificate: String::new(), note: String::new() }
+    Credential { id: id.into(), kind, username: String::new(), secret: secret.into(), passphrase: String::new(), certificate: String::new(), note: String::new() }
 }
 
 async fn trust_all(b: &Broker, host: &str) {

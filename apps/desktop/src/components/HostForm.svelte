@@ -31,6 +31,7 @@
   const sudoCreds = $derived((app.snap?.credentials ?? []).filter((c) => c.kind === "sudo_password" || c.kind === "password"));
   const others = $derived((app.snap?.hosts ?? []).filter((x) => x.name !== original && !jump.includes(x.name)));
   const envs: { value: Env; label: string }[] = [
+    { value: "none", label: "None" },
     { value: "prod", label: "prod" },
     { value: "test", label: "test" },
     { value: "dev", label: "dev" },
@@ -40,13 +41,28 @@
     ...(app.snap?.groups ?? []).map((g) => ({ value: g.name as string | null, label: g.name, hint: g.policy.mode.replace("_", " ") })),
   ]);
   const credOpts = $derived(
-    loginCreds.map((c) => ({ value: c.id, label: c.id, hint: c.kind.replace("_", " ") })),
+    loginCreds.map((c) => ({ value: c.id, label: c.id, hint: [c.username, c.kind.replace("_", " ")].filter(Boolean).join(" · ") })),
   );
   const sudoOpts = $derived([
     { value: null as string | null, label: "None" },
     ...sudoCreds.map((c) => ({ value: c.id as string | null, label: c.id, hint: c.kind.replace("_", " ") })),
   ]);
   let addJump = $state<string | null>(null);
+
+  // Login: escribir una contraseña aca mismo o usar una credencial del keychain. La
+  // contraseña escrita se guarda igual en el vault, como "<host>-password".
+  let login = $state<"password" | "saved">(init?.credential ? "saved" : "password");
+  let password = $state("");
+  // Si la credencial elegida trae usuario, el del host puede quedar vacio.
+  const credUser = $derived(login === "saved" ? (app.snap?.credentials.find((c) => c.id === h.credential)?.username ?? "") : "");
+
+  function newCredId(): string {
+    const ids = new Set((app.snap?.credentials ?? []).map((c) => c.id));
+    const base = `${h.name.trim() || "host"}-password`;
+    let id = base;
+    for (let n = 2; ids.has(id); n++) id = `${base}-${n}`;
+    return id;
+  }
 
   const split = (s: string) =>
     s
@@ -55,6 +71,17 @@
       .filter(Boolean);
 
   async function save() {
+    let created: string | null = null;
+    if (login === "password") {
+      if (!password) return attempt(() => Promise.reject("Type the password, or pick a saved credential"));
+      created = newCredId();
+      const id = created;
+      const ok = await attempt(() =>
+        api.credSave({ id, original: null, kind: "password", username: h.user.trim(), secret: password, passphrase: null, certificate: null, note: `Login for ${h.name}` }),
+      );
+      if (!ok) return;
+      h.credential = id;
+    }
     const out: Host = {
       ...h,
       port: Number(h.port) || 22,
@@ -65,6 +92,11 @@
       policy: ownRules ? policy : null,
     };
     if (await attempt(() => api.hostSave(out, original), "Host saved")) onclose();
+    else if (created) {
+      // El host no se guardo: no dejar una credencial suelta.
+      await api.credDelete(created).catch(() => {});
+      h.credential = init?.credential ?? "";
+    }
   }
 
   async function remove() {
@@ -74,7 +106,7 @@
   }
 </script>
 
-<Drawer title={original ? `Edit ${original}` : "New host"} {onclose}>
+<Drawer title={original ? `Edit ${original}` : "New host"} {onclose} onsave={save}>
   <div class="grid2">
     <label class="field">Name<input bind:value={h.name} placeholder="web-1" /><span class="hint">What the agent calls it</span></label>
     <div class="field">Group<Select bind:value={h.group} options={groupOpts} /></div>
@@ -84,12 +116,20 @@
     <label class="field">Port<input type="number" bind:value={h.port} /></label>
   </div>
   <div class="grid2">
-    <label class="field">User<input bind:value={h.user} placeholder="deploy" /></label>
-    <div class="field">Credential<Select bind:value={h.credential} options={credOpts} placeholder="Pick one" /></div>
+    <label class="field">User<input bind:value={h.user} placeholder={credUser ? `${credUser} (from the credential)` : "deploy"} /></label>
+    <div class="field">Login<Seg bind:value={login} options={[{ value: "password", label: "Password" }, { value: "saved", label: "Saved credential" }]} /></div>
   </div>
+  {#if login === "password"}
+    <label class="field">Password
+      <input type="password" bind:value={password} autocomplete="new-password" placeholder={init?.credential ? "New password for this host" : ""} />
+      <span class="hint">Saved encrypted in the vault as {newCredId()}. Keys and certificates go in Keychain.</span>
+    </label>
+  {:else}
+    <div class="field">Credential<Select bind:value={h.credential} options={credOpts} placeholder="Pick one" /></div>
+  {/if}
   <div class="grid2">
     <div class="field">Sudo password<Select bind:value={h.sudo_credential} options={sudoOpts} /></div>
-    <div class="field">Environment<Seg bind:value={h.env} options={envs} /></div>
+    <div class="field">Environment<Seg bind:value={h.env} options={envs} /><span class="hint">Only a label: it colors the host and tells the agent it is production</span></div>
   </div>
   <div class="field">
     Jump through

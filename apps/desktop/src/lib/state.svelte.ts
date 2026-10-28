@@ -6,7 +6,12 @@ export type View = "hosts" | "keychain" | "rules" | "approvals" | "agents" | "au
 
 export interface TermTab {
   key: number;
+  /** Host del vault, o el nombre de la shell si es local. */
   host: string;
+  /** Id de la shell local (pwsh, cmd, wsl...); vacio para SSH. */
+  local?: string;
+  /** Pestaña de archivos (SFTP) en vez de terminal. */
+  sftp?: boolean;
   title: string;
   alive: boolean;
 }
@@ -30,6 +35,8 @@ export const app = $state({
       return false;
     }
   })(),
+  /** Ctrl N pide un formulario nuevo; la vista que corresponde lo abre y lo limpia. */
+  pendingNew: null as "host" | "credential" | null,
   update: null as UpdateInfo | null,
   toasts: [] as { id: number; text: string; bad: boolean }[],
 });
@@ -90,11 +97,19 @@ export function start() {
   refresh();
 }
 
-export function openTerminal(host: string) {
+export function openTerminal(host: string, local?: string) {
   rememberVaultView(app.view);
   const key = Date.now();
   const n = app.terms.filter((t) => t.host === host).length;
-  app.terms.push({ key, host, title: n ? `${host} (${n + 1})` : host, alive: true });
+  app.terms.push({ key, host, local, title: n ? `${host} (${n + 1})` : host, alive: true });
+  app.activeTerm = key;
+  app.view = "terminal";
+}
+
+export function openSftp(host: string) {
+  rememberVaultView(app.view);
+  const key = Date.now();
+  app.terms.push({ key, host, sftp: true, title: `${host} · SFTP`, alive: true });
   app.activeTerm = key;
   app.view = "terminal";
 }

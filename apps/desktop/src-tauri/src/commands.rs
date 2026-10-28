@@ -74,6 +74,7 @@ pub fn touch(s: State<AppState>) {
 pub struct CredView {
     id: String,
     kind: CredentialKind,
+    username: String,
     note: String,
     has_secret: bool,
     has_passphrase: bool,
@@ -115,6 +116,7 @@ pub fn snapshot(s: State<AppState>) -> R<Snapshot> {
             .map(|c| CredView {
                 id: c.id.clone(),
                 kind: c.kind,
+                username: c.username.clone(),
                 note: c.note.clone(),
                 has_secret: !c.secret.is_empty(),
                 has_passphrase: !c.passphrase.is_empty(),
@@ -160,10 +162,14 @@ pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<Stri
     host.name = host.name.trim().to_string();
     host.hostname = host.hostname.trim().to_string();
     valid_name(&host.name)?;
-    if host.hostname.is_empty() || host.user.trim().is_empty() {
-        return Err(invalid("hostname and user are required"));
+    host.user = host.user.trim().to_string();
+    if host.hostname.is_empty() {
+        return Err(invalid("hostname is required"));
     }
     s.broker.write(|d| {
+        if d.user_of(&host).is_empty() {
+            return Err(invalid("type a user, or pick a credential that has one"));
+        }
         let orig = original.unwrap_or_else(|| host.name.clone());
         if host.name != orig && d.hosts.iter().any(|h| h.name == host.name) {
             return Err(invalid(format!("a host named `{}` already exists", host.name)));
@@ -225,6 +231,8 @@ pub struct CredInput {
     id: String,
     original: Option<String>,
     kind: CredentialKind,
+    #[serde(default)]
+    username: String,
     /// None = dejar el que esta.
     secret: Option<String>,
     passphrase: Option<String>,
@@ -248,6 +256,7 @@ pub async fn cred_save(s: State<'_, AppState>, cred: CredInput) -> R<()> {
             None => Credential {
                 id: id.clone(),
                 kind: cred.kind,
+                username: String::new(),
                 secret: String::new(),
                 passphrase: String::new(),
                 certificate: String::new(),
@@ -257,6 +266,7 @@ pub async fn cred_save(s: State<'_, AppState>, cred: CredInput) -> R<()> {
         c.id = id.clone();
         c.kind = cred.kind;
         c.note = cred.note.clone();
+        c.username = cred.username.trim().to_string();
         if let Some(v) = &cred.secret {
             c.secret = v.clone();
         }

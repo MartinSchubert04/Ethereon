@@ -23,7 +23,7 @@
   }
 </script>
 
-<Drawer title={original ? `Group ${original}` : "New group"} {onclose}>
+<Drawer title={original ? `Group ${original}` : "New group"} {onclose} onsave={save}>
   <label class="field">Name<input bind:value={name} placeholder="production" /></label>
   <div class="section-title">Rules for every host in the group</div>
   <PolicyEditor bind:policy />

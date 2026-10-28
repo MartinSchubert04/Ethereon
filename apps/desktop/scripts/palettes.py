@@ -168,19 +168,20 @@ PALETTES = {
          {**pool("linear-gradient(180deg, #cfcfcf, #bdbdbd)", "#3366cc", "#e3e3e3", "#eeeeee", "#dddddd"), "--term-bg": "#ffffff"}),
         # La app nueva de Poolsuite, en oscuro: casi negro con trama crema, texto y bordes
         # crema, botones crema con tinta negra.
-        ("mono", "Monochrome", ["#161210", "#2a231d", "#efe6d0"],
-         {**pool("repeating-conic-gradient(rgba(239,230,208,.045) 0 25%, transparent 0 50%) 0 0 / 3px 3px, "
-                 "radial-gradient(ellipse 80% 70% at 30% 15%, #2a231d, #120f0c 75%)",
-                 "#efe6d0", "#16120f", "#1d1814", "#29221c", ink="#161210"),
+        ("mono", "Monochrome", ["#161210", "#2a231d", "#cdc3ac"],
+         {**pool("repeating-conic-gradient(rgba(205,195,172,.035) 0 25%, transparent 0 50%) 0 0 / 3px 3px, "
+                 "radial-gradient(ellipse 80% 70% at 30% 15%, #241e19, #120f0c 75%)",
+                 "#cdc3ac", "#16120f", "#1d1814", "#29221c", ink="#161210"),
           "color-scheme": "dark", "--bg": "#120f0c",
-          "--line": "#efe6d0", "--line-strong": "#efe6d0", "--text": "#efe6d0", "--text-2": "#c9bea6", "--text-3": "#8f846f",
-          "--hover": "rgba(239,230,208,.08)", "--card-shadow": "3px 3px 0 rgba(239,230,208,.28)",
-          "--pop-shadow": "6px 6px 0 rgba(239,230,208,.28)",
-          "--danger": "#e07a5f", "--warn": "#e0b45f", "--ok": "#a8c69f",
-          "--env-prod": "#e07a5f", "--env-test": "#e0b45f", "--env-dev": "#9fb3c8",
-          "--term-bg": "#120f0c", "--term-fg": "#efe6d0", "--term-cursor": "#efe6d0",
-          "--term-selection": "rgba(239,230,208,.22)",
-          "--titlebar": "repeating-linear-gradient(180deg, #efe6d0 0 2px, transparent 2px 5px)"}),
+          # Crema apagado: con el blanco casi puro el contraste cansaba la vista.
+          "--line": "#5e5649", "--line-strong": "#857b69", "--text": "#cdc3ac", "--text-2": "#a39985", "--text-3": "#756c5c",
+          "--hover": "rgba(205,195,172,.07)", "--card-shadow": "3px 3px 0 rgba(205,195,172,.14)",
+          "--pop-shadow": "6px 6px 0 rgba(205,195,172,.16)",
+          "--danger": "#d27a63", "--warn": "#d4ad62", "--ok": "#9fbb97",
+          "--env-prod": "#d27a63", "--env-test": "#d4ad62", "--env-dev": "#98abbf",
+          "--term-bg": "#120f0c", "--term-fg": "#cdc3ac", "--term-cursor": "#cdc3ac",
+          "--term-selection": "rgba(205,195,172,.2)",
+          "--titlebar": "repeating-linear-gradient(180deg, rgba(205,195,172,.45) 0 2px, transparent 2px 5px)"}),
         ("vellum", "Vellum", ["#ece1c6", "#f3ead3", "#7c5510"],
          {**pool("linear-gradient(180deg, #f3ead3 0%, #ece1c6 55%, #d3c6a3 100%)", "#7c5510", "#f3ead3", "#fbf5e6", "#ece1c6"),
           "--line": "#1f1914", "--line-strong": "#1f1914", "--text": "#1f1914", "--text-2": "#473c30", "--text-3": "#6e5f4c",

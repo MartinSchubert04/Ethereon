@@ -1,19 +1,34 @@
+<script lang="ts" module>
+  import type { LocalShell as LS } from "../lib/api";
+  let cache: LS[] | null = null;
+</script>
+
 <script lang="ts">
-  // "New tab": buscar un host y abrir su terminal. Flechas para elegir, Enter para abrir.
-  import { Search, Server } from "@lucide/svelte";
-  import { app, openTerminal } from "../lib/state.svelte";
+  // "New tab": buscar un host (o una shell de esta PC) y abrir su terminal. Flechas para elegir, Enter para abrir.
+  import { Laptop, Search, Server } from "@lucide/svelte";
+  import { api, userOf, type LocalShell } from "../lib/api";
+  import { app, openSftp, openTerminal } from "../lib/state.svelte";
   import { fadeQuick, pop } from "../lib/motion";
 
   let query = $state("");
   let sel = $state(0);
   let input: HTMLInputElement;
 
-  const list = $derived(
-    (app.snap?.hosts ?? []).filter((h) => {
-      const q = query.toLowerCase();
-      return !q || [h.name, h.hostname, h.group ?? "", h.description, ...h.tags].some((x) => x.toLowerCase().includes(q));
-    }),
-  );
+  // Las shells se piden una vez por sesion de la app.
+  let shells = $state<LocalShell[]>(cache ?? []);
+  if (!cache) api.localShells().then((l) => (shells = cache = l)).catch(() => {});
+
+  type Item = { kind: "local"; shell: LocalShell } | { kind: "host"; host: NonNullable<typeof app.snap>["hosts"][number] };
+  const list = $derived.by((): Item[] => {
+    const q = query.toLowerCase();
+    const has = (...xs: string[]) => !q || xs.some((x) => x.toLowerCase().includes(q));
+    return [
+      ...shells.filter((sh) => has(sh.label, sh.id, "local")).map((shell) => ({ kind: "local" as const, shell })),
+      ...(app.snap?.hosts ?? [])
+        .filter((h) => has(h.name, h.hostname, h.group ?? "", h.description, ...h.tags))
+        .map((host) => ({ kind: "host" as const, host })),
+    ];
+  });
 
   $effect(() => {
     input?.focus();
@@ -23,16 +38,19 @@
     app.quickOpen = false;
   }
 
-  function pick(name: string) {
+  /** Enter abre la terminal; Shift Enter, los archivos (SFTP) del host. */
+  function pick(it: Item, files = false) {
     close();
-    openTerminal(name);
+    if (it.kind === "local") openTerminal(it.shell.label, it.shell.id);
+    else if (files) openSftp(it.host.name);
+    else openTerminal(it.host.name);
   }
 
   function onKey(e: KeyboardEvent) {
     if (e.key === "Escape") close();
     else if (e.key === "ArrowDown") sel = Math.min(sel + 1, list.length - 1);
     else if (e.key === "ArrowUp") sel = Math.max(sel - 1, 0);
-    else if (e.key === "Enter" && list[sel]) pick(list[sel].name);
+    else if (e.key === "Enter" && list[sel]) pick(list[sel], e.shiftKey);
     else return;
     e.preventDefault();
   }
@@ -47,22 +65,33 @@
       bind:value={query}
       oninput={() => (sel = 0)}
       onkeydown={onKey}
-      placeholder="Connect to a host..."
+      placeholder="Connect to a host or open a local shell..."
     />
     <kbd>Esc</kbd>
   </div>
+  <div class="tip">Enter opens a terminal · Shift Enter opens the files (SFTP)</div>
   <div class="list">
-    {#each list as h, i (h.name)}
-      <button class="item" class:on={i === sel} onmouseenter={() => (sel = i)} onclick={() => pick(h.name)}>
+    {#each list as it, i (it.kind + (it.kind === "local" ? it.shell.id : it.host.name))}
+      {#if it.kind === "local"}
+        <button class="item" class:on={i === sel} onmouseenter={() => (sel = i)} onclick={() => pick(it)}>
+          <span class="icon local"><Laptop size={14} /></span>
+          <span class="name">{it.shell.label}</span>
+          <span class="grow"></span>
+          <span class="chip">this PC</span>
+        </button>
+      {:else}
+      {@const h = it.host}
+      <button class="item" class:on={i === sel} onmouseenter={() => (sel = i)} onclick={(e) => pick(it, e.shiftKey)}>
         <span class="icon {h.env}"><Server size={14} /></span>
         <span class="name">{h.name}</span>
-        <span class="addr mono ellipsis">{h.user}@{h.hostname}</span>
+        <span class="addr mono ellipsis">{userOf(h, app.snap?.credentials)}@{h.hostname}</span>
         <span class="grow"></span>
         {#if h.group}<span class="chip">{h.group}</span>{/if}
-        <span class="chip {h.env}">{h.env}</span>
+        {#if h.env !== "none"}<span class="chip {h.env}">{h.env}</span>{/if}
       </button>
+      {/if}
     {:else}
-      <div class="none faint">No hosts match.</div>
+      <div class="none faint">Nothing matches.</div>
     {/each}
   </div>
 </div></div>
@@ -120,6 +149,12 @@
     border-radius: 5px;
     padding: 1px 6px;
   }
+  .tip {
+    padding: 6px 14px;
+    font-size: 11px;
+    color: var(--text-3);
+    border-bottom: var(--border) solid var(--line);
+  }
   .list {
     max-height: 360px;
     overflow: auto;
@@ -146,6 +181,15 @@
     border-radius: 6px;
     color: var(--env-dev);
     background: color-mix(in srgb, var(--env-dev) 16%, transparent);
+  }
+  .icon.local {
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 16%, transparent);
+  }
+  /* Sin ambiente: neutro, con el color del texto. */
+  .icon.none {
+    background: var(--panel-2);
+    color: var(--text-2);
   }
   .icon.prod {
     color: var(--env-prod);

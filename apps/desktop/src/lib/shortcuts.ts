@@ -2,10 +2,30 @@
 // los de copiar y pegar de la terminal los maneja TermPane.
 import { api } from "./api";
 import { comboOf, matches, prefs } from "./prefs.svelte";
-import { app, closeTerminal, currentTabIndex, goToTab, toggleSidebar } from "./state.svelte";
+import { app, closeTerminal, currentTabIndex, goToTab, openTerminal, toast, toggleSidebar } from "./state.svelte";
+import { cssVar } from "./themes";
+
+function zoom(d: number) {
+  const base = parseInt(cssVar("--term-font-size")) || 13;
+  const now = prefs.term.fontSize || base;
+  const next = d === 0 ? 0 : Math.min(28, Math.max(9, now + d));
+  prefs.term.fontSize = next;
+  toast(`Terminal text: ${next || base} px`);
+}
+
+async function newLocal() {
+  const [first] = await api.localShells().catch(() => []);
+  if (first) openTerminal(first.label, first.id);
+  else toast("No local shell found", true);
+}
 
 function inTerminal(e: KeyboardEvent) {
   return !!(e.target as HTMLElement | null)?.closest?.(".xterm");
+}
+
+/** Dentro de un panel de archivos (SFTP), que tiene sus propias teclas. */
+function inFiles(e: KeyboardEvent) {
+  return !!(e.target as HTMLElement | null)?.closest?.(".fp");
 }
 
 function typing(e: KeyboardEvent) {
@@ -26,7 +46,19 @@ function onKey(e: KeyboardEvent) {
   const term = inTerminal(e);
   let handled = true;
 
-  if (matches(e, "newTab")) app.quickOpen = true;
+  // Con un formulario o un dialogo abierto, los atajos de navegacion no corren (el
+  // formulario maneja Ctrl S y Esc por su cuenta).
+  const modal = !!document.querySelector(".drawer, [role=alertdialog]");
+
+  if (matches(e, "newTab") && !modal) app.quickOpen = true;
+  else if (matches(e, "newLocal") && !modal) newLocal();
+  else if (matches(e, "newItem") && !modal && !term && !inFiles(e)) {
+    goToTab(0);
+    app.pendingNew = app.view === "keychain" ? "credential" : "host";
+    if (app.view !== "keychain") app.view = "hosts";
+  } else if (matches(e, "zoomIn") && app.view === "terminal") zoom(1);
+  else if (matches(e, "zoomOut") && app.view === "terminal") zoom(-1);
+  else if (matches(e, "zoomReset") && app.view === "terminal") zoom(0);
   else if (matches(e, "closeTabAnywhere") || (matches(e, "closeTab") && !(term && prefs.term.ctrlWToShell))) {
     if (app.view === "terminal" && app.activeTerm) closeTerminal(app.activeTerm);
     else handled = false;
@@ -38,7 +70,7 @@ function onKey(e: KeyboardEvent) {
   else if (matches(e, "settings") && !term) {
     goToTab(0);
     app.view = "settings";
-  } else if (matches(e, "search") && !term) {
+  } else if (matches(e, "search") && !term && !inFiles(e)) {
     goToTab(0);
     app.view = "hosts";
     setTimeout(() => document.querySelector<HTMLInputElement>("[data-host-search]")?.focus(), 30);

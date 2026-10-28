@@ -41,14 +41,14 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
             let mut s = String::from("name,hostname,port,user,credential,group,env,tags,jump,description\n");
             for h in &d.hosts {
                 s += &format!(
-                    "{},{},{},{},{},{},{:?},{},{},{}\n",
+                    "{},{},{},{},{},{},{},{},{},{}\n",
                     q(&h.name),
                     q(&h.hostname),
                     h.port,
                     q(&h.user),
                     q(&h.credential),
                     q(h.group.as_deref().unwrap_or("")),
-                    h.env,
+                    h.env.as_str(),
                     q(&h.tags.join(" ")),
                     q(&h.jump.join(",")),
                     q(&h.description)
@@ -60,7 +60,7 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
         Format::Bitwarden => {
             let mut items = Vec::new();
             for c in &d.credentials {
-                let users: Vec<&str> = d.hosts.iter().filter(|h| h.credential == c.id).map(|h| h.user.as_str()).collect();
+                let users: Vec<String> = if c.username.is_empty() { d.hosts.iter().filter(|h| h.credential == c.id).map(|h| d.user_of(h)).collect() } else { vec![c.username.clone()] };
                 let uris: Vec<_> = d
                     .hosts
                     .iter()
@@ -75,7 +75,7 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                     }),
                     _ => json!({
                         "type": 1, "name": c.id, "notes": c.note, "favorite": false, "folderId": null,
-                        "login": { "username": users.first().copied().unwrap_or(""), "password": c.secret, "totp": null, "uris": uris }
+                        "login": { "username": users.first().cloned().unwrap_or_default(), "password": c.secret, "totp": null, "uris": uris }
                     }),
                 };
                 items.push(item);
@@ -96,7 +96,7 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                 }
             }
             for h in &d.hosts {
-                cfg += &format!("\nHost {}\n  HostName {}\n  Port {}\n  User {}\n", h.name, h.hostname, h.port, h.user);
+                cfg += &format!("\nHost {}\n  HostName {}\n  Port {}\n  User {}\n", h.name, h.hostname, h.port, d.user_of(h));
                 let is_key = d.credentials.iter().any(|c| c.id == h.credential && matches!(c.kind, CredentialKind::PrivateKey | CredentialKind::Certificate));
                 if is_key {
                     cfg += &format!("  IdentityFile ~/.ssh/{}\n", h.credential);

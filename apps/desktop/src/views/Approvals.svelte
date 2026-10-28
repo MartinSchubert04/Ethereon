@@ -48,7 +48,7 @@
         <div class="card item" in:rise out:slide={{ duration: flipMs() }} animate:flip={{ duration: flipMs() }}>
           <div class="row head">
             <b>{a.host}</b>
-            <span class="chip {a.env}">{a.env}</span>
+            {#if a.env !== "none"}<span class="chip {a.env}">{a.env}</span>{/if}
             {#if a.sudo}<span class="chip bad">sudo</span>{/if}
             <span class="grow"></span>
             <span class="faint">{a.device} · {age(a.created)}</span>

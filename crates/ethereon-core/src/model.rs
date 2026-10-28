@@ -56,6 +56,9 @@ pub struct Credential {
     pub id: String,
     #[zeroize(skip)]
     pub kind: CredentialKind,
+    /// Usuario de login (opcional). Lo usan los hosts que dejan su usuario vacio.
+    #[serde(default)]
+    pub username: String,
     /// Contrasena, clave privada (PEM/OpenSSH), contrasena de sudo o token.
     pub secret: String,
     /// Passphrase de la clave privada, si tiene.
@@ -81,10 +84,24 @@ pub enum CredentialKind {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Env {
+    /// Sin ambiente: el host no se marca. Es lo que tienen los hosts nuevos.
+    #[default]
+    #[serde(rename = "none")]
+    Unset,
     Prod,
     Test,
-    #[default]
     Dev,
+}
+
+impl Env {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Env::Unset => "",
+            Env::Prod => "prod",
+            Env::Test => "test",
+            Env::Dev => "dev",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -115,6 +132,17 @@ pub struct Host {
     /// Reglas propias; si es None usa las del grupo.
     #[serde(default)]
     pub policy: Option<Policy>,
+}
+
+impl VaultData {
+    /// El usuario con el que se entra a un host: el suyo, o si esta vacio el de su
+    /// credencial.
+    pub fn user_of(&self, h: &Host) -> String {
+        if !h.user.trim().is_empty() {
+            return h.user.clone();
+        }
+        self.credentials.iter().find(|c| c.id == h.credential).map(|c| c.username.clone()).unwrap_or_default()
+    }
 }
 
 fn default_port() -> u16 {

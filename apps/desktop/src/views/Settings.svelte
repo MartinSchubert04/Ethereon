@@ -4,15 +4,19 @@
   import { api, type ExportFormat, type Settings } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
   import KeyBinds from "../components/KeyBinds.svelte";
-  import { prefs } from "../lib/prefs.svelte";
+  import { matches, prefs } from "../lib/prefs.svelte";
   import Select from "../components/Select.svelte";
   import Switch from "../components/Switch.svelte";
+  import Section from "../components/Section.svelte";
+  import { Download, Keyboard, Palette, Power, Shield, SquareTerminal } from "@lucide/svelte";
   import { THEMES, applyTheme, currentPalette, currentTheme, palettesOf, type ThemeId } from "../lib/themes";
 
   let theme = $state<ThemeId>(currentTheme());
   let palette = $state(currentPalette(currentTheme()));
   // La muestra de cada tema usa la paleta que tiene elegida.
   const swatchOf = (t: ThemeId) => palettesOf(t).find((p) => p.id === currentPalette(t))?.swatch ?? ["#000", "#000", "#000"];
+  const themeName = $derived(THEMES.find((t) => t.id === theme)?.name ?? "");
+  const paletteName = $derived(palettesOf(theme).find((p) => p.id === palette)?.name ?? "");
   let s = $state<Settings>(structuredClone($state.snapshot(app.snap!.settings)));
   let autostart = $state(false);
   isEnabled().then((v) => (autostart = v)).catch(() => {});
@@ -90,126 +94,137 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    // Ctrl S guarda los ajustes de seguridad (lo demas se guarda solo).
+    if (matches(e, "save") && !document.querySelector(".drawer, [role=alertdialog]")) {
+      e.preventDefault();
+      saveSettings();
+    }
+  }}
+/>
+
 <div class="page">
   <div class="page-head"><h1>Settings</h1></div>
 
-  <div class="section-title">Theme</div>
-  <div class="themes">
-    {#each THEMES as t}
-      {@const sw = theme === t.id ? (palettesOf(t.id).find((p) => p.id === palette)?.swatch ?? swatchOf(t.id)) : swatchOf(t.id)}
-      <button class="theme card" class:on={theme === t.id} onclick={() => pickTheme(t.id)}>
-        <div class="sw" style="background: linear-gradient(135deg, {sw[0]} 0 45%, {sw[1]} 45% 75%, {sw[2]} 75%)"></div>
-        <span>{t.name}</span>
-      </button>
-    {/each}
-  </div>
-
-  <div class="section-title">Palette for {THEMES.find((t) => t.id === theme)?.name}</div>
-  <div class="palettes">
-    {#each palettesOf(theme) as p (p.id)}
-      <button class="pal" class:on={palette === p.id} onclick={() => pickPalette(p.id)}>
-        <span class="dots">
-          {#each p.swatch as c}<span style="background: {c}"></span>{/each}
-        </span>
-        {p.name}
-      </button>
-    {/each}
-  </div>
-
-  <div class="section-title">Security</div>
-  <div class="card box">
-    <div class="grid2">
-      <label class="field">Lock after (minutes without using Ethereon) <span class="hint">0 = never. Agent requests do not keep it open.</span>
-        <input type="number" min="0" bind:value={s.autolock_minutes} />
-      </label>
-      <label class="field">Approval wait (seconds) <span class="hint">After that the command is rejected</span>
-        <input type="number" min="10" bind:value={s.approval_timeout_secs} />
-      </label>
-      <label class="field">Keep idle SSH connections (minutes)
-        <input type="number" min="1" bind:value={s.keep_alive_minutes} />
-      </label>
-      <div class="chk"><Switch bind:checked={s.audit_output}>Save the (masked) output in the audit log, not only its hash</Switch></div>
-    </div>
-    <div><button class="btn primary" onclick={saveSettings}>Save</button></div>
-  </div>
-
-  <div class="section-title">Master password</div>
-  <div class="card box">
-    <div class="grid2">
-      <input type="password" placeholder="Current password" bind:value={oldPw} />
-      <input type="password" placeholder="New password (8+ characters)" bind:value={newPw} />
-    </div>
-    <div><button class="btn" disabled={!oldPw || !newPw} onclick={changePw}>Change</button></div>
-  </div>
-
-  <div class="section-title">Startup</div>
-  <div class="card box">
-    <Switch checked={autostart} onchange={toggleAutostart}>Start with Windows, hidden in the tray</Switch>
-    <div class="faint small">Closing the window keeps Ethereon in the tray. Quit from the tray menu.</div>
-  </div>
-
-  <div class="section-title">Updates</div>
-  <div class="card box">
-    <div class="row">
-      <span class="grow">Ethereon {version}</span>
-      {#if app.update?.status === "ready"}
-        <button class="btn primary" onclick={() => api.updateNow()}>Install {app.update.version} now</button>
-      {:else}
-        <button class="btn" onclick={checkUpdate} disabled={checking || !!app.update}>
-          {checking ? "Checking..." : app.update ? `Downloading ${app.update.version}...` : "Check for updates"}
-        </button>
-      {/if}
-    </div>
-    {#if upToDate}<div class="muted">You have the latest version.</div>{/if}
-    <div class="faint small">
-      Updates download in the background and install by themselves when the window is closed, the vault is locked and
-      no agent command is running. Installing restarts Ethereon, so the vault ends up locked.
-    </div>
-  </div>
-
-  <div class="section-title">Terminal</div>
-  <div class="card box">
-    <div class="term-opts">
-      <Switch bind:checked={prefs.term.ctrlCCopy}>Ctrl C copies when there is a selection (otherwise it stops the command)</Switch>
-      <Switch bind:checked={prefs.term.ctrlVPaste}>Ctrl V pastes</Switch>
-      <Switch bind:checked={prefs.term.rightClick}>Right click copies the selection, or pastes when nothing is selected</Switch>
-      <Switch bind:checked={prefs.term.copyOnSelect}>Copy as soon as text is selected</Switch>
-      <Switch bind:checked={prefs.term.ctrlWToShell}>Inside a terminal, Ctrl W goes to the shell (close the tab with Ctrl Shift W)</Switch>
-    </div>
-    <div class="grid2">
-      <div class="field">Font size
-        <Select
-          bind:value={prefs.term.fontSize}
-          options={[
-            { value: 0, label: "Theme default" },
-            ...[12, 13, 14, 15, 16, 18, 20].map((n) => ({ value: n, label: `${n} px` })),
-          ]}
-        />
+  <div class="sections">
+    <Section id="appearance" title="Appearance" icon={Palette} summary="{themeName} · {paletteName}">
+      <div class="sub">Theme</div>
+      <div class="themes">
+        {#each THEMES as t}
+          {@const sw = theme === t.id ? (palettesOf(t.id).find((p) => p.id === palette)?.swatch ?? swatchOf(t.id)) : swatchOf(t.id)}
+          <button class="theme card" class:on={theme === t.id} onclick={() => pickTheme(t.id)}>
+            <div class="sw" style="background: linear-gradient(135deg, {sw[0]} 0 45%, {sw[1]} 45% 75%, {sw[2]} 75%)"></div>
+            <span>{t.name}</span>
+          </button>
+        {/each}
       </div>
-    </div>
-  </div>
+      <div class="sub">Palette for {themeName}</div>
+      <div class="palettes">
+        {#each palettesOf(theme) as p (p.id)}
+          <button class="pal" class:on={palette === p.id} onclick={() => pickPalette(p.id)}>
+            <span class="dots">
+              {#each p.swatch as c}<span style="background: {c}"></span>{/each}
+            </span>
+            {p.name}
+          </button>
+        {/each}
+      </div>
+    </Section>
 
-  <div class="section-title">Keyboard shortcuts</div>
-  <div class="card box">
-    <KeyBinds />
-  </div>
-
-  <div class="section-title">Export</div>
-  <div class="card box">
-    <div class="grid2">
-      <div class="field">Format<Select bind:value={format} options={formats.map((f) => ({ value: f.id, label: f.label }))} /></div>
-      {#if fmt.secrets}
-        <label class="field">Master password
-          <input type="password" bind:value={exportPw} />
-          <span class="hint">The export has your secrets in plain text</span>
+    <Section
+      id="security"
+      title="Security"
+      icon={Shield}
+      summary={s.autolock_minutes ? `Locks after ${s.autolock_minutes} min idle` : "Never locks by itself"}
+    >
+      <div class="grid2">
+        <label class="field">Lock after (minutes without using Ethereon) <span class="hint">0 = never. Agent requests do not keep it open.</span>
+          <input type="number" min="0" bind:value={s.autolock_minutes} />
         </label>
-      {/if}
-    </div>
-    <div class="faint small">{fmt.hint}</div>
-    <div class="row">
-      <button class="btn primary" disabled={fmt.secrets && !exportPw} onclick={doExport}>Export</button>
-      <button class="btn" onclick={backup}>Encrypted backup of the vault</button>
-    </div>
+        <label class="field">Approval wait (seconds) <span class="hint">After that the command is rejected</span>
+          <input type="number" min="10" bind:value={s.approval_timeout_secs} />
+        </label>
+        <label class="field">Keep idle SSH connections (minutes)
+          <input type="number" min="1" bind:value={s.keep_alive_minutes} />
+        </label>
+        <div class="chk"><Switch bind:checked={s.audit_output}>Save the (masked) output in the audit log, not only its hash</Switch></div>
+      </div>
+      <div><button class="btn primary" onclick={saveSettings}>Save</button></div>
+      <div class="sub">Master password</div>
+      <div class="grid2">
+        <input type="password" placeholder="Current password" bind:value={oldPw} />
+        <input type="password" placeholder="New password (8+ characters)" bind:value={newPw} />
+      </div>
+      <div><button class="btn" disabled={!oldPw || !newPw} onclick={changePw}>Change</button></div>
+    </Section>
+
+    <Section id="terminal" title="Terminal" icon={SquareTerminal} summary="Copy, paste and font size">
+      <div class="term-opts">
+        <Switch bind:checked={prefs.term.ctrlCCopy}>Ctrl C copies when there is a selection (otherwise it stops the command)</Switch>
+        <Switch bind:checked={prefs.term.ctrlVPaste}>Ctrl V pastes</Switch>
+        <Switch bind:checked={prefs.term.rightClick}>Right click copies the selection, or pastes when nothing is selected</Switch>
+        <Switch bind:checked={prefs.term.copyOnSelect}>Copy as soon as text is selected</Switch>
+        <Switch bind:checked={prefs.term.ctrlWToShell}>Inside a terminal, Ctrl W goes to the shell (close the tab with Ctrl Shift W)</Switch>
+      </div>
+      <div class="grid2">
+        <div class="field">Font size
+          <Select
+            bind:value={prefs.term.fontSize}
+            options={[
+              { value: 0, label: "Theme default" },
+              ...[12, 13, 14, 15, 16, 18, 20].map((n) => ({ value: n, label: `${n} px` })),
+            ]}
+          />
+        </div>
+      </div>
+    </Section>
+
+    <Section id="keys" title="Keyboard shortcuts" icon={Keyboard} summary="Change any shortcut">
+      <KeyBinds />
+    </Section>
+
+    <Section
+      id="app"
+      title="Startup and updates"
+      icon={Power}
+      summary="Ethereon {version}{autostart ? ' · starts with Windows' : ''}"
+    >
+      <Switch checked={autostart} onchange={toggleAutostart}>Start with Windows, hidden in the tray</Switch>
+      <div class="faint small">Closing the window keeps Ethereon in the tray. Quit from the tray menu.</div>
+      <div class="row">
+        <span class="grow">Ethereon {version}</span>
+        {#if app.update?.status === "ready"}
+          <button class="btn primary" onclick={() => api.updateNow()}>Install {app.update.version} now</button>
+        {:else}
+          <button class="btn" onclick={checkUpdate} disabled={checking || !!app.update}>
+            {checking ? "Checking..." : app.update ? `Downloading ${app.update.version}...` : "Check for updates"}
+          </button>
+        {/if}
+      </div>
+      {#if upToDate}<div class="muted">You have the latest version.</div>{/if}
+      <div class="faint small">
+        Updates download in the background and install by themselves when the window is closed, the vault is locked and
+        no agent command is running. Installing restarts Ethereon, so the vault ends up locked.
+      </div>
+    </Section>
+
+    <Section id="export" title="Export and backup" icon={Download} summary="OpenSSH, Bitwarden, CSV, JSON or an encrypted copy">
+      <div class="grid2">
+        <div class="field">Format<Select bind:value={format} options={formats.map((f) => ({ value: f.id, label: f.label }))} /></div>
+        {#if fmt.secrets}
+          <label class="field">Master password
+            <input type="password" bind:value={exportPw} />
+            <span class="hint">The export has your secrets in plain text</span>
+          </label>
+        {/if}
+      </div>
+      <div class="faint small">{fmt.hint}</div>
+      <div class="row">
+        <button class="btn primary" disabled={fmt.secrets && !exportPw} onclick={doExport}>Export</button>
+        <button class="btn" onclick={backup}>Encrypted backup of the vault</button>
+      </div>
+    </Section>
   </div>
 
   <div class="faint small foot">Data folder: <code>{app.status?.data_dir}</code></div>
@@ -275,11 +290,18 @@
     border-radius: var(--radius-sm);
     border: 1px solid rgba(127, 127, 127, 0.25);
   }
-  .box {
-    padding: 16px;
+  .sections {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
+  }
+  .sub {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: -6px;
   }
   .term-opts {
     display: flex;

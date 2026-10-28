@@ -111,6 +111,9 @@ pub struct Broker {
     seq: AtomicU64,
     /// Comandos del agente corriendo ahora (para no actualizar en el medio).
     running: AtomicUsize,
+    /// Cuantas veces se bloqueo el vault. Lo que se abrio antes de un bloqueo (por ejemplo
+    /// una sesion SFTP) no vuelve a servir despues de desbloquear.
+    locks: AtomicUsize,
     notifier: Arc<dyn Notifier>,
 }
 
@@ -145,6 +148,7 @@ impl Broker {
             last_ui: Mutex::new(Instant::now()),
             seq: AtomicU64::new(1),
             running: AtomicUsize::new(0),
+            locks: AtomicUsize::new(0),
             notifier,
         })
     }
@@ -199,6 +203,7 @@ impl Broker {
     /// estaba esperando aprobacion.
     pub async fn lock(&self) {
         let was = self.open.lock().unwrap().take().is_some();
+        self.locks.fetch_add(1, Ordering::SeqCst);
         self.pool.lock().await.clear();
         for (_, p) in self.approvals.lock().unwrap().drain() {
             let _ = p.tx.send(Decision::Reject { note: Some("the vault was locked".into()) });
@@ -251,6 +256,10 @@ impl Broker {
     }
 
     /// Despues de cambiar hosts, credenciales o huellas: las conexiones abiertas ya no valen.
+    pub fn lock_count(&self) -> usize {
+        self.locks.load(Ordering::SeqCst)
+    }
+
     pub async fn drop_connections(&self) {
         self.pool.lock().await.clear();
     }
@@ -532,7 +541,10 @@ impl Broker {
     async fn wait_approval(&self, view: ApprovalView, session: &str, timeout_secs: u64) -> Option<Decision> {
         let (tx, rx) = oneshot::channel();
         let id = view.id;
-        let title = format!("Approve on {} ({:?})", view.host, view.env).to_lowercase();
+        let title = match view.env {
+            Env::Unset => format!("Approve on {}", view.host),
+            e => format!("Approve on {} ({})", view.host, e.as_str()),
+        };
         let body = view.command.chars().take(180).collect::<String>();
         self.approvals.lock().unwrap().insert(id, Pending { view, session: session.into(), tx });
         self.notifier.notify(&title, &body);
@@ -583,7 +595,11 @@ impl Broker {
                         .ok_or(Error::NotFound(format!("credential `{}` of host `{}`", x.credential, x.name)))?;
                     let addr = format!("{}:{}", x.hostname, x.port);
                     let expected = d.known_hosts.iter().find(|k| k.addr == addr).map(|k| k.fingerprint.clone());
-                    Ok(Hop { name: x.name.clone(), hostname: x.hostname.clone(), port: x.port, user: x.user.clone(), cred, expected })
+                    let user = d.user_of(x);
+                    if user.is_empty() {
+                        return Err(Error::Invalid(format!("host `{}` has no user, and its credential has none either", x.name)));
+                    }
+                    Ok(Hop { name: x.name.clone(), hostname: x.hostname.clone(), port: x.port, user, cred, expected })
                 })
                 .collect()
         })?

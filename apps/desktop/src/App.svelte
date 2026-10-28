@@ -25,6 +25,7 @@
   import Agents from "./views/Agents.svelte";
   import Audit from "./views/Audit.svelte";
   import Settings from "./views/Settings.svelte";
+  import SftpPane from "./components/SftpPane.svelte";
   import TermPane from "./components/TermPane.svelte";
   import Titlebar from "./components/Titlebar.svelte";
   import QuickOpen from "./components/QuickOpen.svelte";
@@ -143,7 +144,11 @@
         <!-- Las terminales quedan montadas para no perder la sesion al cambiar de vista. -->
         {#each app.terms as t (t.key)}
           <div class="term-wrap" class:shown={app.view === "terminal" && app.activeTerm === t.key}>
-            <TermPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+            {#if t.sftp}
+              <SftpPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+            {:else}
+              <TermPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+            {/if}
           </div>
         {/each}
       </div>

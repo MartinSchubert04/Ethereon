@@ -3,6 +3,7 @@
   import { onDestroy, onMount } from "svelte";
   import { Terminal, type ITheme } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
+  import { WebglAddon } from "@xterm/addon-webgl";
   import { Channel } from "@tauri-apps/api/core";
   import { api, errText, type TermEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
@@ -101,6 +102,7 @@
   }
 
   async function connect() {
+    if (tab.local) return connectLocal();
     term.writeln(`\x1b[2mConnecting to ${tab.host}...\x1b[0m`);
     // La primera vez hay que confirmar la huella (y la de cada salto).
     if (!(await testHost(tab.host, true))) {
@@ -108,6 +110,18 @@
       setAlive(false);
       return;
     }
+    const ch = channel();
+    try {
+      fit.fit();
+      id = await api.termOpen(tab.host, term.cols, term.rows, ch);
+      term.focus();
+    } catch (e) {
+      term.writeln(`\x1b[31m${errText(e)}\x1b[0m`);
+      setAlive(false);
+    }
+  }
+
+  function channel() {
     const ch = new Channel<TermEvent>();
     ch.onmessage = (m) => {
       if (m.kind === "data") term.write(decode(m.b64));
@@ -117,9 +131,13 @@
         id = 0;
       }
     };
+    return ch;
+  }
+
+  async function connectLocal() {
     try {
       fit.fit();
-      id = await api.termOpen(tab.host, term.cols, term.rows, ch);
+      id = await api.termOpenLocal(tab.local!, term.cols, term.rows, channel());
       term.focus();
     } catch (e) {
       term.writeln(`\x1b[31m${errText(e)}\x1b[0m`);
@@ -136,7 +154,9 @@
     term = new Terminal({
       fontFamily: cssVar("--mono"),
       fontSize: fontSize(),
-      lineHeight: 1.25,
+      // Con 1 los bloques (█ ▀ ▄) y las lineas de caja se tocan entre filas, como en
+      // cualquier terminal; con mas aire quedan rayas entre una fila y la otra.
+      lineHeight: 1,
       cursorBlink: true,
       allowTransparency: true,
       theme: theme(),
@@ -145,6 +165,14 @@
     fit = new FitAddon();
     term.loadAddon(fit);
     term.open(el);
+    // WebGL dibuja los bloques y las lineas de caja a mano, pixel exacto, en vez de usar
+    // los de la fuente (que casi nunca llenan la celda y dejan costuras). Si la placa de
+    // video no lo deja, queda el renderer comun.
+    try {
+      const gl = new WebglAddon();
+      gl.onContextLoss(() => gl.dispose());
+      term.loadAddon(gl);
+    } catch {}
     term.attachCustomKeyEventHandler(onTermKey);
     term.onSelectionChange(() => {
       if (prefs.term.copyOnSelect && term.hasSelection()) copySelection(false);

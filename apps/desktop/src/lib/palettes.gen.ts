@@ -200,7 +200,7 @@ export const PALETTES: Record<string, { id: string; name: string; swatch: string
       "swatch": [
         "#161210",
         "#2a231d",
-        "#efe6d0"
+        "#cdc3ac"
       ]
     },
     {

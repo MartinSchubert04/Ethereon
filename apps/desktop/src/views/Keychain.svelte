@@ -14,15 +14,27 @@
   let passphrase = $state("");
   let certificate = $state("");
   let note = $state("");
+  let username = $state("");
+  // Solo las credenciales de login llevan usuario.
+  const hasUser = $derived(kind === "password" || kind === "private_key" || kind === "certificate");
 
   const kinds: CredKind[] = ["password", "private_key", "certificate", "sudo_password", "api_token"];
   const isKey = $derived(kind === "private_key" || kind === "certificate");
+
+  // Ctrl N en el Keychain abre una credencial nueva.
+  $effect(() => {
+    if (app.pendingNew === "credential") {
+      app.pendingNew = null;
+      edit(null);
+    }
+  });
 
   function edit(c: CredView | null) {
     editing = c;
     id = c?.id ?? "";
     kind = c?.kind ?? "password";
     note = c?.note ?? "";
+    username = c?.username ?? "";
     secret = passphrase = certificate = "";
   }
 
@@ -36,6 +48,7 @@
           id: id.trim(),
           original: c?.id ?? null,
           kind,
+          username: hasUser ? username : "",
           secret: keep(secret, c?.has_secret),
           passphrase: isKey ? keep(passphrase, c?.has_passphrase) : null,
           certificate: kind === "certificate" ? keep(certificate, c?.has_certificate) : null,
@@ -81,11 +94,12 @@
   {:else}
     <div class="card">
       <table class="list">
-        <thead><tr><th>Name</th><th>Type</th><th>Used by</th><th>Note</th><th></th></tr></thead>
+        <thead><tr><th>Name</th><th>User</th><th>Type</th><th>Used by</th><th>Note</th><th></th></tr></thead>
         <tbody>
           {#each app.snap.credentials as c (c.id)}
             <tr class="click" onclick={() => edit(c)}>
               <td class="mono">{c.id}</td>
+              <td class="mono muted">{c.username || "—"}</td>
               <td><span class="chip">{KIND_LABEL[c.kind]}</span>{#if c.has_passphrase} <span class="chip">passphrase</span>{/if}</td>
               <td class="muted">{c.used_by.join(", ") || "—"}</td>
               <td class="faint ellipsis note">{c.note}</td>
@@ -101,11 +115,16 @@
 </div>
 
 {#if editing !== undefined}
-  <Drawer title={editing ? `Edit ${editing.id}` : "New credential"} onclose={() => (editing = undefined)}>
+  <Drawer title={editing ? `Edit ${editing.id}` : "New credential"} onclose={() => (editing = undefined)} onsave={save}>
     <div class="grid2">
       <label class="field">Name<input bind:value={id} class="mono" placeholder="bastion-key" /></label>
       <div class="field">Type<Select bind:value={kind} options={kinds.map((k) => ({ value: k, label: KIND_LABEL[k] }))} /></div>
     </div>
+    {#if hasUser}
+      <label class="field">User <span class="hint">Optional. Hosts that leave their user empty log in with this one.</span>
+        <input bind:value={username} class="mono" placeholder="deploy" autocomplete="off" spellcheck="false" />
+      </label>
+    {/if}
     {#if isKey}
       <label class="field">Private key <span class="hint">OpenSSH, PEM or PuTTY</span>
         <textarea class="mono" rows="7" bind:value={secret} placeholder={editing?.has_secret ? "Stored. Paste a new key to replace it." : "-----BEGIN OPENSSH PRIVATE KEY-----"}></textarea>

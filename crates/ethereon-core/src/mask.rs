@@ -114,6 +114,7 @@ mod tests {
         Credential {
             id: "x".into(),
             kind: CredentialKind::Password,
+            username: String::new(),
             secret: secret.into(),
             passphrase: String::new(),
             certificate: String::new(),

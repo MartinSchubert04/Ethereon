@@ -1,7 +1,7 @@
 // Tipos y llamadas al backend. Los nombres siguen a los structs de Rust (snake_case).
 import { invoke, Channel } from "@tauri-apps/api/core";
 
-export type Env = "prod" | "test" | "dev";
+export type Env = "none" | "prod" | "test" | "dev";
 export type Mode = "read_only" | "approval" | "guarded" | "unrestricted" | "off";
 export type CredKind = "password" | "private_key" | "certificate" | "sudo_password" | "api_token";
 
@@ -38,6 +38,7 @@ export interface Group {
 export interface CredView {
   id: string;
   kind: CredKind;
+  username: string;
   note: string;
   has_secret: boolean;
   has_passphrase: boolean;
@@ -150,6 +151,7 @@ export interface CredInput {
   id: string;
   original: string | null;
   kind: CredKind;
+  username: string;
   secret: string | null;
   passphrase: string | null;
   certificate: string | null;
@@ -160,6 +162,25 @@ export interface UpdateInfo {
   version: string;
   status: "downloading" | "ready";
 }
+
+export interface LocalShell {
+  id: string;
+  label: string;
+}
+
+export interface FileEntry {
+  name: string;
+  dir: boolean;
+  link: boolean;
+  size: number;
+  mtime: number | null;
+  mode: number | null;
+}
+
+export type XferEvent =
+  | { kind: "progress"; done: number; total: number; file: string }
+  | { kind: "done" }
+  | { kind: "error"; message: string };
 
 export type TermEvent = { kind: "data"; b64: string } | { kind: "exit"; code: number | null };
 
@@ -211,6 +232,24 @@ export const api = {
   termWrite: (id: number, data: string) => invoke<void>("term_write", { id, data }),
   termResize: (id: number, cols: number, rows: number) => invoke<void>("term_resize", { id, cols, rows }),
   termClose: (id: number) => invoke<void>("term_close", { id }),
+  sftpOpen: (host: string) => invoke<{ id: number; home: string }>("sftp_open", { host }),
+  sftpClose: (id: number) => invoke<void>("sftp_close", { id }),
+  sftpList: (id: number, path: string) => invoke<FileEntry[]>("sftp_list", { id, path }),
+  sftpRealpath: (id: number, path: string) => invoke<string>("sftp_realpath", { id, path }),
+  sftpMkdir: (id: number, path: string) => invoke<void>("sftp_mkdir", { id, path }),
+  sftpRename: (id: number, from: string, to: string) => invoke<void>("sftp_rename", { id, from, to }),
+  sftpRemove: (id: number, paths: string[]) => invoke<void>("sftp_remove", { id, paths }),
+  sftpTransfer: (id: number, upload: boolean, paths: string[], into: string, onEvent: Channel<XferEvent>) =>
+    invoke<number>("sftp_transfer", { id, upload, paths, into, onEvent }),
+  sftpCancel: (transfer: number) => invoke<void>("sftp_cancel", { transfer }),
+  localHome: () => invoke<string>("local_home"),
+  localList: (path: string) => invoke<FileEntry[]>("local_list", { path }),
+  localMkdir: (path: string) => invoke<void>("local_mkdir", { path }),
+  localRename: (from: string, to: string) => invoke<void>("local_rename", { from, to }),
+  localRemove: (paths: string[]) => invoke<void>("local_remove", { paths }),
+  localShells: () => invoke<LocalShell[]>("local_shells"),
+  termOpenLocal: (shell: string, cols: number, rows: number, onEvent: Channel<TermEvent>) =>
+    invoke<number>("term_open_local", { shell, cols, rows, onEvent }),
 };
 
 export function defaultPolicy(): Policy {
@@ -227,7 +266,7 @@ export function newHost(): Host {
     sudo_credential: null,
     group: null,
     tags: [],
-    env: "dev",
+    env: "none",
     jump: [],
     description: "",
     policy: null,
@@ -252,4 +291,9 @@ export const KIND_LABEL: Record<CredKind, string> = {
 
 export function errText(e: unknown): string {
   return typeof e === "string" ? e : e instanceof Error ? e.message : JSON.stringify(e);
+}
+
+/** El usuario con el que se entra: el del host, o si esta vacio el de su credencial. */
+export function userOf(h: Host, creds: CredView[] | undefined): string {
+  return h.user || creds?.find((c) => c.id === h.credential)?.username || "";
 }
