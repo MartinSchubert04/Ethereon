@@ -8,6 +8,9 @@
 //!    instalara con el vault abierto, el agente se quedaria sin acceso hasta que alguien
 //!    lo desbloquee.
 //! 4. Si no, la barra de arriba muestra "Update" y la persona decide cuando.
+//! 5. Antes de instalar a pedido, cada ventana cuenta que tiene abierto (pestañas, mosaicos,
+//!    lo que se veia en cada terminal, donde estaba la ventana) y eso se guarda en el vault.
+//!    Al desbloquear despues de actualizar, la interfaz lo vuelve a abrir igual.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -33,6 +36,8 @@ pub struct UpdateInfo {
 pub struct Pending {
     pub info: Option<UpdateInfo>,
     ready: Option<(Update, Vec<u8>)>,
+    /// Lo que va contando cada ventana mientras se guarda la sesion.
+    parts: Vec<serde_json::Value>,
 }
 
 /// Como estaba la app antes de actualizarse, para dejarla igual al volver.
@@ -117,9 +122,48 @@ async fn check_and_download(app: &AppHandle) -> Result<(), String> {
     }
 }
 
+/// Ninguna ventana abierta: tampoco una de terminales, que se cortarian al reiniciar.
 fn is_idle(app: &AppHandle) -> bool {
     let b = &app.state::<AppState>().broker;
-    app.get_webview_window("main").is_none() && !b.is_unlocked() && !b.busy()
+    app.webview_windows().is_empty() && !b.is_unlocked() && !b.busy()
+}
+
+/// Cuanto se espera a que las ventanas cuenten que tienen abierto.
+const SESSION_WAIT: Duration = Duration::from_secs(2);
+
+/// Le pide a cada ventana su parte de la sesion y la guarda en el vault. Con el vault
+/// bloqueado no hay donde guardarla (ni terminales que valga la pena volver a abrir).
+async fn save_session(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    let windows = app.webview_windows().len();
+    if windows == 0 || !state.broker.is_unlocked() {
+        return;
+    }
+    state.update.lock().unwrap().parts.clear();
+    let _ = app.emit("session-save", ());
+    let start = std::time::Instant::now();
+    while start.elapsed() < SESSION_WAIT && state.update.lock().unwrap().parts.len() < windows {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    let parts = std::mem::take(&mut state.update.lock().unwrap().parts);
+    if parts.is_empty() {
+        return;
+    }
+    if let Err(e) = state.broker.set_ui_session(serde_json::Value::Array(parts)) {
+        log::warn!("no se pudo guardar la sesion antes de actualizar: {e}");
+    }
+}
+
+/// Una ventana cuenta que tiene abierto (respuesta al evento "session-save").
+#[tauri::command]
+pub fn session_part(state: tauri::State<'_, AppState>, part: serde_json::Value) {
+    state.update.lock().unwrap().parts.push(part);
+}
+
+/// La sesion de antes de actualizar, una sola vez.
+#[tauri::command]
+pub fn session_take(state: tauri::State<'_, AppState>) -> Result<Option<serde_json::Value>, ethereon_core::Error> {
+    state.broker.take_ui_session()
 }
 
 /// Instala lo que se bajo. No vuelve: el instalador cierra la app y la vuelve a abrir.
@@ -133,6 +177,7 @@ pub async fn apply(app: &AppHandle) {
         }
         let _ = std::fs::write(path, json);
     }
+    save_session(app).await;
     crate::save_config(app);
     state.broker.lock().await;
     spawn_relaunch_watchdog();

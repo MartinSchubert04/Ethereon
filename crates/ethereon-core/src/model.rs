@@ -25,6 +25,11 @@ pub struct VaultData {
     pub audit_key: String,
     #[serde(default)]
     pub settings: Settings,
+    /// Como estaban las ventanas y pestañas antes de una actualizacion, con el texto que
+    /// tenia cada terminal (puede tener secretos: por eso va aca y no en un archivo). Lo
+    /// guarda la interfaz al actualizar y lo usa una sola vez, al desbloquear.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ui_session: Option<serde_json::Value>,
 }
 
 /// Ajustes que afectan la seguridad: viven en el vault para que el agente no pueda

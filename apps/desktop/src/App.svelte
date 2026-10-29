@@ -28,7 +28,7 @@
   import SftpPane from "./components/SftpPane.svelte";
   import TilePane from "./components/TilePane.svelte";
   import WorkspacePane from "./components/WorkspacePane.svelte";
-  import { initWindows } from "./lib/windows";
+  import { initWindows, restoreSession } from "./lib/windows";
   import Titlebar from "./components/Titlebar.svelte";
   import QuickOpen from "./components/QuickOpen.svelte";
   import Confirm from "./components/Confirm.svelte";
@@ -41,6 +41,15 @@
   installShortcuts();
   // Pestañas que vuelven de otras ventanas.
   initWindows();
+
+  // Al desbloquear (una vez): lo que habia abierto antes de actualizar.
+  let restored = false;
+  $effect(() => {
+    if (app.status?.unlocked && !restored) {
+      restored = true;
+      restoreSession();
+    }
+  });
 
   const nav: { id: View; label: string; icon: typeof Server }[] = [
     { id: "hosts", label: "Hosts", icon: Server },

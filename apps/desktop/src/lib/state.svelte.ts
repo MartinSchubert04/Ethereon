@@ -20,6 +20,8 @@ export interface TermTab {
   locked?: boolean;
   /** Colapsada: en la barra solo se ve el icono (y el candado si esta bloqueada). */
   collapsed?: boolean;
+  /** Lo que mostraba antes de actualizar: se escribe apagado antes de volver a conectar. */
+  replay?: string;
   title: string;
   alive: boolean;
   /** Conectando todavia (la lista de un grupo lo muestra). */

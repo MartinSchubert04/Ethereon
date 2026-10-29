@@ -171,6 +171,13 @@
     live.me().connecting = true;
     live.me().error = undefined;
     live.me().failedAt = undefined;
+    // Vuelve de una actualizacion: primero lo que se veia, apagado, y despues conecta.
+    const before = live.me().replay;
+    if (before) {
+      live.me().replay = undefined;
+      term.write(`\x1b[2m${before.replace(/\n/g, "\r\n")}\x1b[0m\r\n`);
+      term.writeln(`\x1b[2m──── before the update ────\x1b[0m`);
+    }
     if (live.me().local) return connectLocal();
     // Registro nuevo para "Show logs": el de la conexion anterior ya no sirve.
     app.connLogs[live.me().host] = [];

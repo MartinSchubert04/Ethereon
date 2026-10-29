@@ -175,6 +175,22 @@ impl Broker {
         self.open.lock().unwrap().is_some()
     }
 
+    /// Guarda como estaba la interfaz (antes de actualizar). Solo para la interfaz.
+    pub fn set_ui_session(&self, v: serde_json::Value) -> Result<()> {
+        self.write(|d| {
+            d.ui_session = Some(v);
+            Ok(())
+        })
+    }
+
+    /// Lo que guardo la interfaz antes de actualizar, una sola vez (despues se borra).
+    pub fn take_ui_session(&self) -> Result<Option<serde_json::Value>> {
+        if self.read(|d| d.ui_session.is_none())? {
+            return Ok(None);
+        }
+        self.write(|d| Ok(d.ui_session.take()))
+    }
+
     pub fn create(&self, password: &str) -> Result<()> {
         if self.vault_exists() {
             return Err(Error::Invalid("a vault already exists".into()));

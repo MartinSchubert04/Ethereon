@@ -54,6 +54,24 @@ export function park(key: number): boolean {
 
 /** Filas y columnas de la terminal del panel `key` (para repetir su historial con el mismo
  *  tamaño en otra ventana). */
+/** El texto de las ultimas `lines` lineas de la terminal `key` (sin colores), para volver a
+ *  mostrarlo despues de actualizar. Sin las lineas vacias del final. */
+export function textOf(key: number, lines = 400): string | undefined {
+  const t = byKey.get(key)?.term;
+  if (!t) return undefined;
+  const b = t.buffer.active;
+  const out: string[] = [];
+  for (let i = Math.max(0, b.length - lines); i < b.length; i++) {
+    const line = b.getLine(i);
+    if (!line) continue;
+    // Una linea larga que siguio en la de abajo se une, para no partirla en otro ancho.
+    if (line.isWrapped && out.length) out[out.length - 1] += line.translateToString(true);
+    else out.push(line.translateToString(true));
+  }
+  while (out.length && !out[out.length - 1].trim()) out.pop();
+  return out.length ? out.join("\n") : undefined;
+}
+
 export function sizeOf(key: number): { cols: number; rows: number } | undefined {
   const t = byKey.get(key)?.term;
   return t ? { cols: t.cols, rows: t.rows } : undefined;

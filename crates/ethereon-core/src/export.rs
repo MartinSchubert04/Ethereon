@@ -33,6 +33,7 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
         Format::Json => {
             let mut v = d.clone();
             v.audit_key = String::new();
+            v.ui_session = None;
             std::fs::write(to, serde_json::to_vec_pretty(&v)?)?;
             Ok(format!("{} hosts and {} credentials", d.hosts.len(), d.credentials.len()))
         }

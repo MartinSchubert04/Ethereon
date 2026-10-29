@@ -180,6 +180,7 @@ pub async fn term_window_open(
     y: Option<f64>,
     width: Option<f64>,
     height: Option<f64>,
+    place: Option<WindowBox>,
 ) -> Result<String, ethereon_core::Error> {
     let n = TERM_WINDOWS.fetch_add(1, Ordering::SeqCst) + 1;
     let label = format!("term-{n}");
@@ -195,7 +196,23 @@ pub async fn term_window_open(
         (Some(x), Some(y)) => b.position((x - 120.0).max(0.0), (y - 20.0).max(0.0)),
         _ => b.center(),
     };
-    b.build().map_err(|e| ethereon_core::Error::Invalid(format!("could not open the window: {e}")))?;
+    // Vuelve a donde estaba (despues de actualizar): oculta hasta acomodarla.
+    if place.is_some() {
+        b = b.visible(false);
+    }
+    let w = b.build().map_err(|e| ethereon_core::Error::Invalid(format!("could not open the window: {e}")))?;
+    if let Some(p) = place.filter(|p| p.width > 0 && p.height > 0) {
+        if on_screen(&app, p.x, p.y) {
+            place_outer(&w, Some((p.x, p.y)), None);
+        }
+        place_outer(&w, None, Some((p.width, p.height)));
+        if p.maximized {
+            let _ = w.maximize();
+        }
+    }
+    if place.is_some() {
+        let _ = w.show();
+    }
     Ok(label)
 }
 

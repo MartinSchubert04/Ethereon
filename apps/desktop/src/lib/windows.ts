@@ -10,7 +10,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./api";
 import { app, closeTerminal, leaving, newKey, toast, type TermTab } from "./state.svelte";
 import { remap, type Tile } from "./tiles.svelte";
-import { sizeOf } from "./live";
+import { sizeOf, textOf } from "./live";
 
 /** Lo que viaja de una ventana a otra. */
 interface Moved {
@@ -22,6 +22,9 @@ interface Moved {
   approvals?: boolean;
   locked?: boolean;
   collapsed?: boolean;
+  /** Al volver de una actualizacion: lo que mostraba la terminal, y si era la pestaña activa. */
+  replay?: string;
+  current?: boolean;
   attach?: number;
   size?: { cols: number; rows: number };
   members?: Moved[];
@@ -59,6 +62,7 @@ function unpack(m: Moved): TermTab {
     approvals: m.approvals,
     locked: m.locked,
     collapsed: m.collapsed,
+    replay: m.replay,
     title: m.title,
     alive: true,
     attach: m.attach,
@@ -133,15 +137,77 @@ export async function approvalsWindow() {
 async function take() {
   const tabs = await invoke<Moved[] | null>("term_window_take").catch(() => null);
   if (!tabs?.length) return;
+  let current = 0;
   for (const m of tabs) {
     const t = unpack(m);
     app.terms.push(t);
     app.activeTerm = t.key;
+    if (m.current) current = t.key;
   }
+  if (current) app.activeTerm = current;
   app.view = "terminal";
   const w = getCurrentWindow();
   await w.show();
   await w.setFocus();
+}
+
+// ---- sesion de antes de actualizar
+//
+// Al actualizar se cortan todas las conexiones. Antes, cada ventana cuenta que tiene (el
+// backend la guarda en el vault) y al desbloquear la principal vuelve a abrir todo igual:
+// las mismas ventanas en el mismo lugar, las pestañas, mosaicos y grupos, y en cada
+// terminal lo que se veia, apagado, antes de reconectar.
+
+/** Lo que cuenta cada ventana. */
+interface Part {
+  label: string;
+  view: string;
+  tabs: Moved[];
+  box?: { x: number; y: number; width: number; height: number; maximized: boolean };
+}
+
+/** Como `pack`, pero para despues de reiniciar: sin sesion que tomar y con el texto. */
+const packSaved = (t: TermTab): Moved => ({
+  ...pack(t),
+  attach: undefined,
+  size: undefined,
+  replay: t.sftp || t.approvals || t.members ? undefined : textOf(t.key),
+  members: t.members?.map(packSaved),
+});
+
+async function saveSession() {
+  const w = getCurrentWindow();
+  const tabs = app.terms.map((t) => ({ ...packSaved(t), current: t.key === app.activeTerm || undefined }));
+  const [pos, size, maximized] = await Promise.all([w.outerPosition(), w.outerSize(), w.isMaximized()]).catch(() => [null, null, false] as const);
+  const box = pos && size ? { x: pos.x, y: pos.y, width: size.width, height: size.height, maximized } : undefined;
+  const part: Part = { label: w.label, view: app.view, tabs, box };
+  await invoke("session_part", { part }).catch(() => {});
+}
+
+/** En la principal, al desbloquear: vuelve a abrir lo que habia antes de actualizar. */
+export async function restoreSession() {
+  const parts = await invoke<Part[] | null>("session_take").catch(() => null);
+  if (!parts?.length) return;
+  // Si la instalacion fallo, la app no se reinicio y todo sigue abierto: no duplicar.
+  const others = (await invoke<string[]>("term_windows").catch(() => [] as string[])).filter((l) => l !== "main");
+  if (app.terms.length || others.length) return;
+  let n = 0;
+  for (const p of parts) {
+    if (!p.tabs.length) continue;
+    n += p.tabs.length;
+    if (p.label !== "main") {
+      await invoke("term_window_open", { tabs: p.tabs, x: null, y: null, place: p.box ?? null }).catch(() => {});
+      continue;
+    }
+    for (const m of p.tabs) {
+      const t = unpack(m);
+      app.terms.push(t);
+      if (m.current) app.activeTerm = t.key;
+    }
+    if (p.view === "terminal" && !app.activeTerm) app.activeTerm = app.terms[0].key;
+    if (p.view === "terminal") app.view = "terminal";
+  }
+  if (n) toast(n === 1 ? "Reopened the tab you had before the update" : `Reopened the ${n} tabs you had before the update`);
 }
 
 let started = false;
@@ -150,5 +216,6 @@ export function initWindows() {
   if (started) return;
   started = true;
   listen("take-tabs", () => take());
+  listen("session-save", () => saveSession());
   take();
 }
