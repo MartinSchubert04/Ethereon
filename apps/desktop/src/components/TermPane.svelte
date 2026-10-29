@@ -17,7 +17,9 @@
   import { adopt, drop, own, type Live } from "../lib/live";
 
   // `bare`: dentro de un mosaico, sin margen ni tarjeta propia (el marco lo pone TilePane).
-  let { tab, active, bare = false }: { tab: TermTab; active: boolean; bare?: boolean } = $props();
+  // `shown`: la pestaña se ve (en un mosaico se ven todos los paneles, aunque solo uno tenga
+  // el foco, que es `active`).
+  let { tab, active, bare = false, shown = active }: { tab: TermTab; active: boolean; bare?: boolean; shown?: boolean } = $props();
 
   let el: HTMLDivElement;
   // La terminal viva (ver lib/live.ts): puede venir de otro panel de esta ventana.
@@ -323,7 +325,13 @@
     // video no lo deja, queda el renderer comun.
     try {
       const gl = new WebglAddon();
-      gl.onContextLoss(() => gl.dispose());
+      // El WebView tiene un tope de contextos WebGL por ventana (unos 16): con muchas
+      // terminales, al pasarse descarta el mas viejo. Esa terminal sigue con el renderer
+      // comun, pero hay que redibujarla; si no, queda en negro hasta que llegue salida.
+      gl.onContextLoss(() => {
+        gl.dispose();
+        t.refresh(0, t.rows - 1);
+      });
       t.loadAddon(gl);
     } catch {}
     // Imagenes en la terminal: Sixel (lo que usa Windows Terminal) y el protocolo de iTerm2
@@ -394,6 +402,12 @@
         term.focus();
       });
     }
+  });
+
+  // Al volver a verse se redibuja: oculta, el WebView puede haber descartado lo que tenia
+  // pintado (sobre todo si se mostro en medio de un arrastre) y quedaba en negro.
+  $effect(() => {
+    if (shown && term) queueMicrotask(() => term.refresh(0, term.rows - 1));
   });
 
   onDestroy(() => {

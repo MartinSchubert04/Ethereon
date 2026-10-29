@@ -5,6 +5,10 @@ credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
 
 ![Ethereon con el tema Poolsuite FM, paleta Monochrome](docs/screenshot.png)
 
+![Demo: desbloquear, abrir terminales por el bastión, juntarlas en mosaico, aprobar un comando del agente, auditoría, reglas y agentes](docs/demo.gif)
+
+<sub>La demo usa datos inventados: ningún host, IP ni credencial es real.</sub>
+
 - **Vault cifrado:** contraseñas, claves privadas (con passphrase), certificados, contraseñas de sudo
   y tokens. AES-256-GCM con una clave derivada de la contraseña maestra (Argon2id). Se bloquea solo.
 - **Hosts tipo Termius:** grupos, etiquetas, entorno (prod, test, dev), saltos por bastión

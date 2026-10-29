@@ -117,7 +117,7 @@
         {#if m.approvals}
           <ApprovalsPane bare={tiled} />
         {:else}
-          <TermPane tab={m} active={active && (!tiled || tab.focus === m.key)} bare={tiled} />
+          <TermPane tab={m} active={active && (!tiled || tab.focus === m.key)} shown={active} bare={tiled} />
           <ConnState {m} onretry={() => retry(m.key)} />
         {/if}
         {#if drop.hint && drop.hint.tab === tab.key && drop.hint.leaf === m.key}

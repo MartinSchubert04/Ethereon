@@ -34,7 +34,11 @@
 </script>
 
 <div class="wrap">
-  <form class="card box stagger" class:shake onsubmit={submit} onanimationend={() => (shake = false)}>
+  <!-- El temblor va en un envoltorio propio: puesto en la tarjeta reemplazaba su animacion de
+       entrada (.stagger), y al sacarlo el navegador la repetia desde opacidad 0: la ventana
+       parecia pestañear. -->
+  <div class="shaker" class:shake onanimationend={(e) => e.animationName === "shake" && (shake = false)}>
+  <form class="card box stagger" onsubmit={submit}>
     <div class="logo titlebar"><span><Lock size={20} /></span></div>
     <h1>{creating ? "Create your vault" : "Ethereon is locked"}</h1>
     <p class="muted">
@@ -56,6 +60,7 @@
     </button>
     {#if creating}<div class="faint small">At least 8 characters.</div>{/if}
   </form>
+  </div>
 </div>
 
 <style>
@@ -65,8 +70,11 @@
     place-items: center;
     padding: 20px;
   }
-  .box {
+  .shaker {
     width: min(380px, 100%);
+  }
+  .box {
+    width: 100%;
     padding: 28px;
     display: flex;
     flex-direction: column;

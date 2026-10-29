@@ -31,9 +31,9 @@
   // ---- arrastrar pestañas: reordenar, o soltar fuera de la ventana para abrirla aparte
 
   // Bajarla a las terminales la suma a la pestaña que se ve, al costado del panel que se
-  // marca (mosaico). Si la que se arrastra es la que se ve, se muestra la de al lado, como
-  // al arrancar una pestaña en el navegador. Quedarse un momento encima de otra pestaña la
-  // muestra, para soltar ahi. Al soltar sin sumarla a nada, vuelve la que se veia al empezar.
+  // marca (mosaico). Mientras se arrastra queda la que se veia; quedarse un momento encima
+  // de otra pestaña muestra esa, para soltar ahi. Al soltar sin sumarla a nada, vuelve la
+  // que se veia al empezar.
   let td: {
     key: number;
     sx: number;
@@ -82,12 +82,6 @@
     const dragged = app.terms.find((t) => t.key === td!.key);
     if (inside && e.clientY > barBottom + 8 && dragged && splittable(dragged) && app.terms.length > 1) {
       hoverTab(null);
-      if (app.activeTerm === td.key || app.view !== "terminal") {
-        const i = app.terms.findIndex((t) => t.key === td!.key);
-        const next = app.activeTerm === td.key || !app.activeTerm ? (app.terms[i + 1] ?? app.terms[i - 1]).key : app.activeTerm;
-        app.activeTerm = next;
-        app.view = "terminal";
-      }
       const hit = tileAt(e.clientX, e.clientY);
       drop.hint = hit && hit.tab !== td.key ? hit : null;
       if (drop.hint) {

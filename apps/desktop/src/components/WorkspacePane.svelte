@@ -54,7 +54,7 @@
   <div class="panes">
     {#each members as m (m.key)}
       <div class="member" class:shown={m.key === tab.activeMember}>
-        <TermPane tab={m} active={active && m.key === tab.activeMember} />
+        <TermPane tab={m} active={active && m.key === tab.activeMember} shown={active && m.key === tab.activeMember} />
         <div class="state">
           <ConnState {m} onretry={() => window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: m.key }))} />
         </div>
