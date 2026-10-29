@@ -20,11 +20,14 @@ import "./styles/base.css";
 import "./styles/athanor.css";
 import "./styles/term-fonts.css";
 import App from "./App.svelte";
+import TermWindow from "./TermWindow.svelte";
 import { applyTheme, currentTheme } from "./lib/themes";
 
 applyTheme(currentTheme());
 
-const app = mount(App, { target: document.getElementById("app")! });
+// Las ventanas de terminales sacadas de la principal cargan la misma interfaz con ?window=term.
+const isTermWindow = new URLSearchParams(location.search).get("window") === "term";
+const app = mount(isTermWindow ? TermWindow : App, { target: document.getElementById("app")! });
 
 // Sin menu contextual del navegador fuera de los campos de texto y la terminal.
 window.addEventListener("contextmenu", (e) => {

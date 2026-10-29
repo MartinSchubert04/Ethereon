@@ -1,14 +1,15 @@
 //! Terminal interactiva para la persona (no para el agente: no pasa por las reglas).
 //! Puede ser una shell en un host por SSH o una shell local de esta PC (ConPTY).
 //! La salida va al WebView por un canal IPC en base64; si la ventana se cierra, el
-//! canal falla y la sesion se corta sola.
+//! canal falla y la sesion se corta sola. Una terminal se puede pasar a otra ventana sin
+//! cortarse: la vieja suelta el canal (`term_detach`) y la nueva lo toma (`term_attach`).
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use portable_pty::{native_pty_system, Child, CommandBuilder, MasterPty, PtySize};
 use russh::client::Msg;
 use russh::{ChannelMsg, ChannelWriteHalf};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -33,16 +34,63 @@ enum Session {
     Local(Arc<Mutex<Local>>),
 }
 
+/// Cuanto de la salida reciente se guarda para la ventana que toma la terminal.
+const BACKLOG: usize = 512 * 1024;
+
+/// A donde va la salida de una sesion. Entre que una ventana la suelta y otra la toma,
+/// la salida se sigue guardando; la ventana nueva arranca con eso y la pantalla queda igual.
+struct Sink {
+    ch: Option<Channel<TermEvent>>,
+    backlog: VecDeque<u8>,
+    /// Soltada a proposito, esperando otra ventana.
+    held: bool,
+}
+
+impl Sink {
+    fn new(ch: Channel<TermEvent>) -> Arc<Mutex<Sink>> {
+        Arc::new(Mutex::new(Sink { ch: Some(ch), backlog: VecDeque::new(), held: false }))
+    }
+
+    /// Devuelve false si la ventana se cerro (y nadie la esta esperando): hay que cortar.
+    fn push(&mut self, data: &[u8]) -> bool {
+        self.backlog.extend(data);
+        let extra = self.backlog.len().saturating_sub(BACKLOG);
+        self.backlog.drain(..extra);
+        match &self.ch {
+            Some(ch) => {
+                if ch.send(TermEvent::Data { b64: B64.encode(data) }).is_ok() {
+                    true
+                } else {
+                    self.ch = None;
+                    self.held
+                }
+            }
+            None => self.held,
+        }
+    }
+
+    fn exit(&mut self, code: Option<u32>) {
+        if let Some(ch) = &self.ch {
+            let _ = ch.send(TermEvent::Exit { code });
+        }
+    }
+}
+
+struct Live {
+    session: Session,
+    sink: Arc<Mutex<Sink>>,
+}
+
 #[derive(Default)]
 pub struct Terms {
-    map: Arc<Mutex<HashMap<u32, Session>>>,
+    map: Arc<Mutex<HashMap<u32, Live>>>,
     next: AtomicU32,
 }
 
 impl Terms {
-    fn add(&self, s: Session) -> u32 {
+    fn add(&self, session: Session, sink: Arc<Mutex<Sink>>) -> u32 {
         let id = self.next.fetch_add(1, Ordering::Relaxed) + 1;
-        self.map.lock().unwrap().insert(id, s);
+        self.map.lock().unwrap().insert(id, Live { session, sink });
         id
     }
 }
@@ -62,7 +110,8 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
     let conn = b.connection(&h).await?;
     let ch = ethereon_core::ssh::open_shell(&conn, cols, rows).await.map_err(|e| Error::Invalid(format!("ssh error: {e}")))?;
     let (mut read, write) = ch.split();
-    let id = s.terms.add(Session::Ssh(Arc::new(write)));
+    let sink = Sink::new(on_event);
+    let id = s.terms.add(Session::Ssh(Arc::new(write)), sink.clone());
     b.audit_log(Entry {
         device: "ui".into(),
         host: host.clone(),
@@ -86,11 +135,11 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
                 ChannelMsg::Close | ChannelMsg::Eof => break,
                 _ => continue,
             };
-            if on_event.send(TermEvent::Data { b64: B64.encode(&data[..]) }).is_err() {
+            if !sink.lock().unwrap().push(&data[..]) {
                 break; // la ventana ya no esta
             }
         }
-        let _ = on_event.send(TermEvent::Exit { code });
+        sink.lock().unwrap().exit(code);
         map.lock().unwrap().remove(&id);
     });
     Ok(id)
@@ -177,7 +226,8 @@ pub fn term_open_local(
     let mut reader = pty.master.try_clone_reader().map_err(pty_err)?;
     let writer = pty.master.take_writer().map_err(pty_err)?;
     let local = Arc::new(Mutex::new(Local { master: pty.master, writer, child }));
-    let id = s.terms.add(Session::Local(local.clone()));
+    let sink = Sink::new(on_event);
+    let id = s.terms.add(Session::Local(local.clone()), sink.clone());
 
     // Leer del PTY bloquea: va en un hilo propio.
     let map = s.terms.map.clone();
@@ -187,7 +237,7 @@ pub fn term_open_local(
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    if on_event.send(TermEvent::Data { b64: B64.encode(&buf[..n]) }).is_err() {
+                    if !sink.lock().unwrap().push(&buf[..n]) {
                         let _ = local.lock().unwrap().child.kill();
                         break;
                     }
@@ -195,7 +245,7 @@ pub fn term_open_local(
             }
         }
         let code = local.lock().unwrap().child.try_wait().ok().flatten().map(|st| st.exit_code());
-        let _ = on_event.send(TermEvent::Exit { code });
+        sink.lock().unwrap().exit(code);
         map.lock().unwrap().remove(&id);
     });
     Ok(id)
@@ -277,7 +327,56 @@ fn pty_err(e: impl std::fmt::Display) -> Error {
 // ---- comunes
 
 fn get(s: &State<AppState>, id: u32) -> Result<Session, Error> {
-    s.terms.map.lock().unwrap().get(&id).cloned().ok_or(Error::NotFound("terminal session".into()))
+    s.terms.map.lock().unwrap().get(&id).map(|e| e.session.clone()).ok_or(Error::NotFound("terminal session".into()))
+}
+
+fn close_session(session: Session) {
+    match session {
+        Session::Ssh(w) => {
+            tauri::async_runtime::spawn(async move {
+                let _ = w.close().await;
+            });
+        }
+        Session::Local(l) => {
+            let _ = l.lock().unwrap().child.kill();
+        }
+    }
+}
+
+/// La ventana que la tenia la suelta para pasarla a otra. Si en 30 s nadie la toma, se
+/// cierra (por ejemplo si la ventana nueva no llego a abrirse).
+#[tauri::command]
+pub fn term_detach(s: State<'_, AppState>, id: u32) -> Result<(), Error> {
+    let sink = s.terms.map.lock().unwrap().get(&id).map(|e| e.sink.clone()).ok_or(Error::NotFound("terminal session".into()))?;
+    {
+        let mut k = sink.lock().unwrap();
+        k.held = true;
+        k.ch = None;
+    }
+    let map = s.terms.map.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+        if sink.lock().unwrap().held {
+            if let Some(e) = map.lock().unwrap().remove(&id) {
+                close_session(e.session);
+            }
+        }
+    });
+    Ok(())
+}
+
+/// Otra ventana toma la terminal: primero recibe lo ultimo que paso y despues sigue en vivo.
+#[tauri::command]
+pub fn term_attach(s: State<'_, AppState>, id: u32, on_event: Channel<TermEvent>) -> Result<(), Error> {
+    let sink = s.terms.map.lock().unwrap().get(&id).map(|e| e.sink.clone()).ok_or(Error::NotFound("terminal session".into()))?;
+    let mut k = sink.lock().unwrap();
+    let back: Vec<u8> = k.backlog.iter().copied().collect();
+    for chunk in back.chunks(64 * 1024) {
+        let _ = on_event.send(TermEvent::Data { b64: B64.encode(chunk) });
+    }
+    k.ch = Some(on_event);
+    k.held = false;
+    Ok(())
 }
 
 #[tauri::command]
@@ -306,17 +405,8 @@ pub async fn term_resize(s: State<'_, AppState>, id: u32, cols: u32, rows: u32) 
 
 #[tauri::command]
 pub async fn term_close(s: State<'_, AppState>, id: u32) -> Result<(), Error> {
-    let removed = s.terms.map.lock().unwrap().remove(&id);
-    match removed {
-        Some(Session::Ssh(w)) => {
-            tauri::async_runtime::spawn(async move {
-                let _ = w.close().await;
-            });
-        }
-        Some(Session::Local(l)) => {
-            let _ = l.lock().unwrap().child.kill();
-        }
-        None => {}
+    if let Some(e) = s.terms.map.lock().unwrap().remove(&id) {
+        close_session(e.session);
     }
     Ok(())
 }

@@ -2,7 +2,7 @@
 // los de copiar y pegar de la terminal los maneja TermPane.
 import { api } from "./api";
 import { comboOf, matches, prefs } from "./prefs.svelte";
-import { app, closeTerminal, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
+import { app, closeMember, closeTerminal, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
 import { cssVar } from "./themes";
 
 function zoom(d: number) {
@@ -40,7 +40,9 @@ function tabCount() {
 /** Ctrl R: refresca la pestaña actual. Si es una terminal conectada, la tecla es de la shell. */
 function refreshTab(e: KeyboardEvent): boolean {
   if (app.view === "terminal") {
-    const t = app.terms.find((x) => x.key === app.activeTerm);
+    const top = app.terms.find((x) => x.key === app.activeTerm);
+    // En una pestaña de grupo, cuenta la terminal elegida de la lista.
+    const t = top?.members ? top.members.find((m) => m.key === top.activeMember) : top;
     if (!t) return true;
     if (!t.sftp && t.alive && inTerminal(e)) return false; // la shell la usa (buscar en el historial)
     window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: t.key }));
@@ -88,8 +90,12 @@ function onKey(e: KeyboardEvent) {
   else if (matches(e, "zoomOut") && app.view === "terminal") zoom(-1);
   else if (matches(e, "zoomReset") && app.view === "terminal") zoom(0);
   else if (matches(e, "closeTabAnywhere") || (matches(e, "closeTab") && !(term && prefs.term.ctrlWToShell))) {
-    if (app.view === "terminal" && app.activeTerm) closeTerminal(app.activeTerm);
-    else handled = false;
+    if (app.view === "terminal" && app.activeTerm) {
+      // En una pestaña de grupo se cierra la terminal elegida, no todo el grupo.
+      const top = app.terms.find((x) => x.key === app.activeTerm);
+      if (top?.members && top.activeMember) closeMember(top, top.activeMember);
+      else closeTerminal(app.activeTerm);
+    } else handled = false;
   } else if (matches(e, "nextTab")) goToTab((currentTabIndex() + 1) % tabCount());
   else if (matches(e, "prevTab")) goToTab((currentTabIndex() + tabCount() - 1) % tabCount());
   else if (e.ctrlKey && !e.shiftKey && !e.altKey && /^Digit[1-9]$/.test(e.code))

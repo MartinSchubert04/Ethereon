@@ -173,6 +173,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec!["--hidden"])))
+        .manage(window::PendingTabs::default())
         .setup(|app| {
             let handle = app.handle().clone();
             let dir = data_dir(&handle);
@@ -241,6 +242,7 @@ pub fn run() {
             commands::touch,
             commands::snapshot,
             commands::host_save,
+            commands::host_move,
             commands::host_delete,
             commands::host_test,
             commands::host_trust,
@@ -277,6 +279,13 @@ pub fn run() {
             terminal::term_write,
             terminal::term_resize,
             terminal::term_close,
+            terminal::term_detach,
+            terminal::term_attach,
+            window::term_window_open,
+            window::term_window_take,
+            window::term_windows,
+            window::term_window_give,
+            window::main_window_show,
             terminal::term_open_local,
             terminal::local_shells,
             fonts::system_fonts,

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { FileInput, FolderInput, FolderOpen, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
+  import { FileInput, FolderInput, FolderOpen, Layers, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { importLocalSsh, importPath, importPick } from "../lib/importer";
   import HostForm from "../components/HostForm.svelte";
   import GroupForm from "../components/GroupForm.svelte";
   import { api, MODE_LABEL, userOf, type Group, type Host } from "../lib/api";
-  import { app, attempt, openSftp, openTerminal, toast } from "../lib/state.svelte";
+  import { app, attempt, openGroup, openSftp, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
   import { pop } from "../lib/motion";
   import { ask } from "../lib/confirm.svelte";
@@ -60,6 +60,10 @@
     started: boolean;
     /** Nombre del grupo de abajo; null = sin grupo; undefined = ninguno. */
     over: string | null | undefined;
+    /** Delante de que host cae (null = al final del grupo). */
+    before: string | null;
+    /** Donde se dibuja la linea que marca el lugar. */
+    mark: { name: string; side: "before" | "after" } | null;
   }
   let drag = $state<Drag | null>(null);
   let justDragged = false;
@@ -78,6 +82,8 @@
       w: r.width,
       started: false,
       over: undefined,
+      before: null,
+      mark: null,
     };
   }
 
@@ -90,6 +96,27 @@
     const under = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
     const zone = under?.closest<HTMLElement>("[data-drop]");
     drag.over = zone ? (zone.dataset.drop === "" ? null : zone.dataset.drop) : undefined;
+    // El lugar: delante o detras de la tarjeta de abajo, segun la mitad en la que esta el cursor.
+    // Las tarjetas no reciben el mouse mientras se arrastra: se busca por posicion.
+    const card = zone
+      ? [...zone.querySelectorAll<HTMLElement>(".host[data-name]")].find((c) => {
+          const r = c.getBoundingClientRect();
+          return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+        })
+      : undefined;
+    if (zone && card && card.dataset.name !== drag.host.name) {
+      const r = card.getBoundingClientRect();
+      const side = e.clientX < r.left + r.width / 2 ? "before" : "after";
+      const cards = [...zone.querySelectorAll<HTMLElement>(".host[data-name]")].filter((c) => c.dataset.name !== drag!.host.name);
+      const next = cards[cards.indexOf(card) + 1]?.dataset.name ?? null;
+      drag.mark = { name: card.dataset.name!, side };
+      drag.before = side === "before" ? card.dataset.name! : next;
+    } else if (zone && !card) {
+      drag.mark = null;
+      drag.before = null; // al final del grupo
+    } else if (!zone) {
+      drag.mark = null;
+    }
     // Cerca de los bordes, la pagina se desplaza sola.
     const page = document.querySelector(".hosts-page");
     if (page) {
@@ -105,18 +132,19 @@
     if (!d?.started) return;
     justDragged = true;
     setTimeout(() => (justDragged = false), 50);
-    if (d.over === undefined || d.over === (d.host.group ?? null)) return;
-    await moveHost(d.host, d.over);
+    if (d.over === undefined) return;
+    await moveHost(d.host, d.over, d.before);
   }
 
   const groupPolicy = (name: string | null) => app.snap?.groups.find((g) => g.name === name)?.policy;
 
-  async function moveHost(h: Host, to: string | null) {
+  async function moveHost(h: Host, to: string | null, place: string | null = null) {
+    const sameGroup = (h.group ?? null) === to;
     const before = h.policy?.mode ?? groupPolicy(h.group)?.mode ?? "approval";
     const after = h.policy?.mode ?? groupPolicy(to)?.mode ?? "approval";
     // Pasar a un modo donde el agente no pregunta se confirma.
     const rank = { off: 0, read_only: 1, approval: 2, guarded: 3, unrestricted: 4 } as const;
-    if (rank[after] > rank[before] && rank[after] >= 3) {
+    if (!sameGroup && rank[after] > rank[before] && rank[after] >= 3) {
       const ok = await ask({
         title: `Move ${h.name} to ${to ?? "No group"}?`,
         body:
@@ -128,8 +156,7 @@
       });
       if (!ok) return;
     }
-    const moved = { ...$state.snapshot(h), group: to } as Host;
-    await attempt(() => api.hostSave(moved, h.name), `${h.name} moved to ${to ?? "No group"}`);
+    await attempt(() => api.hostMove(h.name, to, place), sameGroup ? undefined : `${h.name} moved to ${to ?? "No group"}`);
   }
 
   function mode(h: Host) {
@@ -214,12 +241,24 @@
               <span class="chip" class:bad={g.group.policy.mode === "unrestricted"} class:warn={g.group.policy.mode === "guarded"}>{MODE_LABEL[g.group.policy.mode]}</span>
               <button class="icon-btn" aria-label="Edit group" onclick={() => (editingGroup = g.group)}><Pencil size={13} /></button>
             {/if}
+            {#if g.hosts.length > 1}
+              <button
+                class="open-all"
+                title="Open every host of {g.name ?? 'this list'} in one tab, with the list on the left"
+                onclick={() => openGroup(g.name ?? "No group", g.hosts.map((h) => h.name))}
+              >
+                <Layers size={13} /> Open all
+              </button>
+            {/if}
           </div>
           <div class="grid">
             {#each g.hosts as h, i (h.name)}
               <div
                 class="host card lift stagger"
                 class:dragging={drag?.started && drag.host.name === h.name}
+                class:ins-before={drag?.started && drag.mark?.name === h.name && drag.mark.side === "before"}
+                class:ins-after={drag?.started && drag.mark?.name === h.name && drag.mark.side === "after"}
+                data-name={h.name}
                 style="--i: {i}"
                 role="button"
                 tabindex="0"
@@ -228,7 +267,7 @@
                 onkeydown={(e) => e.key === "Enter" && openTerminal(h.name)}
               >
                 <div class="top">
-                  <span class="grip" title="Drag to another group"><GripVertical size={14} /></span>
+                  <span class="grip" title="Drag to reorder or to another group"><GripVertical size={14} /></span>
                   <div class="badge {h.env}"><Server size={16} /></div>
                   <div class="grow info">
                     <div class="name ellipsis">{h.name}</div>
@@ -307,6 +346,13 @@
   }
   .is-dragging .host {
     pointer-events: none;
+  }
+  /* La linea que marca donde cae la tarjeta que se arrastra. */
+  .host.ins-before {
+    box-shadow: inset 4px 0 0 var(--accent);
+  }
+  .host.ins-after {
+    box-shadow: inset -4px 0 0 var(--accent);
   }
   .host.dragging {
     opacity: 0.3;
@@ -411,6 +457,22 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .open-all {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 24px;
+    padding: 0 8px;
+    margin-left: 2px;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    color: var(--text-3);
+    transition: background 0.12s, color 0.12s;
+  }
+  .open-all:hover {
+    background: var(--hover);
+    color: var(--text);
   }
   .group-head .section-title {
     margin: 18px 0 10px;

@@ -156,6 +156,29 @@ fn valid_name(n: &str) -> R<()> {
     Ok(())
 }
 
+/// Mueve un host a un grupo (o a ninguno) y a una posicion: delante de `before`, o al final
+/// del grupo. El orden de la lista es el que se ve en Hosts.
+#[tauri::command]
+pub fn host_move(s: State<AppState>, name: String, group: Option<String>, before: Option<String>) -> R<()> {
+    s.broker.write(|d| {
+        if let Some(g) = &group {
+            if !d.groups.iter().any(|x| &x.name == g) {
+                return Err(invalid(format!("there is no group `{g}`")));
+            }
+        }
+        let i = d.hosts.iter().position(|h| h.name == name).ok_or_else(|| Error::NotFound(name.clone()))?;
+        let mut h = d.hosts.remove(i);
+        h.group = group.clone();
+        let at = before
+            .as_deref()
+            .filter(|b| *b != name)
+            .and_then(|b| d.hosts.iter().position(|x| x.name == b))
+            .unwrap_or_else(|| d.hosts.iter().rposition(|x| x.group == group).map(|j| j + 1).unwrap_or(d.hosts.len()));
+        d.hosts.insert(at, h);
+        Ok(())
+    })
+}
+
 #[tauri::command]
 pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<String>) -> R<()> {
     let mut host = host;

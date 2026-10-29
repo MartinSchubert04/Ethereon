@@ -27,6 +27,8 @@
   import Settings from "./views/Settings.svelte";
   import SftpPane from "./components/SftpPane.svelte";
   import TermPane from "./components/TermPane.svelte";
+  import WorkspacePane from "./components/WorkspacePane.svelte";
+  import { initWindows } from "./lib/windows";
   import Titlebar from "./components/Titlebar.svelte";
   import QuickOpen from "./components/QuickOpen.svelte";
   import Confirm from "./components/Confirm.svelte";
@@ -37,6 +39,8 @@
 
   start();
   installShortcuts();
+  // Pestañas que vuelven de otras ventanas.
+  initWindows();
 
   const nav: { id: View; label: string; icon: typeof Server }[] = [
     { id: "hosts", label: "Hosts", icon: Server },
@@ -144,7 +148,9 @@
         <!-- Las terminales quedan montadas para no perder la sesion al cambiar de vista. -->
         {#each app.terms as t (t.key)}
           <div class="term-wrap" class:shown={app.view === "terminal" && app.activeTerm === t.key}>
-            {#if t.sftp}
+            {#if t.members}
+              <WorkspacePane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+            {:else if t.sftp}
               <SftpPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
             {:else}
               <TermPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />

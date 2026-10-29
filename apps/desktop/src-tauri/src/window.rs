@@ -158,3 +158,72 @@ fn place_outer(w: &tauri::WebviewWindow, pos: Option<(i32, i32)>, size: Option<(
         }
     }
 }
+
+// ---- ventanas de terminales
+//
+// Una pestaña (o varias) se puede sacar a su propia ventana. La ventana nueva carga la misma
+// interfaz con `?window=term`, pide sus pestañas con `term_window_take` y toma las sesiones
+// con `term_attach`: las terminales siguen sin cortarse.
+
+static TERM_WINDOWS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Pestañas esperando a que su ventana termine de cargar, por etiqueta de ventana.
+#[derive(Default)]
+pub struct PendingTabs(pub Mutex<std::collections::HashMap<String, serde_json::Value>>);
+
+#[tauri::command]
+pub async fn term_window_open(
+    app: AppHandle,
+    pending: tauri::State<'_, PendingTabs>,
+    tabs: serde_json::Value,
+    x: Option<f64>,
+    y: Option<f64>,
+) -> Result<String, ethereon_core::Error> {
+    let n = TERM_WINDOWS.fetch_add(1, Ordering::SeqCst) + 1;
+    let label = format!("term-{n}");
+    pending.0.lock().unwrap().insert(label.clone(), tabs);
+    let mut b = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html?window=term".into()))
+        .title("Ethereon")
+        .inner_size(1000.0, 640.0)
+        .min_inner_size(560.0, 340.0)
+        .decorations(false)
+        .shadow(true);
+    // Donde se solto la pestaña (coordenadas de pantalla, logicas).
+    b = match (x, y) {
+        (Some(x), Some(y)) => b.position((x - 120.0).max(0.0), (y - 20.0).max(0.0)),
+        _ => b.center(),
+    };
+    b.build().map_err(|e| ethereon_core::Error::Invalid(format!("could not open the window: {e}")))?;
+    Ok(label)
+}
+
+#[tauri::command]
+pub fn term_window_take(window: tauri::WebviewWindow, pending: tauri::State<'_, PendingTabs>) -> Option<serde_json::Value> {
+    pending.0.lock().unwrap().remove(window.label())
+}
+
+/// Las ventanas abiertas a las que se puede mandar una pestaña.
+#[tauri::command]
+pub fn term_windows(app: AppHandle) -> Vec<String> {
+    let mut out: Vec<String> = app.webview_windows().keys().filter(|l| *l == "main" || l.starts_with("term-")).cloned().collect();
+    out.sort();
+    out
+}
+
+/// Deja pestañas para otra ventana (se suman a las que ya esperaban); despues se le avisa
+/// con el evento "take-tabs". La principal las toma tambien al abrirse.
+#[tauri::command]
+pub fn term_window_give(pending: tauri::State<'_, PendingTabs>, label: String, tabs: serde_json::Value) {
+    let mut p = pending.0.lock().unwrap();
+    let list = p.entry(label).or_insert_with(|| serde_json::Value::Array(vec![]));
+    if let (Some(l), Some(new)) = (list.as_array_mut(), tabs.as_array()) {
+        l.extend(new.iter().cloned());
+    }
+}
+
+/// Muestra la ventana principal (la crea si estaba cerrada en la bandeja).
+#[tauri::command]
+pub fn main_window_show(app: AppHandle) {
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || show_main(&h));
+}

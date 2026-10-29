@@ -131,6 +131,8 @@
   }
 
   async function connect() {
+    if (tab.attach) return attachSession();
+    tab.connecting = true;
     if (tab.local) return connectLocal();
     term.writeln(`\x1b[2mConnecting to ${tab.host}...\x1b[0m`);
     // La primera vez hay que confirmar la huella (y la de cada salto).
@@ -143,6 +145,8 @@
     try {
       fit.fit();
       id = await api.termOpen(tab.host, term.cols, term.rows, ch);
+      tab.sid = id;
+      tab.connecting = false;
       term.focus();
     } catch (e) {
       term.writeln(`\x1b[31m${errText(e)}\x1b[0m \x1b[2m${pretty(prefs.binds.refresh)} tries again\x1b[0m`);
@@ -167,9 +171,30 @@
     try {
       fit.fit();
       id = await api.termOpenLocal(tab.local!, term.cols, term.rows, tab.cwd ?? null, channel());
+      tab.sid = id;
+      tab.connecting = false;
       term.focus();
     } catch (e) {
       term.writeln(`\x1b[31m${errText(e)}\x1b[0m \x1b[2m${pretty(prefs.binds.refresh)} tries again\x1b[0m`);
+      setAlive(false);
+    }
+  }
+
+  // Viene de otra ventana: toma la sesion que esa ventana solto. Primero llega lo ultimo que
+  // se vio, despues sigue en vivo; al final se ajusta el tamaño a esta ventana.
+  async function attachSession() {
+    const sid = tab.attach!;
+    tab.attach = undefined;
+    try {
+      await api.termAttach(sid, channel());
+      id = sid;
+      tab.sid = sid;
+      setAlive(true);
+      fitNow();
+      api.termResize(id, term.cols, term.rows).catch(() => {});
+      term.focus();
+    } catch {
+      term.writeln("\x1b[2m[this session already ended]\x1b[0m");
       setAlive(false);
     }
   }
@@ -183,8 +208,8 @@
   }
 
   function setAlive(v: boolean) {
-    const t = app.terms.find((x) => x.key === tab.key);
-    if (t) t.alive = v;
+    tab.alive = v;
+    if (!v) tab.connecting = false;
   }
 
   onMount(() => {
@@ -255,7 +280,8 @@
     window.removeEventListener("themechange", onTheme);
     document.fonts.removeEventListener("loadingdone", refont);
     window.removeEventListener("ethereon:refresh", onRefresh);
-    if (id) api.termClose(id);
+    // Si se esta pasando a otra ventana, la sesion sigue: la toma la otra.
+    if (id && !tab.moving) api.termClose(id);
     term?.dispose();
   });
 </script>

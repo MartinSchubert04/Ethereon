@@ -16,7 +16,22 @@ export interface TermTab {
   sftp?: boolean;
   title: string;
   alive: boolean;
+  /** Conectando todavia (la lista de un grupo lo muestra). */
+  connecting?: boolean;
+  /** Id de la sesion en el backend, cuando ya conecto. */
+  sid?: number;
+  /** Viene de otra ventana: tomar esta sesion en vez de abrir una nueva. */
+  attach?: number;
+  /** Se esta pasando a otra ventana: al desmontarse no se cierra la sesion. */
+  moving?: boolean;
+  /** Pestaña de grupo (como Termius): sus terminales, en una lista a la izquierda. */
+  members?: TermTab[];
+  activeMember?: number;
 }
+
+let lastKey = Date.now();
+/** Claves unicas aunque se creen varias en el mismo milisegundo. */
+export const newKey = () => ++lastKey;
 
 export const app = $state({
   status: null as Status | null,
@@ -25,6 +40,8 @@ export const app = $state({
   alerts: [] as Alert[],
   view: "hosts" as View,
   terms: [] as TermTab[],
+  /** Ventana de terminales sacada de la principal: sin vault, solo pestañas. */
+  detached: new URLSearchParams(location.search).get("window") === "term",
   activeTerm: 0,
   /** Buscador de hosts de "New tab" (Ctrl T). */
   quickOpen: false,
@@ -134,7 +151,7 @@ export function start() {
 
 export function openTerminal(host: string, local?: string, cwd?: string) {
   rememberVaultView(app.view);
-  const key = Date.now();
+  const key = newKey();
   const n = app.terms.filter((t) => t.host === host).length;
   app.terms.push({ key, host, local, cwd, title: n ? `${host} (${n + 1})` : host, alive: true });
   app.activeTerm = key;
@@ -144,11 +161,33 @@ export function openTerminal(host: string, local?: string, cwd?: string) {
 export function openSftp(host: string) {
   rememberVaultView(app.view);
   const key = Date.now();
-  app.terms.push({ key, host, sftp: true, title: `${host} · SFTP`, alive: true });
+  app.terms.push({ key: newKey(), host, sftp: true, title: `${host} · SFTP`, alive: true });
   app.activeTerm = key;
   app.view = "terminal";
 }
 
+/** Abre todos los hosts de un grupo en una sola pestaña, con la lista a la izquierda. */
+export function openGroup(group: string, hosts: string[]) {
+  if (!hosts.length) return;
+  rememberVaultView(app.view);
+  const members: TermTab[] = hosts.map((h) => ({ key: newKey(), host: h, title: h, alive: true, connecting: true }));
+  const key = newKey();
+  app.terms.push({ key, host: group, title: group, alive: true, members, activeMember: members[0].key });
+  app.activeTerm = key;
+  app.view = "terminal";
+}
+
+/** Cierra una terminal de un grupo; si era la ultima, se cierra la pestaña. */
+export function closeMember(ws: TermTab, key: number) {
+  const list = ws.members ?? [];
+  const i = list.findIndex((m) => m.key === key);
+  if (i < 0) return;
+  list.splice(i, 1);
+  if (!list.length) return closeTerminal(ws.key);
+  if (ws.activeMember === key) ws.activeMember = list[Math.max(0, i - 1)].key;
+}
+
+/** Saca la pestaña de la lista (cerrandola o porque se va a otra ventana). */
 export function closeTerminal(key: number) {
   const i = app.terms.findIndex((t) => t.key === key);
   if (i < 0) return;
@@ -158,6 +197,8 @@ export function closeTerminal(key: number) {
     app.activeTerm = next?.key ?? 0;
     if (!next) app.view = lastVaultView;
   }
+  // Una ventana de terminales sin pestañas se cierra.
+  if (app.detached && !app.terms.length) import("@tauri-apps/api/window").then((w) => w.getCurrentWindow().close());
 }
 
 export function toggleSidebar() {
@@ -173,6 +214,7 @@ export function toggleSidebar() {
 
 /** Pestañas en orden: la del vault (0) y despues las terminales. */
 export function goToTab(index: number) {
+  if (app.detached && index <= 0) index = 1; // sin pestaña Vault
   if (index <= 0) {
     if (app.view === "terminal") app.view = lastVaultView;
     return;

@@ -194,6 +194,7 @@ export const api = {
   snapshot: () => invoke<Snapshot>("snapshot"),
   hostSave: (host: Host, original: string | null) => invoke<void>("host_save", { host, original }),
   hostDelete: (name: string) => invoke<void>("host_delete", { name }),
+  hostMove: (name: string, group: string | null, before: string | null) => invoke<void>("host_move", { name, group, before }),
   hostTest: (name: string) => invoke<SshError | null>("host_test", { name }),
   hostTrust: (addr: string, fingerprint: string, algorithm: string) =>
     invoke<void>("host_trust", { addr, fingerprint, algorithm }),
@@ -232,6 +233,10 @@ export const api = {
   termWrite: (id: number, data: string) => invoke<void>("term_write", { id, data }),
   termResize: (id: number, cols: number, rows: number) => invoke<void>("term_resize", { id, cols, rows }),
   termClose: (id: number) => invoke<void>("term_close", { id }),
+  /** Suelta la sesion para que otra ventana la tome. */
+  termDetach: (id: number) => invoke<void>("term_detach", { id }),
+  /** Toma una sesion que solto otra ventana (recibe primero lo ultimo que se vio). */
+  termAttach: (id: number, onEvent: Channel<TermEvent>) => invoke<void>("term_attach", { id, onEvent }),
   sftpOpen: (host: string) => invoke<{ id: number; home: string }>("sftp_open", { host }),
   sftpClose: (id: number) => invoke<void>("sftp_close", { id }),
   sftpList: (id: number, path: string) => invoke<FileEntry[]>("sftp_list", { id, path }),

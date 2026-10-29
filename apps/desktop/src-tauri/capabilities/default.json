@@ -1,12 +1,15 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Permisos de la ventana principal",
+  "description": "Permisos de la ventana principal y de las ventanas de terminales",
   "windows": [
-    "main"
+    "main",
+    "term-*"
   ],
   "permissions": [
     "core:default",
+    "core:window:allow-set-focus",
+    "core:window:allow-show",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",

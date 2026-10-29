@@ -36,6 +36,27 @@ avisa y queda la anterior. Ahí mismo se elige dónde se abre la carpeta:
 La app nunca se recarga: `F5`, `Ctrl R` y `Ctrl Shift R` no cierran las pestañas como en un
 navegador.
 
+## Pestañas y ventanas
+
+- **Reordenar:** arrastrar una pestaña sobre otra.
+- **Sacarla a su propia ventana:** arrastrarla fuera de la barra (hacia abajo o fuera de la
+  ventana) y soltarla; la ventana nueva aparece donde se suelta. También con clic derecho →
+  **Move to new window**.
+- **Pasarla a otra ventana o volverla a la principal:** clic derecho → **Move to …**. Una ventana
+  de terminales puede tener varias pestañas, y se cierra sola cuando se queda sin ninguna.
+- La sesión no se corta al mudarse: la terminal sigue siendo la misma, con lo que se veía.
+  (Las de SFTP se vuelven a abrir en la otra ventana.)
+
+## Grupos
+
+- **Open all** (en el título de cada grupo de Hosts) abre todos sus hosts en una sola pestaña,
+  como Termius: a la izquierda la lista "Terminals" con el estado de cada una (Connecting,
+  Connected, Disconnected) y a la derecha la elegida.
+- En esa lista: clic o `↑` `↓` para cambiar, `×` o clic del medio para cerrar una.
+  `Ctrl Shift W` cierra solo la terminal elegida; con la última se cierra la pestaña.
+- **Reordenar hosts:** arrastrar la tarjeta; una línea marca dónde cae. Soltarla en otro grupo la
+  mueve ahí (si el agente pasa a correr sin preguntar, pide confirmación).
+
 ## Buscador de pestaña nueva (`Ctrl T`)
 
 | Atajo | Qué hace |
