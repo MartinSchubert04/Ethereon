@@ -22,7 +22,7 @@ use crate::{vault, Error, Result};
 
 /// Como avisa el broker a quien lo aloja (la app de escritorio o el servidor).
 pub trait Notifier: Send + Sync {
-    /// Evento para la interfaz: "vault", "approvals", "alerts", "activity", "data".
+    /// Evento para la interfaz: "vault", "approvals", "alerts", "activity", "data", "connlog".
     fn event(&self, name: &str, payload: serde_json::Value);
     /// Notificacion del sistema (escritorio).
     fn notify(&self, title: &str, body: &str);
@@ -614,9 +614,11 @@ impl Broker {
             pool.remove(&h.name);
         }
         let hops = self.hops(h)?;
-        let conn = match ssh::connect(&hops).await {
+        let log = self.conn_log(&h.name);
+        let conn = match ssh::connect(&hops, &log).await {
             Ok(c) => Arc::new(c),
             Err(e) => {
+                log(e.to_string());
                 if matches!(e, SshError::HostKeyUnknown { .. } | SshError::HostKeyChanged { .. }) {
                     self.raise_alert(e.clone());
                 }
@@ -672,7 +674,23 @@ impl Broker {
         self.touch_ui();
         let h = self.read(|d| d.hosts.iter().find(|x| x.name == name).cloned())?.ok_or(Error::NotFound(name.into()))?;
         let hops = self.hops(&h)?;
-        Ok(ssh::probe(&hops).await?)
+        let log = self.conn_log(&h.name);
+        let res = ssh::probe(&hops, &log).await;
+        match &res {
+            Ok(Some(e)) | Err(e) => log(e.to_string()),
+            Ok(None) => {}
+        }
+        Ok(res?)
+    }
+
+    /// Los pasos de una conexion a `host` van a la interfaz (evento "connlog"), que los muestra
+    /// en la terminal que esta conectando. Solo a la interfaz: el agente nunca los ve.
+    fn conn_log(&self, host: &str) -> ssh::Log {
+        let notifier = self.notifier.clone();
+        let host = host.to_string();
+        Arc::new(move |line: String| {
+            notifier.event("connlog", serde_json::json!({ "host": host, "line": line, "ts": now() }));
+        })
     }
 
     async fn exec(&self, h: &Host, command: &str, sudo: bool, pol: &Policy, _s: &Settings) -> Result<(RunResult, String, String)> {

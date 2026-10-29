@@ -244,6 +244,29 @@ pub async fn host_test(s: State<'_, AppState>, name: String) -> R<Option<ethereo
     s.broker.test_host(&name).await
 }
 
+/// Abre un link en el navegador (por ejemplo, el que manda Tailscale SSH para autorizar un
+/// login). Solo https, para que no sirva para lanzar otra cosa.
+#[tauri::command]
+pub fn open_link(url: String) -> R<()> {
+    let ok = url.starts_with("https://") && !url.chars().any(|c| c.is_whitespace() || c == '"' || c.is_control());
+    if !ok {
+        return Err(Error::Invalid("only https links can be opened".into()));
+    }
+    #[cfg(windows)]
+    let mut cmd = std::process::Command::new("rundll32");
+    #[cfg(windows)]
+    cmd.args(["url.dll,FileProtocolHandler", &url]);
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "macos")]
+    cmd.arg(&url);
+    #[cfg(not(any(windows, target_os = "macos")))]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(not(any(windows, target_os = "macos")))]
+    cmd.arg(&url);
+    cmd.spawn().map(|_| ()).map_err(|e| Error::Invalid(format!("could not open the browser: {e}")))
+}
+
 #[tauri::command]
 pub async fn host_trust(s: State<'_, AppState>, addr: String, fingerprint: String, algorithm: String) -> R<()> {
     s.broker.trust_host_key(&addr, &fingerprint, &algorithm).await

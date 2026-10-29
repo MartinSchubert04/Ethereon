@@ -2,8 +2,12 @@
   // Encima de una terminal caida o conectando, como Termius: el camino de la conexion en
   // nodos (esta PC, los saltos, el host) unidos por una linea. Conectando, la linea avanza;
   // caida, el tramo final queda cortado en rojo y hay un boton para reintentar.
-  import { Monitor, RotateCw, Server, SquareTerminal } from "@lucide/svelte";
-  import { app, type TermTab } from "../lib/state.svelte";
+  // La flechita despliega el registro de la conexion: que paso, y lo que dijo el servidor
+  // (Tailscale SSH manda ahi el link para autorizar el login y espera hasta que se abra).
+  import { ChevronDown, Monitor, RotateCw, Server, SquareTerminal } from "@lucide/svelte";
+  import { slide } from "svelte/transition";
+  import { api } from "../lib/api";
+  import { app, toast, type TermTab } from "../lib/state.svelte";
   import { pretty, prefs } from "../lib/prefs.svelte";
   import { fadeQuick } from "../lib/motion";
 
@@ -31,6 +35,37 @@
     const at = nodes.findIndex((n, k) => k > 0 && n.name === m.failedAt);
     return at > 0 ? at : nodes.length - 1;
   });
+
+  // El registro solo es de SSH (una shell local no lo tiene).
+  const lines = $derived(m.local ? [] : (app.connLogs[m.host] ?? []));
+  const hasLog = $derived(!m.local);
+  let open = $state(false);
+  let box: HTMLDivElement | undefined = $state();
+
+  // Si el servidor dice algo mientras conecta (un link para autorizar), se abre solo.
+  let told = 0;
+  $effect(() => {
+    const n = lines.filter((l) => l.line.startsWith("Server ")).length;
+    if (n > told && !dead) open = true;
+    told = n;
+  });
+
+  // Siempre mostrando lo ultimo.
+  $effect(() => {
+    void lines.length;
+    if (box) box.scrollTop = box.scrollHeight;
+  });
+
+  const time = (ts: string) => new Date(ts).toLocaleTimeString([], { hour12: false });
+
+  /** Corta una linea en texto y links https, para poder abrirlos. */
+  function parts(line: string) {
+    return line.split(/(https:\/\/[^\s"'<>]+[^\s"'<>.,;:)\]])/).map((text, i) => ({ text, url: i % 2 === 1 }));
+  }
+
+  function openLink(url: string) {
+    api.openLink(url).catch((e) => toast(String(e), true));
+  }
 </script>
 
 {#if shown}
@@ -58,11 +93,49 @@
     {#if dead && m.error}
       <div class="why">{m.error}</div>
     {/if}
-    {#if dead}
-      <button class="retry" onclick={onretry}>
-        <RotateCw size={13} />{m.local ? "Restart" : "Retry"}
-        <span class="key">{pretty(prefs.binds.refresh)}</span>
-      </button>
+    {#if dead || hasLog}
+      <div class="actions">
+        {#if dead}
+          <button class="retry" onclick={onretry}>
+            <RotateCw size={13} />{m.local ? "Restart" : "Retry"}
+            <span class="key">{pretty(prefs.binds.refresh)}</span>
+          </button>
+        {/if}
+        {#if hasLog}
+          <button
+            class="logs"
+            class:open
+            class:bare={dead}
+            aria-expanded={open}
+            title={open ? "Hide logs" : "Show logs"}
+            aria-label={open ? "Hide logs" : "Show logs"}
+            onclick={() => (open = !open)}
+          >
+            {#if !dead}{open ? "Hide logs" : "Show logs"}{/if}
+            <span class="chev"><ChevronDown size={14} /></span>
+          </button>
+        {/if}
+      </div>
+    {/if}
+    {#if hasLog && open}
+      <div class="log" bind:this={box} transition:slide={{ duration: 160 }}>
+        {#each lines as l, i (i)}
+          <div class="row">
+            <span class="t">{time(l.ts)}</span>
+            <span class="l"
+              >{#each parts(l.line) as p, j (j)}{#if p.url}<a
+                    href={p.text}
+                    onclick={(e) => {
+                      e.preventDefault();
+                      openLink(p.text);
+                    }}>{p.text}</a
+                  >{:else}{p.text}{/if}{/each}</span
+            >
+          </div>
+        {:else}
+          <div class="row empty">Nothing logged yet</div>
+        {/each}
+      </div>
     {/if}
   </div>
 {/if}
@@ -74,6 +147,8 @@
     z-index: 4;
     display: grid;
     place-content: center;
+    /* Una sola columna del ancho del panel: el registro no se sale en un mosaico chico. */
+    grid-template-columns: minmax(0, 100%);
     justify-items: center;
     gap: 14px;
     padding: 16px;
@@ -185,6 +260,79 @@
   .key {
     font: 10.5px var(--mono);
     color: var(--text-3);
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  /* Mas apagado que Retry: es para mirar, no la accion principal. */
+  .logs {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px 0 12px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-3);
+    font-size: 12px;
+    font-weight: 550;
+    transition:
+      color 0.15s,
+      border-color 0.15s;
+  }
+  .logs.bare {
+    width: 30px;
+    padding: 0;
+    justify-content: center;
+  }
+  .logs:hover,
+  .logs.open {
+    color: var(--text-2);
+    border-color: var(--line-strong);
+  }
+  .chev {
+    display: grid;
+    transition: transform 0.2s;
+  }
+  .logs.open .chev {
+    transform: rotate(180deg);
+  }
+  .log {
+    width: 560px;
+    max-width: 100%;
+    max-height: min(220px, 40vh);
+    overflow: auto;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--panel);
+    font: 11px/1.5 var(--mono);
+    color: var(--text-2);
+    text-align: left;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 10px;
+  }
+  .row.empty {
+    display: block;
+    color: var(--text-3);
+  }
+  .t {
+    color: var(--text-3);
+  }
+  .l {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .l a {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
   @keyframes march {
     to {

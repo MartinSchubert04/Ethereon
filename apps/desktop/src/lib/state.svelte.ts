@@ -49,6 +49,11 @@ let lastKey = Date.now();
 /** Claves unicas aunque se creen varias en el mismo milisegundo. */
 export const newKey = () => ++lastKey;
 
+export interface ConnLine {
+  ts: string;
+  line: string;
+}
+
 export const app = $state({
   status: null as Status | null,
   snap: null as Snapshot | null,
@@ -73,6 +78,8 @@ export const app = $state({
   /** Ctrl N pide un formulario nuevo; la vista que corresponde lo abre y lo limpia. */
   pendingNew: null as "host" | "credential" | null,
   update: null as UpdateInfo | null,
+  /** Los pasos de la ultima conexion a cada host (evento "connlog"), para "Show logs". */
+  connLogs: {} as Record<string, ConnLine[]>,
   toasts: [] as { id: number; text: string; bad: boolean }[],
 });
 
@@ -143,6 +150,12 @@ export function start() {
   });
   listen<Alert[]>("alerts", (e) => {
     app.alerts = e.payload;
+  });
+  listen<ConnLine & { host: string }>("connlog", (e) => {
+    const { host, ts, line } = e.payload;
+    const log = (app.connLogs[host] ??= []);
+    log.push({ ts, line });
+    if (log.length > 200) log.splice(0, log.length - 200);
   });
   // El atajo global (Ctrl Shift Alt T) con una carpeta del Explorador activa.
   listen("open-here", () => takeOpenHere());

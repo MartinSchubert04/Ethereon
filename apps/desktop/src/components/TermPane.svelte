@@ -172,6 +172,8 @@
     live.me().error = undefined;
     live.me().failedAt = undefined;
     if (live.me().local) return connectLocal();
+    // Registro nuevo para "Show logs": el de la conexion anterior ya no sirve.
+    app.connLogs[live.me().host] = [];
     term.writeln(`\x1b[2mConnecting to ${live.me().host}...\x1b[0m`);
     // La primera vez hay que confirmar la huella (y la de cada salto).
     const fail = { text: "", at: undefined as string | undefined };

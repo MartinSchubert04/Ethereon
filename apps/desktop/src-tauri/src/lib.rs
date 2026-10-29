@@ -245,6 +245,7 @@ pub fn run() {
             commands::host_move,
             commands::host_delete,
             commands::host_test,
+            commands::open_link,
             commands::host_trust,
             commands::cred_save,
             commands::cred_delete,

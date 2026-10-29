@@ -1,5 +1,6 @@
 //! Conexiones SSH: saltos por bastion, verificacion de la clave del host, login y
-//! ejecucion de comandos con limites de tiempo y de tamano.
+//! ejecucion de comandos con limites de tiempo y de tamano. Cada paso de la conexion (y lo
+//! que diga el servidor al loguear) va a un registro que solo ve la persona.
 
 use russh::client::{self, Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::{decode_secret_key, Certificate, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
@@ -43,9 +44,20 @@ pub enum SshError {
 
 type Seen = Arc<Mutex<Option<(String, String)>>>;
 
+/// Donde va cada paso de una conexion, para que la persona vea en que quedo (por ejemplo,
+/// el link que manda Tailscale SSH para autorizar el login). Solo para la interfaz: lleva
+/// direcciones y lo que diga el servidor, nunca tiene que llegar al agente.
+pub type Log = Arc<dyn Fn(String) + Send + Sync>;
+
+/// Un registro que no va a ningun lado.
+pub fn no_log() -> Log {
+    Arc::new(|_| {})
+}
+
 pub struct Client {
     expected: Option<String>,
     seen: Seen,
+    log: Log,
 }
 
 pub fn fingerprint(key: &PublicKey) -> String {
@@ -62,8 +74,23 @@ impl client::Handler for Client {
         };
         let fp = fingerprint(&key);
         let ok = self.expected.as_deref() == Some(fp.as_str());
+        (self.log)(match &self.expected {
+            _ if ok => format!("Host key {fp} matches"),
+            None => format!("Host key {fp} is not confirmed yet"),
+            Some(exp) => format!("Host key changed: expected {exp}, got {fp}"),
+        });
         *self.seen.lock().unwrap() = Some((fp, key.algorithm().to_string()));
         Ok(ok)
+    }
+
+    // El mensaje que el servidor muestra antes del login. Tailscale SSH en modo "check" manda
+    // aca el link para autorizar, y no deja entrar hasta que alguien lo abre.
+    async fn auth_banner(&mut self, banner: &str, _: &mut client::Session) -> Result<(), Self::Error> {
+        let text = banner.trim();
+        if !text.is_empty() {
+            (self.log)(format!("Server says:\n{text}"));
+        }
+        Ok(())
     }
 }
 
@@ -97,13 +124,22 @@ fn config() -> Arc<client::Config> {
 }
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// El login puede quedar esperando a una persona (Tailscale SSH en modo "check" no contesta
+/// hasta que alguien abre su link), asi que tiene su propio limite, mas largo.
+const AUTH_TIMEOUT: Duration = Duration::from_secs(120);
+/// Desde cuando se avisa en el registro que el login sigue esperando.
+const AUTH_SLOW: Duration = Duration::from_secs(4);
 
-pub async fn connect(hops: &[Hop]) -> Result<Conn, SshError> {
+pub async fn connect(hops: &[Hop], log: &Log) -> Result<Conn, SshError> {
     let mut handles: Vec<Handle<Client>> = Vec::new();
-    for hop in hops {
+    for (i, hop) in hops.iter().enumerate() {
         let seen: Seen = Arc::new(Mutex::new(None));
-        let handler = Client { expected: hop.expected.clone(), seen: seen.clone() };
+        let handler = Client { expected: hop.expected.clone(), seen: seen.clone(), log: log.clone() };
         let conn_err = |d: String| SshError::Connect { host: hop.name.clone(), detail: d };
+        log(match i {
+            0 => format!("Connecting to {} at {}", hop.name, hop.addr()),
+            _ => format!("Connecting to {} at {} through {}", hop.name, hop.addr(), hops[i - 1].name),
+        });
         let fut = async {
             match handles.last() {
                 None => client::connect(config(), (hop.hostname.as_str(), hop.port), handler).await,
@@ -135,28 +171,53 @@ pub async fn connect(hops: &[Hop]) -> Result<Conn, SshError> {
                 return Err(conn_err(e.to_string()));
             }
         };
-        auth(&mut h, hop).await?;
+        log(format!("Logging in as {}", hop.user));
+        {
+            let login = auth(&mut h, hop, log);
+            tokio::pin!(login);
+            let done = tokio::select! {
+                r = &mut login => Some(r),
+                _ = tokio::time::sleep(AUTH_SLOW) => None,
+            };
+            match done {
+                Some(r) => r,
+                None => {
+                    log("Still waiting for the server to accept the login".into());
+                    tokio::time::timeout(AUTH_TIMEOUT - AUTH_SLOW, login).await.unwrap_or_else(|_| {
+                        Err(SshError::Auth {
+                            host: hop.name.clone(),
+                            user: hop.user.clone(),
+                            detail: "the server never answered the login".into(),
+                        })
+                    })
+                }
+            }
+        }?;
+        log(format!("Logged in to {}", hop.name));
         handles.push(h);
     }
     Ok(Conn { handles, last_used: Mutex::new(Instant::now()) })
 }
 
 /// Solo la huella del primer salto que todavia no esta confirmado (para mostrarla).
-pub async fn probe(hops: &[Hop]) -> Result<Option<SshError>, SshError> {
-    match connect(hops).await {
+pub async fn probe(hops: &[Hop], log: &Log) -> Result<Option<SshError>, SshError> {
+    match connect(hops, log).await {
         Ok(_) => Ok(None),
         Err(e @ (SshError::HostKeyUnknown { .. } | SshError::HostKeyChanged { .. })) => Ok(Some(e)),
         Err(e) => Err(e),
     }
 }
 
-async fn auth(h: &mut Handle<Client>, hop: &Hop) -> Result<(), SshError> {
+async fn auth(h: &mut Handle<Client>, hop: &Hop, log: &Log) -> Result<(), SshError> {
     let fail = |d: String| SshError::Auth { host: hop.name.clone(), user: hop.user.clone(), detail: d };
     let c = &hop.cred;
     let ok = match c.kind {
         CredentialKind::Password => {
             let r = h.authenticate_password(&hop.user, c.secret.as_str()).await.map_err(|e| fail(e.to_string()))?;
-            r.success() || keyboard_interactive(h, &hop.user, &c.secret).await.map_err(|e| fail(e.to_string()))?
+            r.success() || {
+                log("Password not accepted, trying keyboard-interactive".into());
+                keyboard_interactive(h, &hop.user, &c.secret, log).await.map_err(|e| fail(e.to_string()))?
+            }
         }
         CredentialKind::PrivateKey | CredentialKind::Certificate => {
             let pass = (!c.passphrase.is_empty()).then_some(c.passphrase.as_str());
@@ -181,13 +242,19 @@ async fn auth(h: &mut Handle<Client>, hop: &Hop) -> Result<(), SshError> {
     }
 }
 
-async fn keyboard_interactive(h: &mut Handle<Client>, user: &str, password: &str) -> Result<bool, russh::Error> {
+async fn keyboard_interactive(h: &mut Handle<Client>, user: &str, password: &str, log: &Log) -> Result<bool, russh::Error> {
     let mut r = h.authenticate_keyboard_interactive_start(user, None).await?;
     for _ in 0..5 {
         match r {
             KeyboardInteractiveAuthResponse::Success => return Ok(true),
             KeyboardInteractiveAuthResponse::Failure { .. } => return Ok(false),
-            KeyboardInteractiveAuthResponse::InfoRequest { prompts, .. } => {
+            KeyboardInteractiveAuthResponse::InfoRequest { name, instructions, prompts } => {
+                // Lo que pregunta el servidor (sin las respuestas, que son la contraseña).
+                let said: Vec<&str> =
+                    [name.trim(), instructions.trim()].into_iter().chain(prompts.iter().map(|p| p.prompt.trim())).filter(|s| !s.is_empty()).collect();
+                if !said.is_empty() {
+                    log(format!("Server asks:\n{}", said.join("\n")));
+                }
                 let answers = prompts.iter().map(|_| password.to_string()).collect();
                 r = h.authenticate_keyboard_interactive_respond(answers).await?;
             }

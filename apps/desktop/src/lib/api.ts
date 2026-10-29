@@ -196,6 +196,7 @@ export const api = {
   hostDelete: (name: string) => invoke<void>("host_delete", { name }),
   hostMove: (name: string, group: string | null, before: string | null) => invoke<void>("host_move", { name, group, before }),
   hostTest: (name: string) => invoke<SshError | null>("host_test", { name }),
+  openLink: (url: string) => invoke<void>("open_link", { url }),
   hostTrust: (addr: string, fingerprint: string, algorithm: string) =>
     invoke<void>("host_trust", { addr, fingerprint, algorithm }),
   credSave: (cred: CredInput) => invoke<void>("cred_save", { cred }),
