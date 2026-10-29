@@ -519,7 +519,7 @@ table.list tr.click:hover td {
 }
 
 /* Tooltip propio (lib/tooltip.ts): reemplaza al del navegador, que sale demasiado rapido. */
-.tip {
+.hover-tip {
   position: fixed;
   z-index: 200;
   max-width: 320px;
@@ -541,7 +541,7 @@ table.list tr.click:hover td {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .tip {
+  .hover-tip {
     animation: none;
   }
 }

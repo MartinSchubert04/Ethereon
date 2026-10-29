@@ -36,7 +36,7 @@ function show(el: HTMLElement) {
   if (!text || !el.isConnected) return;
   hide();
   tip = document.createElement("div");
-  tip.className = "tip";
+  tip.className = "hover-tip";
   tip.setAttribute("role", "tooltip");
   tip.textContent = text;
   document.body.appendChild(tip);
