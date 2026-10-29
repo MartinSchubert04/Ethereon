@@ -3,6 +3,7 @@
   // la derecha la elegida. Todas quedan montadas, asi no se pierde ninguna sesion al cambiar.
   import { LoaderCircle, SquareTerminal, X } from "@lucide/svelte";
   import TermPane from "./TermPane.svelte";
+  import ConnState from "./ConnState.svelte";
   import { closeMember, type TermTab } from "../lib/state.svelte";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
@@ -54,6 +55,9 @@
     {#each members as m (m.key)}
       <div class="member" class:shown={m.key === tab.activeMember}>
         <TermPane tab={m} active={active && m.key === tab.activeMember} />
+        <div class="state">
+          <ConnState {m} onretry={() => window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: m.key }))} />
+        </div>
       </div>
     {/each}
   </div>
@@ -163,6 +167,16 @@
   }
   .member.shown {
     visibility: visible;
+  }
+  /* El estado de la conexion va sobre la tarjeta de la terminal (que tiene 12 px de margen). */
+  .state {
+    position: absolute;
+    inset: 0 12px 12px 0;
+    pointer-events: none;
+  }
+  .state :global(.conn) {
+    pointer-events: auto;
+    border-radius: var(--radius);
   }
   /* La terminal de adentro ya trae su margen de 12 px; a la izquierda lo da la lista. */
   .member :global(.pane) {

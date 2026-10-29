@@ -182,7 +182,7 @@ export type XferEvent =
   | { kind: "done" }
   | { kind: "error"; message: string };
 
-export type TermEvent = { kind: "data"; b64: string } | { kind: "exit"; code: number | null };
+export type TermEvent = { kind: "data"; b64: string } | { kind: "exit"; code: number | null } | { kind: "replayed" };
 
 export const api = {
   status: () => invoke<Status>("status"),

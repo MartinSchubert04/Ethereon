@@ -102,6 +102,21 @@ def ath(ink, deep, clay, clayhi, rule, umber, dim, tan, cream, amber, ahi, alo, 
     return v
 
 
+def nv(bg, panel, panel2, line, strong, text, t2, t3, accent, ink, danger, warn, ok, dev, ansi, light=False):
+    """Una paleta del tema Neovim: superficies, un acento y los 16 colores de la terminal."""
+    v = {
+        "--bg": bg, "--sidebar": bg, "--panel": panel, "--panel-2": panel2, "--line": line, "--line-strong": strong,
+        "--text": text, "--text-2": t2, "--text-3": t3, "--accent": accent, "--accent-ink": ink, "--primary-bg": accent,
+        "--danger": danger, "--warn": warn, "--ok": ok, "--env-prod": danger, "--env-test": warn, "--env-dev": dev,
+        "--term-bg": bg, "--term-fg": text, "--term-cursor": accent,
+        "--term-selection": f"color-mix(in srgb, {accent} 22%, transparent)",
+        "--term-ansi": " ".join(ansi),
+    }
+    if light:
+        v.update({"color-scheme": "light", "--hover": "rgba(0,0,0,.05)", "--pop-shadow": "0 16px 40px rgba(0,0,0,.14)"})
+    return v
+
+
 # La misma paleta Srcery "a la athanor" para los otros temas, con sus formas.
 SRCERY_DEFAULT = dark("#1c1b19", "#161513", "#22211e", "#2a2824", "#3c3a36", "#5c4c39", "#fce8c3", "#baa67f", "#918175",
                       "#fbb829", "#1c1b19", "#f75341", "#fbb829", "#fed06e", "#fbb829", "#baa67f", "rgba(251,184,41,.3)")
@@ -220,6 +235,39 @@ PALETTES = {
         ("orpiment", "Orpiment", ["#eddca8", "#c9b27a", "#7a4f06"],
          ath("#eddca8", "#d4bd80", "#f4e7bd", "#fbf2d6", "#c9b27a", "#c9b27a", "#6a5737", "#473922", "#241a0c",
              "#7a4f06", "#a3700f", "#553604", "#9a3522", light=True)),
+    ],
+    "neovim": [
+        ("gray", "Neovim", ["#0c0c0c", "#3a3a3a", "#d0d0d0"], {}),
+        # Violeta oscuro, como un tema de noche.
+        ("nightshade", "Nightshade", ["#0f0b16", "#3d3052", "#b794f6"],
+         nv("#0f0b16", "#16111f", "#1e1729", "#2a2138", "#3d3052", "#ddd3f0", "#a497bd", "#6f6489",
+            "#b794f6", "#0f0b16", "#f07891", "#e6c27a", "#9ccfa0", "#8fb2f5",
+            ["#1e1729", "#f07891", "#9ccfa0", "#e6c27a", "#8fb2f5", "#b794f6", "#7fd3dc", "#cfc4e4",
+             "#5a4d73", "#ff9bb0", "#b4e3b7", "#f2d59a", "#acc6fa", "#cdb2fa", "#9fe2e9", "#f1ecfa"])),
+        # Bordo, crema y ambar: el calor de Athanor, en Neovim.
+        ("oxblood", "Oxblood", ["#1c0c10", "#62293a", "#d4646e"],
+         nv("#1c0c10", "#251117", "#30161e", "#421d28", "#62293a", "#ecdccf", "#bfa594", "#8a7068",
+            "#d4646e", "#1c0c10", "#e5574f", "#e0a85a", "#b5b37a", "#c7967a",
+            ["#30161e", "#d4646e", "#b5b37a", "#e0a85a", "#a7899c", "#c47a9b", "#8fb0a6", "#dccbbd",
+             "#6b4048", "#ec8088", "#cbc994", "#f0c07a", "#c1a5b6", "#da97b4", "#a9c8bd", "#f6ebe1"])),
+        # Claro, papel con tinta gris oscura.
+        ("paper", "Paper", ["#f3f1ec", "#c4bfb3", "#3f3a35"],
+         nv("#f3f1ec", "#fbfaf7", "#ebe8e1", "#dcd8cf", "#c4bfb3", "#2a2826", "#5f5a53", "#8f897f",
+            "#3f3a35", "#f3f1ec", "#b4433f", "#9a6a12", "#4f7a3a", "#3b6aa0",
+            ["#2a2826", "#b4433f", "#4f7a3a", "#9a6a12", "#3b6aa0", "#7b4fa3", "#2f7f86", "#8f897f",
+             "#5f5a53", "#c95550", "#5f8f47", "#b27d1c", "#4a7db8", "#8f62b8", "#3b959d", "#2a2826"], light=True)),
+        # Verde musgo y arena (Everforest).
+        ("moss", "Moss", ["#121512", "#3b443b", "#a7c080"],
+         nv("#121512", "#181c18", "#1f241f", "#2a302a", "#3b443b", "#d3c6aa", "#a5a08a", "#737a6b",
+            "#a7c080", "#121512", "#e67e80", "#dbbc7f", "#a7c080", "#7fbbb3",
+            ["#1f241f", "#e67e80", "#a7c080", "#dbbc7f", "#7fbbb3", "#d699b6", "#83c092", "#d3c6aa",
+             "#4f5b4f", "#f09a9b", "#bdd49a", "#e8cd97", "#99cec7", "#e4b2ca", "#9dd3ab", "#efe6d0"])),
+        # Tinta azul y papel viejo (Kanagawa).
+        ("kanagawa", "Kanagawa", ["#16161d", "#3a3a4b", "#7e9cd8"],
+         nv("#16161d", "#1c1c24", "#22222c", "#2a2a37", "#3a3a4b", "#dcd7ba", "#a6a28c", "#727169",
+            "#7e9cd8", "#16161d", "#e46876", "#e6c384", "#98bb6c", "#7fb4ca",
+            ["#22222c", "#e46876", "#98bb6c", "#e6c384", "#7e9cd8", "#957fb8", "#7aa89f", "#c8c093",
+             "#54546d", "#ff7d8b", "#b0d084", "#f2d49c", "#9cb5e6", "#b19bd6", "#95c4bb", "#dcd7ba"])),
     ],
 }
 

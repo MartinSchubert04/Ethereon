@@ -324,5 +324,61 @@ export const PALETTES: Record<string, { id: string; name: string; swatch: string
         "#7a4f06"
       ]
     }
+  ],
+  "neovim": [
+    {
+      "id": "gray",
+      "name": "Neovim",
+      "swatch": [
+        "#0c0c0c",
+        "#3a3a3a",
+        "#d0d0d0"
+      ]
+    },
+    {
+      "id": "nightshade",
+      "name": "Nightshade",
+      "swatch": [
+        "#0f0b16",
+        "#3d3052",
+        "#b794f6"
+      ]
+    },
+    {
+      "id": "oxblood",
+      "name": "Oxblood",
+      "swatch": [
+        "#1c0c10",
+        "#62293a",
+        "#d4646e"
+      ]
+    },
+    {
+      "id": "paper",
+      "name": "Paper",
+      "swatch": [
+        "#f3f1ec",
+        "#c4bfb3",
+        "#3f3a35"
+      ]
+    },
+    {
+      "id": "moss",
+      "name": "Moss",
+      "swatch": [
+        "#121512",
+        "#3b443b",
+        "#a7c080"
+      ]
+    },
+    {
+      "id": "kanagawa",
+      "name": "Kanagawa",
+      "swatch": [
+        "#16161d",
+        "#3a3a4b",
+        "#7e9cd8"
+      ]
+    }
   ]
 };

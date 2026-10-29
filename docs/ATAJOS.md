@@ -47,6 +47,23 @@ navegador.
 - La sesión no se corta al mudarse: la terminal sigue siendo la misma, con lo que se veía.
   (Las de SFTP se vuelven a abrir en la otra ventana.)
 
+## Varias terminales en una pestaña (mosaico)
+
+- **Juntar:** arrastrar una pestaña hacia abajo, sobre una terminal, y soltarla sobre uno de sus
+  bordes (izquierda, derecha, arriba o abajo): ese espacio se parte en dos. Si la pestaña que
+  se arrastra es la que se ve, al bajar aparece la de al lado, como en el navegador. Una pestaña
+  que ya tiene varias terminales se suma entera.
+- **Ancho y alto:** arrastrar la separación entre dos terminales.
+- **Reacomodar:** arrastrar una terminal por su nombre (arriba a la izquierda, sobre el borde) a
+  otro costado de otra. **Volverla una pestaña sola:** soltarla sobre la barra de pestañas.
+- **Cerrar una:** la `×` de su borde, o `Ctrl Shift W` en la que tiene el foco.
+- Si una conexión se cae, las demás siguen. La caída muestra el camino (esta PC, los saltos, el
+  host) con el tramo cortado y un botón **Retry**. `Ctrl R` reintenta todas las caídas de la
+  pestaña y deja las conectadas como están; si no hay ninguna caída, `Ctrl R` es de la shell.
+- Mover terminales dentro de la ventana no reconecta nada: es la misma terminal, viva, en otro
+  lugar. Al angostarse, xterm reacomoda lo que ya estaba escrito (como cualquier terminal);
+  una imagen que había en ese historial puede quedar partida.
+
 ## Grupos
 
 - **Open all** (en el título de cada grupo de Hosts) abre todos sus hosts en una sola pestaña,

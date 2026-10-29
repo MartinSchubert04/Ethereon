@@ -7,7 +7,7 @@
   import { prompt } from "./lib/hostkey.svelte";
   import { confirmState } from "./lib/confirm.svelte";
   import Titlebar from "./components/Titlebar.svelte";
-  import TermPane from "./components/TermPane.svelte";
+  import TilePane from "./components/TilePane.svelte";
   import SftpPane from "./components/SftpPane.svelte";
   import WorkspacePane from "./components/WorkspacePane.svelte";
   import HostKeyPrompt from "./components/HostKeyPrompt.svelte";
@@ -26,12 +26,12 @@
   <div class="view">
     {#each app.terms as t (t.key)}
       <div class="term-wrap" class:shown={app.activeTerm === t.key}>
-        {#if t.members}
+        {#if t.members && !t.layout}
           <WorkspacePane tab={t} active={app.activeTerm === t.key} />
         {:else if t.sftp}
           <SftpPane tab={t} active={app.activeTerm === t.key} />
         {:else}
-          <TermPane tab={t} active={app.activeTerm === t.key} />
+          <TilePane tab={t} active={app.activeTerm === t.key} />
         {/if}
       </div>
     {/each}

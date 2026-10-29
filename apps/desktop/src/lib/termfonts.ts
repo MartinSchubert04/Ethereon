@@ -11,7 +11,7 @@ const NERD = '"Symbols Nerd Font Mono"';
 export const INCLUDED: { family: string; note: string }[] = [
   { family: "Geist Mono Variable", note: "Default, Warp, Poolsuite and Haze themes" },
   { family: "PxPlus IBM VGA 8x16", note: "Athanor theme" },
-  { family: "JetBrains Mono", note: "included" },
+  { family: "JetBrains Mono", note: "Neovim theme" },
   { family: "Fira Code", note: "included" },
   { family: "IBM Plex Mono", note: "included" },
   { family: "Source Code Pro", note: "included" },

@@ -18,16 +18,32 @@ export interface TermTab {
   alive: boolean;
   /** Conectando todavia (la lista de un grupo lo muestra). */
   connecting?: boolean;
+  /** Por que fallo la ultima conexion y en que host de la cadena (lo muestra ConnState). */
+  error?: string;
+  failedAt?: string;
   /** Id de la sesion en el backend, cuando ya conecto. */
   sid?: number;
   /** Viene de otra ventana: tomar esta sesion en vez de abrir una nueva. */
   attach?: number;
+  /** Viene de otro panel de esta ventana: tomar su terminal viva (clave de ese panel). */
+  adopt?: number;
+  /** Con `attach`: el tamaño que tenia, para repetir su historial igual antes de ajustarla. */
+  size?: { cols: number; rows: number };
   /** Se esta pasando a otra ventana: al desmontarse no se cierra la sesion. */
   moving?: boolean;
-  /** Pestaña de grupo (como Termius): sus terminales, en una lista a la izquierda. */
+  /** Pestaña de grupo (como Termius): sus terminales, en una lista a la izquierda. Con
+   *  `layout`, en cambio, van en mosaico (ver tiles.svelte.ts). */
   members?: TermTab[];
   activeMember?: number;
+  /** Como se reparten los paneles de una pestaña en mosaico. */
+  layout?: import("./tiles.svelte").Tile;
+  /** El panel con el foco, en mosaico. */
+  focus?: number;
 }
+
+/** Sesiones que se estan mudando (a otra ventana, pestaña o panel): al desmontarse su
+ *  terminal no se cierran, las toma la nueva. Por id de sesion, no por objeto. */
+export const leaving = new Set<number>();
 
 let lastKey = Date.now();
 /** Claves unicas aunque se creen varias en el mismo milisegundo. */

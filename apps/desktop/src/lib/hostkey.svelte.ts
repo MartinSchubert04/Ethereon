@@ -25,21 +25,33 @@ export async function confirmKey(error: KeyError): Promise<boolean> {
 }
 
 /** Prueba la conexion hasta que anda o la persona cancela. Devuelve si quedo lista. */
-export async function testHost(name: string, quiet = false): Promise<boolean> {
+/** `why`, si se pasa, recibe el motivo de la falla y el host de la cadena donde fallo. */
+export async function testHost(name: string, quiet = false, why?: (text: string, at?: string) => void): Promise<boolean> {
   for (let i = 0; i < 4; i++) {
     let res: SshError | null;
     try {
       res = await api.hostTest(name);
     } catch (e) {
       toast(String(e), true);
+      why?.(String(e));
       return false;
     }
     if (!res) {
       if (!quiet) toast(`${name}: connection OK`);
       return true;
     }
-    if (res.kind !== "host_key_unknown" && res.kind !== "host_key_changed") return false;
-    if (!(await confirmKey(res))) return false;
+    if (res.kind === "auth") {
+      why?.(`${res.user}@${res.host}: authentication failed (${res.detail})`, res.host);
+      return false;
+    }
+    if (res.kind === "connect") {
+      why?.(`${res.host}: ${res.detail}`, res.host);
+      return false;
+    }
+    if (!(await confirmKey(res))) {
+      why?.(`${res.host}: the host key was not accepted`, res.host);
+      return false;
+    }
   }
   return false;
 }

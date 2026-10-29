@@ -214,3 +214,47 @@
   --clay-glow: rgb(252 232 195 / 0.12);
   --clay-shade: rgb(0 0 0 / 0.4);
 }
+
+/* Neovim: negro casi puro, grises y un solo blanco para lo importante, como un Neovim con
+   statusline. Bordes finos, poco radio, todo en JetBrains Mono. --term-ansi da los 16
+   colores de la terminal (negro rojo verde amarillo azul magenta cian blanco, normales y
+   brillantes), asi los programas de la shell usan la misma paleta. */
+[data-theme="neovim"] {
+  color-scheme: dark;
+  --bg: #0c0c0c;
+  --bg-image: none;
+  --sidebar: #0c0c0c;
+  --panel: #131313;
+  --panel-2: #1b1b1b;
+  --hover: rgba(255, 255, 255, 0.05);
+  --blur: none;
+  --line: #262626;
+  --line-strong: #3a3a3a;
+  --border: 1px;
+  --text: #d4d4d4;
+  --text-2: #9a9a9a;
+  --text-3: #626262;
+  --accent: #d0d0d0;
+  --accent-ink: #0c0c0c;
+  --primary-bg: #d0d0d0;
+  --danger: #e06c75;
+  --warn: #d9bc6e;
+  --ok: #98c379;
+  --env-prod: #e06c75;
+  --env-test: #d9bc6e;
+  --env-dev: #7aa2c8;
+  --radius: 6px;
+  --radius-sm: 4px;
+  --card-shadow: none;
+  --pop-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+  --titlebar: transparent;
+  --font: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --display: var(--mono);
+  --term-font-size: 14px;
+  --term-bg: #0c0c0c;
+  --term-fg: #d4d4d4;
+  --term-cursor: #d0d0d0;
+  --term-selection: rgba(208, 208, 208, 0.18);
+  --term-ansi: #1b1b1b #d77c79 #98c379 #d9bc6e #7aa2c8 #a77fdc #5fb3c6 #c8c8c8 #5a5a5a #e8908c #b5d394 #ebcf86 #94b8dc #c09bf0 #7ec9d8 #f0f0f0;
+}

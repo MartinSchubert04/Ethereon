@@ -23,7 +23,8 @@ use crate::AppState;
 
 /// Una shell local: el lado "master" del PTY, por donde se escribe y se cambia el tamaño.
 struct Local {
-    master: Box<dyn MasterPty + Send>,
+    /// Se suelta cuando la shell termina: cerrar la ConPTY es lo que le avisa al lector.
+    master: Option<Box<dyn MasterPty + Send>>,
     writer: Box<dyn Write + Send>,
     child: Box<dyn Child + Send + Sync>,
 }
@@ -100,6 +101,9 @@ impl Terms {
 pub enum TermEvent {
     Data { b64: String },
     Exit { code: Option<u32> },
+    /// Termino de llegar lo que ya se habia visto (term_attach). Hasta aca, lo que la
+    /// terminal conteste a esas secuencias viejas no tiene que llegar a la shell.
+    Replayed,
 }
 
 #[tauri::command]
@@ -225,9 +229,30 @@ pub fn term_open_local(
     drop(pty.slave); // si no, el lector nunca ve el fin cuando la shell sale
     let mut reader = pty.master.try_clone_reader().map_err(pty_err)?;
     let writer = pty.master.take_writer().map_err(pty_err)?;
-    let local = Arc::new(Mutex::new(Local { master: pty.master, writer, child }));
+    let local = Arc::new(Mutex::new(Local { master: Some(pty.master), writer, child }));
     let sink = Sink::new(on_event);
     let id = s.terms.add(Session::Local(local.clone()), sink.clone());
+
+    // La ConPTY de Windows Terminal no cierra su salida cuando la shell termina (`exit`, o
+    // matarla al cerrar la pestaña): el lector se quedaria esperando para siempre y la
+    // terminal seguiria como conectada. Este hilo mira el proceso y, cuando termina, cierra
+    // la ConPTY; ahi el lector ve el fin y avisa. Se suelta fuera del candado: cerrarla
+    // espera a que el lector vacie lo que quedaba.
+    let watch = local.clone();
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_millis(250));
+        let done = {
+            let mut l = watch.lock().unwrap();
+            match l.child.try_wait() {
+                Ok(None) => None,
+                _ => Some(l.master.take()),
+            }
+        };
+        if let Some(master) = done {
+            drop(master);
+            break;
+        }
+    });
 
     // Leer del PTY bloquea: va en un hilo propio.
     let map = s.terms.map.clone();
@@ -374,6 +399,7 @@ pub fn term_attach(s: State<'_, AppState>, id: u32, on_event: Channel<TermEvent>
     for chunk in back.chunks(64 * 1024) {
         let _ = on_event.send(TermEvent::Data { b64: B64.encode(chunk) });
     }
+    let _ = on_event.send(TermEvent::Replayed);
     k.ch = Some(on_event);
     k.held = false;
     Ok(())
@@ -394,12 +420,12 @@ pub async fn term_write(s: State<'_, AppState>, id: u32, data: String) -> Result
 pub async fn term_resize(s: State<'_, AppState>, id: u32, cols: u32, rows: u32) -> Result<(), Error> {
     match get(&s, id)? {
         Session::Ssh(w) => w.window_change(cols, rows, 0, 0).await.map_err(|e| Error::Invalid(e.to_string())),
-        Session::Local(l) => l
-            .lock()
-            .unwrap()
-            .master
-            .resize(PtySize { rows: rows as u16, cols: cols as u16, pixel_width: 0, pixel_height: 0 })
-            .map_err(|e| Error::Invalid(e.to_string())),
+        Session::Local(l) => match l.lock().unwrap().master.as_ref() {
+            Some(m) => m
+                .resize(PtySize { rows: rows as u16, cols: cols as u16, pixel_width: 0, pixel_height: 0 })
+                .map_err(|e| Error::Invalid(e.to_string())),
+            None => Ok(()), // ya termino
+        },
     }
 }
 

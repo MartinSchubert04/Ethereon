@@ -4,6 +4,7 @@ import { api } from "./api";
 import { comboOf, matches, prefs } from "./prefs.svelte";
 import { app, closeMember, closeTerminal, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
 import { cssVar } from "./themes";
+import { closeLeaf } from "./tiles.svelte";
 
 function zoom(d: number) {
   const base = parseInt(cssVar("--term-font-size")) || 13;
@@ -41,8 +42,15 @@ function tabCount() {
 function refreshTab(e: KeyboardEvent): boolean {
   if (app.view === "terminal") {
     const top = app.terms.find((x) => x.key === app.activeTerm);
+    // Con varias terminales en la pestaña se reintentan las caidas, y solo esas: las que
+    // estan conectadas siguen como estan. Si no hay ninguna caida, Ctrl R es de la shell.
+    const down = (top?.members ?? []).filter((m) => !m.sftp && !m.alive && !m.connecting);
+    if (down.length) {
+      for (const m of down) window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: m.key }));
+      return true;
+    }
     // En una pestaña de grupo, cuenta la terminal elegida de la lista.
-    const t = top?.members ? top.members.find((m) => m.key === top.activeMember) : top;
+    const t = top?.members ? top.members.find((m) => m.key === (top.layout ? top.focus : top.activeMember)) : top;
     if (!t) return true;
     if (!t.sftp && t.alive && inTerminal(e)) return false; // la shell la usa (buscar en el historial)
     window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: t.key }));
@@ -93,7 +101,8 @@ function onKey(e: KeyboardEvent) {
     if (app.view === "terminal" && app.activeTerm) {
       // En una pestaña de grupo se cierra la terminal elegida, no todo el grupo.
       const top = app.terms.find((x) => x.key === app.activeTerm);
-      if (top?.members && top.activeMember) closeMember(top, top.activeMember);
+      if (top?.layout && top.focus) closeLeaf(top, top.focus);
+      else if (top?.members && top.activeMember) closeMember(top, top.activeMember);
       else closeTerminal(app.activeTerm);
     } else handled = false;
   } else if (matches(e, "nextTab")) goToTab((currentTabIndex() + 1) % tabCount());

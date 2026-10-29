@@ -3,12 +3,13 @@
   // de Windows) y a la vez la tira de pestañas. Se arrastra desde cualquier hueco y doble
   // clic maximiza (data-tauri-drag-region).
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { ArrowDownToLine, Bell, Copy, FolderOpen, Layers, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
+  import { ArrowDownToLine, Bell, Copy, FolderOpen, Layers, LayoutGrid, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
   import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
   import { api } from "../lib/api";
   import { onMount } from "svelte";
   import { app, closeTerminal, goToTab, toggleSidebar } from "../lib/state.svelte";
   import { pop } from "../lib/motion";
+  import { drop, mergeInto, splittable, tileAt } from "../lib/tiles.svelte";
 
   let { locked = false }: { locked?: boolean } = $props();
 
@@ -28,7 +29,10 @@
 
   // ---- arrastrar pestañas: reordenar, o soltar fuera de la ventana para abrirla aparte
 
-  let td: { key: number; sx: number; sy: number; started: boolean; out: boolean } | null = null;
+  // Bajarla a las terminales la suma a la pestaña que se ve, al costado del panel que se
+  // marca (mosaico). Si la que se arrastra es la que se ve, se muestra la de al lado, como
+  // al arrancar una pestaña en el navegador.
+  let td: { key: number; sx: number; sy: number; started: boolean; out: boolean; shown?: number } | null = null;
   let dragKey = $state<number | null>(null);
   let dragOut = $state(false);
   /** Otra ventana de Ethereon bajo el cursor: soltar ahi pasa la pestaña a esa ventana. */
@@ -50,6 +54,31 @@
       dragKey = td.key;
     }
     if (!td.started) return;
+    const inside = e.clientY >= -16 && e.clientX >= -16 && e.clientX <= innerWidth + 16 && e.clientY <= innerHeight + 16;
+    const barBottom = (e.currentTarget as HTMLElement).closest(".bar")?.getBoundingClientRect().bottom ?? 46;
+    const dragged = app.terms.find((t) => t.key === td!.key);
+    if (inside && e.clientY > barBottom + 8 && dragged && splittable(dragged) && app.terms.length > 1) {
+      if (app.activeTerm === td.key) {
+        const i = app.terms.findIndex((t) => t.key === td!.key);
+        td.shown = td.key;
+        app.activeTerm = (app.terms[i + 1] ?? app.terms[i - 1]).key;
+        app.view = "terminal";
+      }
+      const hit = tileAt(e.clientX, e.clientY);
+      drop.hint = hit && hit.tab !== td.key ? hit : null;
+      if (drop.hint) {
+        td.out = false;
+        dragOut = false;
+        dropOn = null;
+        return;
+      }
+    } else {
+      drop.hint = null;
+      if (td.shown && e.clientY <= barBottom + 8) {
+        app.activeTerm = td.shown;
+        td.shown = undefined;
+      }
+    }
     td.out = e.clientY < -16 || e.clientY > 110 || e.clientX < -16 || e.clientX > innerWidth + 16;
     dragOut = td.out;
     if (td.out) {
@@ -79,10 +108,16 @@
     dragKey = null;
     dragOut = false;
     dropOn = null;
+    const hint = drop.hint;
+    drop.hint = null;
     if (!d?.started) return;
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 0);
-    if (!d.out) return;
+    if (hint) return mergeInto(d.key, hint.tab, hint.leaf, hint.side);
+    if (!d.out) {
+      if (d.shown) app.activeTerm = d.shown;
+      return;
+    }
     // Soltada sobre otra ventana de Ethereon: se pasa a esa. Si no, ventana nueva ahi.
     const target = await windowAtCursor();
     if (target) await moveTab(d.key, target.label);
@@ -138,7 +173,7 @@
           data-key={t.key}
           role="button"
           tabindex="0"
-          title="{t.title}{t.members ? ` · ${t.members.length} terminals` : ''} (Ctrl {detached ? i + 1 : i + 2}). Drag out of the window to open it apart."
+          title="{t.title}{t.members ? ` · ${t.members.length} terminals` : ''} (Ctrl {detached ? i + 1 : i + 2}). Drag it onto a terminal to split, or out of the window to open it apart."
           onpointerdown={(e) => tabDown(e, t.key)}
           onpointermove={tabMove}
           onpointerup={tabUp}
@@ -148,7 +183,7 @@
           onauxclick={(e) => e.button === 1 && closeTerminal(t.key)}
         >
           <span class="dot" class:dead={!t.alive}>
-            {#if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else}<SquareTerminal size={14} />{/if}
+            {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else}<SquareTerminal size={14} />{/if}
           </span>
           <span class="label ellipsis">{t.title}{#if t.members}<span class="n">{" · "}{t.members.length}</span>{/if}</span>
           <button class="x" aria-label="Close tab" title="Close (Ctrl W)" onclick={(e) => (e.stopPropagation(), closeTerminal(t.key))}>
@@ -162,7 +197,9 @@
         </button>
       {/if}
     </div>
-    {#if dragOut}
+    {#if dragKey && drop.hint}
+      <span class="out-hint">Release to put it {drop.hint.side === "left" || drop.hint.side === "right" ? `to the ${drop.hint.side}` : drop.hint.side === "top" ? "above" : "below"}</span>
+    {:else if dragOut}
       <span class="out-hint">{dropOn ? `Release to move it to ${dropOn.name}` : "Release to open it in a new window"}</span>
     {/if}
   {/if}

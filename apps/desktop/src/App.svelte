@@ -26,7 +26,7 @@
   import Audit from "./views/Audit.svelte";
   import Settings from "./views/Settings.svelte";
   import SftpPane from "./components/SftpPane.svelte";
-  import TermPane from "./components/TermPane.svelte";
+  import TilePane from "./components/TilePane.svelte";
   import WorkspacePane from "./components/WorkspacePane.svelte";
   import { initWindows } from "./lib/windows";
   import Titlebar from "./components/Titlebar.svelte";
@@ -148,12 +148,12 @@
         <!-- Las terminales quedan montadas para no perder la sesion al cambiar de vista. -->
         {#each app.terms as t (t.key)}
           <div class="term-wrap" class:shown={app.view === "terminal" && app.activeTerm === t.key}>
-            {#if t.members}
+            {#if t.members && !t.layout}
               <WorkspacePane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
             {:else if t.sftp}
               <SftpPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
             {:else}
-              <TermPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+              <TilePane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
             {/if}
           </div>
         {/each}

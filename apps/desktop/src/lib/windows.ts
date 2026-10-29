@@ -8,7 +8,9 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./api";
-import { app, closeTerminal, newKey, toast, type TermTab } from "./state.svelte";
+import { app, closeTerminal, leaving, newKey, toast, type TermTab } from "./state.svelte";
+import { remap, type Tile } from "./tiles.svelte";
+import { sizeOf } from "./live";
 
 /** Lo que viaja de una ventana a otra. */
 interface Moved {
@@ -18,8 +20,12 @@ interface Moved {
   cwd?: string;
   sftp?: boolean;
   attach?: number;
+  size?: { cols: number; rows: number };
   members?: Moved[];
   active?: number;
+  /** Mosaico: el arbol con el indice de cada miembro en vez de su clave. */
+  layout?: Tile;
+  focus?: number;
 }
 
 const pack = (t: TermTab): Moved => ({
@@ -29,8 +35,11 @@ const pack = (t: TermTab): Moved => ({
   cwd: t.cwd,
   sftp: t.sftp,
   attach: t.sftp ? undefined : t.sid,
+  size: t.sftp || t.members ? undefined : sizeOf(t.key),
   members: t.members?.map(pack),
   active: t.members ? Math.max(0, t.members.findIndex((m) => m.key === t.activeMember)) : undefined,
+  layout: t.layout && t.members ? remap(t.layout, (k) => t.members!.findIndex((m) => m.key === k)) : undefined,
+  focus: t.layout && t.members ? Math.max(0, t.members.findIndex((m) => m.key === t.focus)) : undefined,
 });
 
 function unpack(m: Moved): TermTab {
@@ -44,8 +53,11 @@ function unpack(m: Moved): TermTab {
     title: m.title,
     alive: true,
     attach: m.attach,
+    size: m.size,
     members,
     activeMember: members ? members[m.active ?? 0]?.key : undefined,
+    layout: m.layout && members ? remap(m.layout, (i) => members[i]?.key ?? i) : undefined,
+    focus: m.layout && members ? members[m.focus ?? 0]?.key : undefined,
   };
 }
 
@@ -53,7 +65,10 @@ function unpack(m: Moved): TermTab {
 async function release(t: TermTab) {
   for (const m of t.members ?? [t]) {
     m.moving = true;
-    if (!m.sftp && m.sid) await api.termDetach(m.sid).catch(() => {});
+    if (!m.sftp && m.sid) {
+      leaving.add(m.sid);
+      await api.termDetach(m.sid).catch(() => {});
+    }
   }
   t.moving = true;
 }
