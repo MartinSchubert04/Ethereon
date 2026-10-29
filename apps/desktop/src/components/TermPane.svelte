@@ -15,6 +15,7 @@
   import { boldWeight, termFont } from "../lib/termfonts";
   import "../lib/sixel";
   import { adopt, drop, own, type Live } from "../lib/live";
+  import { dbg, dbgGlLost, dbgGone, dbgTerm, sw } from "../lib/debug.svelte";
 
   // `bare`: dentro de un mosaico, sin margen ni tarjeta propia (el marco lo pone TilePane).
   // `shown`: la pestaña se ve (en un mosaico se ven todos los paneles, aunque solo uno tenga
@@ -323,17 +324,23 @@
     // WebGL dibuja los bloques y las lineas de caja a mano, pixel exacto, en vez de usar
     // los de la fuente (que casi nunca llenan la celda y dejan costuras). Si la placa de
     // video no lo deja, queda el renderer comun.
-    try {
+    let glOk = false;
+    if (sw.webgl) try {
       const gl = new WebglAddon();
       // El WebView tiene un tope de contextos WebGL por ventana (unos 16): con muchas
       // terminales, al pasarse descarta el mas viejo. Esa terminal sigue con el renderer
       // comun, pero hay que redibujarla; si no, queda en negro hasta que llegue salida.
       gl.onContextLoss(() => {
+        dbgGlLost(t);
         gl.dispose();
         t.refresh(0, t.rows - 1);
       });
       t.loadAddon(gl);
-    } catch {}
+      glOk = true;
+    } catch (e) {
+      dbg("webgl no disponible", String(e));
+    }
+    dbgTerm(t, key, glOk);
     // Imagenes en la terminal: Sixel (lo que usa Windows Terminal) y el protocolo de iTerm2
     // (WezTerm y otros). Con esto se ven los splash, chafa -f sixel, img2sixel, etc.
     t.loadAddon(new ImageAddon({ sixelSupport: true, iipSupport: true, storageLimit: 64 }));
@@ -346,6 +353,7 @@
     // con cada cambio redibuja el prompt, y muchos seguidos se pisan.
     let rt: ReturnType<typeof setTimeout> | undefined;
     t.onResize(() => {
+      dbg("filas/columnas", { key: live.me().key, cols: t.cols, rows: t.rows });
       clearTimeout(rt);
       rt = setTimeout(() => live.id && api.termResize(live.id, t.cols, t.rows), 60);
     });
@@ -366,6 +374,8 @@
     }
     term = L.term;
     fit = L.fit;
+    dbgTerm(term, key, true);
+    dbg(got ? "terminal adoptada" : "terminal nueva", { key, from }, true);
     L.handle = handle;
     L.me = me;
     L.keys = onTermKey;
@@ -407,16 +417,17 @@
   // Al volver a verse se redibuja: oculta, el WebView puede haber descartado lo que tenia
   // pintado (sobre todo si se mostro en medio de un arrastre) y quedaba en negro.
   $effect(() => {
+    if (term) dbg("panel", { key, shown, active });
     if (shown && term) queueMicrotask(() => term.refresh(0, term.rows - 1));
   });
-
   onDestroy(() => {
     window.removeEventListener("themechange", onTheme);
     document.fonts.removeEventListener("loadingdone", refont);
-    window.removeEventListener("ethereon:refresh", onRefresh);
-    if (!L) return;
+    window.removeEventListener("ethereon:refresh", onRefresh);    if (!L) return;
+    dbg("panel desmontado", { key, parked: L.parked });
     // Estacionada: otro panel de esta ventana la toma, sigue viva.
     if (L.parked) return;
+    dbgGone(L.term);
     drop(key, L);
     // Lo que llegue despues de la sesion que se cierra (su "termino") ya no es de nadie: si
     // no, marcaria como terminada a la pestaña, que al volver a montarse abre otra sesion.

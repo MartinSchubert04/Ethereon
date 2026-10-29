@@ -11,6 +11,7 @@
   import { app, closeTab, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
   import { pop } from "../lib/motion";
   import { drop, mergeInto, splittable, tileAt } from "../lib/tiles.svelte";
+  import { dbg, sw } from "../lib/debug.svelte";
 
   let { locked = false }: { locked?: boolean } = $props();
 
@@ -66,8 +67,11 @@
   function tabDown(e: PointerEvent, key: number) {
     if (e.button !== 0 || (e.target as HTMLElement).closest(".x")) return;
     td = { key, sx: e.clientX, sy: e.clientY, started: false, out: false, orig: { view: app.view, active: app.activeTerm } };
+    dbg("pestaña: apretar", { key, view: app.view, active: app.activeTerm, foco: document.activeElement?.className }, true);
+    // Que la pestaña no le saque el foco a la terminal.
+    if (!sw.focus) e.preventDefault();
     // Con captura siguen llegando los movimientos aunque el mouse salga de la ventana.
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (sw.capture) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
 
   function tabMove(e: PointerEvent) {
@@ -75,6 +79,8 @@
     if (!td.started && Math.hypot(e.clientX - td.sx, e.clientY - td.sy) > 6) {
       td.started = true;
       dragKey = td.key;
+      if (!sw.capture) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      dbg("pestaña: empieza arrastre", { key: td.key }, true);
     }
     if (!td.started) return;
     const inside = e.clientY >= -16 && e.clientX >= -16 && e.clientX <= innerWidth + 16 && e.clientY <= innerHeight + 16;
@@ -142,6 +148,7 @@
     if (key == null) return;
     td.hoverTimer = window.setTimeout(() => {
       if (!td?.started || td.hover !== key || !app.terms.some((t) => t.key === key)) return;
+      dbg("pestaña: mostrar la de abajo", { key });
       app.activeTerm = key;
       app.view = "terminal";
     }, HOVER_SHOW);
@@ -162,6 +169,7 @@
     dropOn = null;
     const hint = drop.hint;
     drop.hint = null;
+    dbg("pestaña: soltar", { key: d?.key, started: d?.started, out: d?.out, hint, orig: d?.orig, view: app.view, active: app.activeTerm }, true);
     if (!d?.started) return;
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 0);
@@ -242,7 +250,7 @@
           onpointermove={tabMove}
           onpointerup={tabUp}
           oncontextmenu={(e) => tabMenu(e, t.key)}
-          onclick={() => !suppressClick && goToTab(i + 1)}
+          onclick={() => (dbg("pestaña: clic", { key: t.key, ignorado: suppressClick }, true), !suppressClick && goToTab(i + 1))}
           onkeydown={(e) => e.key === "Enter" && goToTab(i + 1)}
           onauxclick={(e) => e.button === 1 && closeTab(t.key)}
         >

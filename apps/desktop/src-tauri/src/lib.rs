@@ -165,8 +165,13 @@ fn refresh_tray(app: &AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)))
+    let mut builder = tauri::Builder::default();
+    // Una copia de prueba (con su propio vault, ver data_dir) corre al lado de la de verdad:
+    // si no, se la pasa a la que ya esta abierta y se cierra.
+    if std::env::var_os("ETHEREON_DATA_DIR").is_none() {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| show_main(app)));
+    }
+    builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())

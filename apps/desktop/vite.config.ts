@@ -1,6 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import { readFileSync } from "node:fs";
+import { appendFileSync, readFileSync } from "node:fs";
 
 // xterm.js dibuja a mano los bloques (█ ▀ ▄) y cuadrantes, pero no los sextantes ni los
 // octantes ("Symbols for Legacy Computing"), que usan chafa y los MOTD con imagenes. Sin
@@ -76,8 +76,23 @@ function sixelLikeWindowsTerminal(): Plugin {
   };
 }
 
+// El panel de debug (src/lib/debug.svelte.ts) manda su registro por el canal de recarga en
+// vivo y aca se guarda en target/ui-debug.log, para leerlo sin copiar y pegar.
+function debugLog(): Plugin {
+  const file = new URL("../../target/ui-debug.log", import.meta.url);
+  return {
+    name: "ethereon-debug-log",
+    apply: "serve",
+    configureServer(server) {
+      server.ws.on("ethereon:debug", (data: { from: string; lines: string[] }) => {
+        appendFileSync(file, data.lines.map((l) => `[${data.from}] ${l}\n`).join(""));
+      });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [legacyGlyphs(), pixelBold(), sixelLikeWindowsTerminal(), svelte()],
+  plugins: [legacyGlyphs(), pixelBold(), sixelLikeWindowsTerminal(), debugLog(), svelte()],
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   // Sin pre-empaquetar, para que el plugin de arriba tambien corra en `npm run dev`.

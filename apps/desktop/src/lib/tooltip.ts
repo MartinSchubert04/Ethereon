@@ -3,6 +3,8 @@
 // del navegador nunca sale) y aca se muestra uno propio si el mouse se queda quieto un rato.
 // Los componentes siguen usando `title={...}` como siempre.
 
+import { sw } from "./debug.svelte";
+
 /** Cuanto hay que dejar el mouse encima para que aparezca. */
 const DELAY = 900;
 
@@ -32,6 +34,7 @@ function hide() {
 }
 
 function show(el: HTMLElement) {
+  if (!sw.tips) return;
   const text = el.dataset.tip;
   if (!text || !el.isConnected) return;
   hide();
