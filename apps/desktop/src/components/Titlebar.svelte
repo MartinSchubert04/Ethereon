@@ -4,7 +4,7 @@
   // clic maximiza (data-tauri-drag-region).
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { ArrowDownToLine, Bell, Copy, FolderOpen, Layers, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
-  import { moveTab, otherWindows } from "../lib/windows";
+  import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
   import { api } from "../lib/api";
   import { onMount } from "svelte";
   import { app, closeTerminal, goToTab, toggleSidebar } from "../lib/state.svelte";
@@ -31,6 +31,9 @@
   let td: { key: number; sx: number; sy: number; started: boolean; out: boolean } | null = null;
   let dragKey = $state<number | null>(null);
   let dragOut = $state(false);
+  /** Otra ventana de Ethereon bajo el cursor: soltar ahi pasa la pestaña a esa ventana. */
+  let dropOn = $state<{ label: string; name: string } | null>(null);
+  let lastAsk = 0;
   let suppressClick = false;
 
   function tabDown(e: PointerEvent, key: number) {
@@ -49,7 +52,16 @@
     if (!td.started) return;
     td.out = e.clientY < -16 || e.clientY > 110 || e.clientX < -16 || e.clientX > innerWidth + 16;
     dragOut = td.out;
-    if (td.out) return;
+    if (td.out) {
+      // Cada tanto: ¿esta encima de otra ventana de Ethereon?
+      const now = Date.now();
+      if (now - lastAsk > 120) {
+        lastAsk = now;
+        windowAtCursor().then((w) => td && (dropOn = w));
+      }
+      return;
+    }
+    dropOn = null;
     const over = document
       .elementsFromPoint(e.clientX, 23)
       .find((el) => el instanceof HTMLElement && el.classList.contains("tab") && el.dataset.key) as HTMLElement | undefined;
@@ -66,10 +78,15 @@
     td = null;
     dragKey = null;
     dragOut = false;
+    dropOn = null;
     if (!d?.started) return;
     suppressClick = true;
     setTimeout(() => (suppressClick = false), 0);
-    if (d.out) await moveTab(d.key, "new", { x: e.screenX, y: e.screenY });
+    if (!d.out) return;
+    // Soltada sobre otra ventana de Ethereon: se pasa a esa. Si no, ventana nueva ahi.
+    const target = await windowAtCursor();
+    if (target) await moveTab(d.key, target.label);
+    else await moveTab(d.key, "new", { x: e.screenX, y: e.screenY });
   }
 
   // ---- clic derecho en una pestaña
@@ -145,7 +162,9 @@
         </button>
       {/if}
     </div>
-    {#if dragOut}<span class="out-hint">Release to open it in a new window</span>{/if}
+    {#if dragOut}
+      <span class="out-hint">{dropOn ? `Release to move it to ${dropOn.name}` : "Release to open it in a new window"}</span>
+    {/if}
   {/if}
 
   <div class="drag" data-tauri-drag-region></div>

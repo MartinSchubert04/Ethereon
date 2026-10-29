@@ -68,6 +68,12 @@ export async function otherWindows(): Promise<{ label: string; name: string }[]>
     .map((l) => ({ label: l, name: l === "main" ? "Main window" : `Window ${l.replace("term-", "")}` }));
 }
 
+/** La otra ventana de Ethereon bajo el cursor, si hay (para soltar ahi una pestaña). */
+export async function windowAtCursor(): Promise<{ label: string; name: string } | null> {
+  const label = await invoke<string | null>("window_at", { except: currentLabel() }).catch(() => null);
+  return label ? { label, name: label === "main" ? "the main window" : `window ${label.replace("term-", "")}` } : null;
+}
+
 /** Manda una pestaña a una ventana nueva (en `at`, coordenadas de pantalla) o a otra. */
 export async function moveTab(key: number, target: "new" | string, at?: { x: number; y: number }) {
   const t = app.terms.find((x) => x.key === key);

@@ -36,7 +36,8 @@ export function termFont(): string {
 }
 
 /** Fuentes de pixeles (PxPlus, Px437...): no tienen negrita y el navegador la inventaria
- *  engrosando con suavizado, borrosa. Ahi la negrita va solo con color brillante. */
+ *  engrosando con suavizado, borrosa. Ahi va "normal" y el atlas de WebGL la engrosa un
+ *  pixel, nitida, como Windows Terminal (plugin pixelBold en vite.config.ts). */
 export function boldWeight(): "bold" | "normal" {
   const first = termFont().split(",")[0];
   return /\b(PxPlus|Px437|Mx437|PxIBM|Ac437)\b/i.test(first) ? "normal" : "bold";

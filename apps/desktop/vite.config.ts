@@ -25,6 +25,36 @@ function legacyGlyphs(): Plugin {
   };
 }
 
+// Las fuentes de pixeles (PxPlus) no tienen negrita: el navegador la inventa engrosando con
+// suavizado y queda borrosa, y sin engrosar no se nota. Windows Terminal repite el glifo un
+// pixel a la derecha, nitido. Aca igual: con fontWeightBold "normal" (lo pone termfonts.ts
+// solo para fuentes de pixeles), el atlas de WebGL dibuja la letra negrita dos veces.
+function pixelBold(): Plugin {
+  const draw = /(\w+)\|\|this\._tmpCtx\.fillText\((\w+),(\w+),\3\+this\._config\.deviceCharHeight\)/;
+  return {
+    name: "ethereon-pixel-bold",
+    enforce: "pre",
+    transform(code, id) {
+      if (!/@xterm[\\/]addon-webgl[\\/]lib[\\/]addon-webgl\.m?js/.test(id)) return;
+      if (!draw.test(code)) {
+        this.warn("xterm addon-webgl changed: bold in pixel fonts will not be thickened");
+        return;
+      }
+      return {
+        code: code.replace(draw, (_m, skip, ch, pad) => {
+          const y = `${pad}+this._config.deviceCharHeight`;
+          const dx = "Math.max(1,Math.round(this._config.devicePixelRatio))";
+          return (
+            `${skip}||(this._tmpCtx.fillText(${ch},${pad},${y}),` +
+            `this._workAttributeData.isBold()&&this._config.fontWeightBold==="normal"&&this._tmpCtx.fillText(${ch},${pad}+${dx},${y}))`
+          );
+        }),
+        map: null,
+      };
+    },
+  };
+}
+
 // Windows Terminal (y conhost) ubican las imagenes Sixel como si cada celda midiera 10x20
 // pixeles; xterm.js las pone a tamaño real. Las herramientas pensadas para Windows Terminal
 // (el splash de athanor, por ejemplo) salen enormes. Antes de ubicar cada imagen se llama a
@@ -47,7 +77,7 @@ function sixelLikeWindowsTerminal(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [legacyGlyphs(), sixelLikeWindowsTerminal(), svelte()],
+  plugins: [legacyGlyphs(), pixelBold(), sixelLikeWindowsTerminal(), svelte()],
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   // Sin pre-empaquetar, para que el plugin de arriba tambien corra en `npm run dev`.

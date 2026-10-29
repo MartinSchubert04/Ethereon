@@ -24,7 +24,7 @@ pub enum Verdict {
 
 pub fn default_denylist() -> Vec<String> {
     [
-        "rm -r|-R|--recursive -f|--force",
+        "rm -r|-R|--recursive",
         "rm --no-preserve-root",
         "shutdown",
         "reboot",
@@ -54,19 +54,26 @@ pub fn default_denylist() -> Vec<String> {
 
 pub fn default_allowlist() -> Vec<String> {
     [
-        "ls", "cat", "head", "tail", "grep", "egrep", "fgrep", "zgrep", "rg", "wc", "sort", "uniq", "cut", "column",
+        "ls", "cat", "head", "tail", "grep", "egrep", "fgrep", "zgrep", "rg", "wc", "uniq", "cut", "column",
         "tr", "jq", "stat", "file", "du", "df", "free", "uptime", "ps", "pgrep", "top -b", "uname", "whoami", "id",
-        "hostname", "date", "w", "who", "last", "ip", "ss", "netstat", "lsblk", "lscpu", "lsof", "nproc", "vmstat",
-        "iostat", "dmesg", "echo", "printf", "pwd", "true", "test", "which", "readlink", "realpath", "basename",
-        "dirname", "md5sum", "sha256sum", "journalctl", "cd",
+        "w", "who", "last", "ss", "netstat", "lsblk", "lscpu", "lsof", "nproc", "vmstat",
+        "date !-s !--set", "dmesg !-C !-c !--clear !--read-clear",
+        "ip !-b !-batch !-force !add !del !delete !set !change !chg !replace !append !prepend !flush !save !restore !-f !-force",
+        "iostat", "echo", "printf", "pwd", "true", "test", "which", "readlink", "realpath", "basename",
+        "dirname", "md5sum", "sha256sum", "cd",
+        "sort !-o !--output",
+        "journalctl !--vacuum-size !--vacuum-time !--vacuum-files !--rotate !--flush !--sync !--update-catalog",
         "find !-exec !-execdir !-ok !-okdir !-delete !-fprint !-fprintf !-fls",
         "sed !-i !--in-place",
         "systemctl status|list-units|list-timers|is-active|is-enabled|is-failed|show|cat",
         "docker ps|logs|images|inspect|stats|version|info|top",
         "docker compose ps|logs|config|ls",
         "docker-compose ps|logs|config",
-        "kubectl get|describe|logs|top|version",
-        "git status|log|diff|show|branch|remote",
+        "kubectl get|describe|logs|top|version|api-resources|api-versions|explain|cluster-info|events|wait",
+        // OpenShift: oc es como kubectl; solo los verbos que no cambian nada.
+        "oc get|describe|logs|top|version|status|whoami|projects|api-resources|api-versions|explain|rsh|get-token|cluster-info|events|observe|image",
+        "oc project|config !set|set-cluster|set-context|set-credentials|unset|delete",
+        "git !-c !-C !--exec-path !--output status|log|diff|show|branch|remote|ls-files|rev-parse|describe|blame|tag|cat-file",
         "nginx -t",
     ]
     .iter()
@@ -86,6 +93,12 @@ pub fn evaluate(cmd: &str, policy: &Policy, global_deny: &[String], session_patt
     }
     if policy.mode == Mode::Free {
         return Verdict::Allow;
+    }
+    if let Some(why) = shell::suspicious_char(cmd) {
+        return match policy.mode {
+            Mode::Approval => Verdict::Ask(vec![why]),
+            _ => Verdict::Deny(why),
+        };
     }
     let cmds = match shell::parse(cmd) {
         Ok(c) => c,
@@ -403,8 +416,12 @@ mod tests {
 
     #[test]
     fn free_mode_allows_normal_commands() {
-        for cmd in ["rm file.txt", "rm -r build", "systemctl restart nginx", "ls -la | grep x > out.txt"] {
+        for cmd in ["rm file.txt", "systemctl restart nginx", "ls -la | grep x > out.txt", "docker compose up -d"] {
             assert_eq!(eval(cmd, Mode::Guarded), Verdict::Allow, "{cmd}");
+        }
+        // rm recursivo (con o sin -f) ahora esta prohibido: borra carpetas igual.
+        for cmd in ["rm -r build", "rm -rf build", "rm --recursive build"] {
+            assert!(denied(&eval(cmd, Mode::Guarded)), "{cmd}");
         }
     }
 
@@ -428,6 +445,110 @@ mod tests {
         assert_eq!(p.mode, Mode::Guarded);
         let p: Policy = serde_json::from_str(r#"{"mode":"unrestricted"}"#).unwrap();
         assert_eq!(p.mode, Mode::Free);
+    }
+
+    /// Informe de auditoria: un comando dentro de `${...}` no se analizaba.
+    #[test]
+    fn parameter_expansion_cannot_hide_commands() {
+        let cases = [
+            "echo ${x:-$(reboot)}",
+            "echo ${x:=$(rm -rf /)}",
+            "echo ${x:-$(cat /root/.aws/credentials)}",
+            "echo ${x:-${y:-$(reboot)}}",
+            "echo \"${x:-$(reboot)}\"",
+            "echo ${x:-`reboot`}",
+            "echo ${a[$(reboot)]}",
+            "x=${y:-$(reboot)}",
+            "echo ${x@P}",
+        ];
+        for cmd in cases {
+            assert!(denied(&eval(cmd, Mode::Guarded)), "guarded should deny: {cmd}");
+            assert!(denied(&eval(cmd, Mode::ReadOnly)), "read-only should deny: {cmd}");
+            // En Approval: rechazado (si lo de adentro esta prohibido) o pregunta con el motivo.
+            let v = eval(cmd, Mode::Approval);
+            assert!(denied(&v) || matches!(&v, Verdict::Ask(w) if !w.is_empty()), "approval should not pass silently: {cmd}");
+        }
+        // Lo comun sigue andando
+        for cmd in ["echo ${HOME}", "echo ${x:-default}", "echo \"${PATH}\"", "ls ${dir:-/tmp}"] {
+            assert_eq!(eval(cmd, Mode::Guarded), Verdict::Allow, "{cmd}");
+        }
+        assert_eq!(eval("echo ${HOME}", Mode::ReadOnly), Verdict::Allow);
+    }
+
+    /// Auditoria de bypasses: lo que esconde un comando prohibido no tiene que pasar en
+    /// Guarded ni en solo lectura, y en Approval no puede pasar sin aviso.
+    #[test]
+    fn hidden_runners_cannot_bypass() {
+        let runners = [
+            "busybox reboot",
+            "su -c reboot",
+            "su root -c 'reboot'",
+            "runuser -u root -- reboot",
+            "runuser -u root -c reboot",
+            "unshare reboot",
+            "nsenter -t 1 -m reboot",
+            "script -c reboot /dev/null",
+            "systemd-run reboot",
+            "ssh host reboot",
+            r#"awk 'BEGIN{system("reboot")}'"#,
+            r#"perl -e 'system("reboot")'"#,
+            r#"python3 -c 'import os;os.system("reboot")'"#,
+            r#"ruby -e 'system("reboot")'"#,
+            r#"php -r 'system("reboot");'"#,
+            "node -e 'x.exec(2)'",
+            "ip netns exec x reboot",
+            "oc exec pod -- reboot",
+            "kubectl exec pod -- reboot",
+            "sed -n '1e reboot' f",
+            "at now",
+        ];
+        for cmd in runners {
+            assert!(denied(&eval(cmd, Mode::Guarded)), "guarded should deny: {cmd}");
+            assert!(!matches!(eval(cmd, Mode::Approval), Verdict::Allow), "approval should not pass silently: {cmd}");
+        }
+    }
+
+    #[test]
+    fn hidden_unicode_is_rejected() {
+        for cmd in ["echo \u{202e}toober", "echo a\u{200b}b", "ls\u{00a0}-la"] {
+            assert!(denied(&eval(cmd, Mode::Guarded)), "{cmd:?}");
+            assert!(matches!(eval(cmd, Mode::Approval), Verdict::Ask(_)), "{cmd:?}");
+        }
+        assert_eq!(eval("echo hola", Mode::Guarded), Verdict::Allow);
+    }
+
+    #[test]
+    fn rm_recursive_is_forbidden() {
+        for cmd in ["rm -r x", "rm -R x", "rm --recursive x", "rm -rf x", "find . -exec rm -r {} +"] {
+            assert!(denied(&eval(cmd, Mode::Guarded)), "{cmd}");
+        }
+        assert_eq!(eval("rm file", Mode::Guarded), Verdict::Allow);
+    }
+
+    #[test]
+    fn read_only_blocks_writes_via_read_tools() {
+        let writes = [
+            "sort -o /etc/passwd f",
+            "sort --output=/etc/passwd f",
+            "date -s 2020-01-01",
+            "date --set=x",
+            "dmesg -C",
+            "dmesg --clear",
+            "journalctl --vacuum-size=1M",
+            "journalctl --rotate",
+            "ip link set eth0 down",
+            "ip addr add 1.2.3.4/24 dev eth0",
+            "git log --output=/tmp/x",
+        ];
+        for cmd in writes {
+            assert!(denied(&eval(cmd, Mode::ReadOnly)), "read-only should deny: {cmd}");
+        }
+        for cmd in [
+            "ls -la", "sort f", "date", "ip addr", "ip route", "git log", "journalctl -u nginx", "oc get pods",
+            "oc status", "kubectl get pods", "oc describe pod x",
+        ] {
+            assert_eq!(eval(cmd, Mode::ReadOnly), Verdict::Allow, "{cmd}");
+        }
     }
 
     #[test]

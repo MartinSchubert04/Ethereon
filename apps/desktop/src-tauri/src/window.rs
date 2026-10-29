@@ -227,3 +227,27 @@ pub fn main_window_show(app: AppHandle) {
     let h = app.clone();
     let _ = app.run_on_main_thread(move || show_main(&h));
 }
+
+/// La otra ventana de Ethereon que esta bajo el cursor (para soltar ahi una pestaña), o
+/// ninguna. Usa la posicion real del cursor: las coordenadas del WebView no sirven entre
+/// monitores con distinta escala.
+#[tauri::command]
+pub fn window_at(app: AppHandle, except: String) -> Option<String> {
+    let c = app.cursor_position().ok()?;
+    let mut wins: Vec<_> = app
+        .webview_windows()
+        .into_iter()
+        .filter(|(l, _)| *l != except && (l == "main" || l.starts_with("term-")))
+        .collect();
+    // La que tiene el foco primero, por si se superponen.
+    wins.sort_by_key(|(_, w)| !w.is_focused().unwrap_or(false));
+    wins.into_iter()
+        .find(|(_, w)| {
+            if !w.is_visible().unwrap_or(false) || w.is_minimized().unwrap_or(false) {
+                return false;
+            }
+            let (Ok(p), Ok(s)) = (w.outer_position(), w.outer_size()) else { return false };
+            c.x >= p.x as f64 && c.x < (p.x + s.width as i32) as f64 && c.y >= p.y as f64 && c.y < (p.y + s.height as i32) as f64
+        })
+        .map(|(l, _)| l)
+}

@@ -105,8 +105,11 @@ navegador.
   Windows Terminal (`apps/desktop/src-tauri/conpty`): la de Windows descarta las imágenes. Por
   defecto las escala como Windows Terminal (10×20 píxeles por celda), así lo pensado para Windows
   Terminal se ve igual; se cambia en **Settings → Terminal**.
-- Con fuentes de píxeles (PxPlus y similares) la negrita se marca con brillo y no engrosando: el
-  navegador la engrosaría con suavizado y se vería borrosa.
+  El decodificador Sixel es WebAssembly: la CSP de `tauri.conf.json` necesita `'wasm-unsafe-eval'`
+  (sin eso, en la app instalada las imágenes no salen; en `npm run dev` no hay CSP y sí salen).
+- Con fuentes de píxeles (PxPlus y similares) la negrita se dibuja como en Windows Terminal: la
+  letra repetida un píxel a la derecha, nítida. El navegador la engrosaría con suavizado y se
+  vería borrosa (plugin `pixelBold` en `vite.config.ts`).
 - Las terminales locales usan la shell real de Windows (PowerShell 7, Windows PowerShell, CMD, WSL,
   Git Bash, las que estén instaladas), con tu perfil, oh-my-posh incluido.
 - Los bloques y las líneas de caja (`█ ▀ ▄ ─ │`), y también los sextantes y octantes que usan
