@@ -44,7 +44,7 @@ function refreshTab(e: KeyboardEvent): boolean {
     const top = app.terms.find((x) => x.key === app.activeTerm);
     // Con varias terminales en la pestaña se reintentan las caidas, y solo esas: las que
     // estan conectadas siguen como estan. Si no hay ninguna caida, Ctrl R es de la shell.
-    const down = (top?.members ?? []).filter((m) => !m.sftp && !m.alive && !m.connecting);
+    const down = (top?.members ?? []).filter((m) => !m.sftp && !m.approvals && !m.alive && !m.connecting);
     if (down.length) {
       for (const m of down) window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: m.key }));
       return true;
@@ -52,6 +52,11 @@ function refreshTab(e: KeyboardEvent): boolean {
     // En una pestaña de grupo, cuenta la terminal elegida de la lista.
     const t = top?.members ? top.members.find((m) => m.key === (top.layout ? top.focus : top.activeMember)) : top;
     if (!t) return true;
+    // Las aprobaciones no tienen conexion: Ctrl R vuelve a pedir la lista.
+    if (t.approvals) {
+      refresh();
+      return true;
+    }
     if (!t.sftp && t.alive && inTerminal(e)) return false; // la shell la usa (buscar en el historial)
     window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: t.key }));
     return true;

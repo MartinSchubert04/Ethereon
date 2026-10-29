@@ -178,13 +178,15 @@ pub async fn term_window_open(
     tabs: serde_json::Value,
     x: Option<f64>,
     y: Option<f64>,
+    width: Option<f64>,
+    height: Option<f64>,
 ) -> Result<String, ethereon_core::Error> {
     let n = TERM_WINDOWS.fetch_add(1, Ordering::SeqCst) + 1;
     let label = format!("term-{n}");
     pending.0.lock().unwrap().insert(label.clone(), tabs);
     let mut b = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html?window=term".into()))
         .title("Ethereon")
-        .inner_size(1000.0, 640.0)
+        .inner_size(width.unwrap_or(1000.0), height.unwrap_or(640.0))
         .min_inner_size(560.0, 340.0)
         .decorations(false)
         .shadow(true);

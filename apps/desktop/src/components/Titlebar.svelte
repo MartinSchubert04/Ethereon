@@ -3,11 +3,11 @@
   // de Windows) y a la vez la tira de pestañas. Se arrastra desde cualquier hueco y doble
   // clic maximiza (data-tauri-drag-region).
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { ArrowDownToLine, Bell, Copy, FolderOpen, Layers, LayoutGrid, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
+  import { ArrowDownToLine, Bell, Copy, FolderOpen, Inbox, Layers, LayoutGrid, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
   import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
   import { api } from "../lib/api";
   import { onMount } from "svelte";
-  import { app, closeTerminal, goToTab, toggleSidebar } from "../lib/state.svelte";
+  import { app, closeTerminal, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
   import { pop } from "../lib/motion";
   import { drop, mergeInto, splittable, tileAt } from "../lib/tiles.svelte";
 
@@ -183,9 +183,9 @@
           onauxclick={(e) => e.button === 1 && closeTerminal(t.key)}
         >
           <span class="dot" class:dead={!t.alive}>
-            {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else}<SquareTerminal size={14} />{/if}
+            {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else if t.approvals}<Inbox size={14} />{:else}<SquareTerminal size={14} />{/if}
           </span>
-          <span class="label ellipsis">{t.title}{#if t.members}<span class="n">{" · "}{t.members.length}</span>{/if}</span>
+          <span class="label ellipsis">{t.title}{#if t.members}<span class="n">{" · "}{t.members.length}</span>{:else if t.approvals && app.approvals.length}<span class="n">{" · "}{app.approvals.length}</span>{/if}</span>
           <button class="x" aria-label="Close tab" title="Close (Ctrl W)" onclick={(e) => (e.stopPropagation(), closeTerminal(t.key))}>
             <X size={12} />
           </button>
@@ -226,8 +226,10 @@
       <ArrowDownToLine size={13} /> Update
     </button>
   {/if}
-  {#if !locked && !detached && app.approvals.length}
-    <button class="pending" onclick={() => (goToTab(0), (app.view = "approvals"))} title="Commands waiting for approval">
+  {#if !locked && app.approvals.length}
+    <!-- En la principal lleva a la vista Approvals; en una ventana aparte, a la pestaña de
+         aprobaciones de esa ventana (la abre si no tiene). -->
+    <button class="pending" onclick={() => (detached ? openApprovals() : (goToTab(0), (app.view = "approvals")))} title="Commands waiting for approval">
       <Bell size={13} /> {app.approvals.length}
     </button>
   {/if}

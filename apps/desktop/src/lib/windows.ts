@@ -19,6 +19,7 @@ interface Moved {
   local?: string;
   cwd?: string;
   sftp?: boolean;
+  approvals?: boolean;
   attach?: number;
   size?: { cols: number; rows: number };
   members?: Moved[];
@@ -34,8 +35,9 @@ const pack = (t: TermTab): Moved => ({
   local: t.local,
   cwd: t.cwd,
   sftp: t.sftp,
-  attach: t.sftp ? undefined : t.sid,
-  size: t.sftp || t.members ? undefined : sizeOf(t.key),
+  approvals: t.approvals,
+  attach: t.sftp || t.approvals ? undefined : t.sid,
+  size: t.sftp || t.approvals || t.members ? undefined : sizeOf(t.key),
   members: t.members?.map(pack),
   active: t.members ? Math.max(0, t.members.findIndex((m) => m.key === t.activeMember)) : undefined,
   layout: t.layout && t.members ? remap(t.layout, (k) => t.members!.findIndex((m) => m.key === k)) : undefined,
@@ -50,6 +52,7 @@ function unpack(m: Moved): TermTab {
     local: m.local,
     cwd: m.cwd,
     sftp: m.sftp,
+    approvals: m.approvals,
     title: m.title,
     alive: true,
     attach: m.attach,
@@ -99,7 +102,8 @@ export async function moveTab(key: number, target: "new" | string, at?: { x: num
   // terminales, la ventana se cierra al sacarla.
   try {
     if (target === "new") {
-      await invoke("term_window_open", { tabs, x: at?.x ?? null, y: at?.y ?? null });
+      const small = t.approvals ? APPROVALS_SIZE : {};
+      await invoke("term_window_open", { tabs, x: at?.x ?? null, y: at?.y ?? null, ...small });
     } else {
       await invoke("term_window_give", { label: target, tabs });
       if (target === "main") await invoke("main_window_show");
@@ -109,6 +113,15 @@ export async function moveTab(key: number, target: "new" | string, at?: { x: num
     toast(String(e), true);
   }
   closeTerminal(key);
+}
+
+/** Las aprobaciones solas van en una ventana mas chica que una de terminales. */
+const APPROVALS_SIZE = { width: 620, height: 720 };
+
+/** Las aprobaciones en una ventana propia. */
+export async function approvalsWindow() {
+  const tabs: Moved[] = [{ title: "Approvals", host: "Approvals", approvals: true }];
+  await invoke("term_window_open", { tabs, x: null, y: null, ...APPROVALS_SIZE }).catch((e) => toast(String(e), true));
 }
 
 async function take() {

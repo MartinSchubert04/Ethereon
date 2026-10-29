@@ -99,7 +99,7 @@ export function tileAt(x: number, y: number): { tab: number; leaf: number; side:
   return { tab: Number(el.dataset.tileTab), leaf: Number(el.dataset.tileLeaf), side: sideAt(el.getBoundingClientRect(), x, y) };
 }
 
-/** Se puede partir: una terminal (no SFTP ni la lista de un grupo). */
+/** Se puede partir: una terminal o las aprobaciones (no SFTP ni la lista de un grupo). */
 export const splittable = (t: TermTab) => !t.sftp && !(t.members && !t.layout);
 
 /** Una pestaña comun pasa a mosaico. Su terminal queda como primer panel con la misma clave. */
@@ -114,6 +114,7 @@ function tile(t: TermTab) {
     alive: t.alive,
     sid: t.sid,
     connecting: t.connecting,
+    approvals: t.approvals,
   };
   t.members = [first];
   t.layout = { leaf: t.key };
@@ -125,6 +126,8 @@ function tile(t: TermTab) {
 async function successor(m: TermTab): Promise<TermTab> {
   const next: TermTab = { key: newKey(), host: m.host, local: m.local, cwd: m.cwd, title: m.title, alive: m.alive, sid: m.sid };
   m.moving = true;
+  // Las aprobaciones no tienen sesion: alcanza con un panel nuevo.
+  if (m.approvals) return { ...next, approvals: true, sid: undefined, alive: true };
   if (park(m.key)) next.adopt = m.key;
   else if (m.sid) {
     leaving.add(m.sid);
@@ -153,7 +156,7 @@ export async function mergeInto(from: number, to: number, leaf: number, side: Si
   const src = app.terms.find((t) => t.key === from);
   const dst = app.terms.find((t) => t.key === to);
   if (!src || !dst || src === dst) return;
-  if (!splittable(src) || !splittable(dst)) return toast("Only terminals can share a tab", true);
+  if (!splittable(src) || !splittable(dst)) return toast("Only terminals and approvals can share a tab", true);
   const got = await lift(src);
   tile(dst);
   dst.members!.push(...got.members);

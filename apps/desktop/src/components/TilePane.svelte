@@ -5,6 +5,7 @@
   import { X } from "@lucide/svelte";
   import TermPane from "./TermPane.svelte";
   import ConnState from "./ConnState.svelte";
+  import ApprovalsPane from "./ApprovalsPane.svelte";
   import { fadeQuick, pop } from "../lib/motion";
   import { app, type TermTab } from "../lib/state.svelte";
   import { closeLeaf, drop, geometry, moveLeaf, popOut, tileAt, type Split, type Rect } from "../lib/tiles.svelte";
@@ -26,6 +27,7 @@
 
   /** Debajo del nombre: el host (usuario@direccion) o "this PC" para una shell local. */
   function where(m: TermTab) {
+    if (m.approvals) return app.approvals.length ? `${app.approvals.length} waiting` : "nothing waiting";
     if (m.local) return m.cwd ? `this PC · ${m.cwd}` : "this PC";
     const h = app.snap?.hosts.find((x) => x.name === m.host);
     return h ? `${h.user}@${h.hostname}${h.port !== 22 ? `:${h.port}` : ""}` : m.host;
@@ -112,8 +114,12 @@
           </div>
           <div class="where ellipsis">{where(m)}</div>
         {/if}
-        <TermPane tab={m} active={active && (!tiled || tab.focus === m.key)} bare={tiled} />
-        <ConnState {m} onretry={() => retry(m.key)} />
+        {#if m.approvals}
+          <ApprovalsPane bare={tiled} />
+        {:else}
+          <TermPane tab={m} active={active && (!tiled || tab.focus === m.key)} bare={tiled} />
+          <ConnState {m} onretry={() => retry(m.key)} />
+        {/if}
         {#if drop.hint && drop.hint.tab === tab.key && drop.hint.leaf === m.key}
           <div class="drop {drop.hint.side}" transition:fadeQuick></div>
         {/if}

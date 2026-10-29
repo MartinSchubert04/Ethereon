@@ -14,6 +14,8 @@ export interface TermTab {
   cwd?: string;
   /** Pestaña de archivos (SFTP) en vez de terminal. */
   sftp?: boolean;
+  /** Las aprobaciones pendientes en vez de una terminal (pestaña o panel del mosaico). */
+  approvals?: boolean;
   title: string;
   alive: boolean;
   /** Conectando todavia (la lista de un grupo lo muestra). */
@@ -189,8 +191,27 @@ export function openTerminal(host: string, local?: string, cwd?: string) {
 
 export function openSftp(host: string) {
   rememberVaultView(app.view);
-  const key = Date.now();
-  app.terms.push({ key: newKey(), host, sftp: true, title: `${host} · SFTP`, alive: true });
+  const key = newKey();
+  app.terms.push({ key, host, sftp: true, title: `${host} · SFTP`, alive: true });
+  app.activeTerm = key;
+  app.view = "terminal";
+}
+
+/** Muestra las aprobaciones en una pestaña. Si esta ventana ya las tiene (sola o como panel
+ *  de un mosaico), va a esa en vez de abrir otra. */
+export function openApprovals() {
+  rememberVaultView(app.view);
+  for (const t of app.terms) {
+    const m = t.approvals ? t : t.members?.find((x) => x.approvals);
+    if (!m) continue;
+    if (t.layout && m !== t) t.focus = m.key;
+    else if (t.members && m !== t) t.activeMember = m.key;
+    app.activeTerm = t.key;
+    app.view = "terminal";
+    return;
+  }
+  const key = newKey();
+  app.terms.push({ key, host: "Approvals", approvals: true, title: "Approvals", alive: true });
   app.activeTerm = key;
   app.view = "terminal";
 }
