@@ -14,6 +14,7 @@ export type Action =
   | "closeTabAnywhere"
   | "nextTab"
   | "prevTab"
+  | "nextPane"
   | "sidebar"
   | "search"
   | "settings"
@@ -29,6 +30,7 @@ export const ACTIONS: { id: Action; label: string; def: string }[] = [
   { id: "closeTabAnywhere", label: "Close tab, also from inside a terminal", def: "Ctrl+Shift+W" },
   { id: "nextTab", label: "Next tab", def: "Ctrl+Tab" },
   { id: "prevTab", label: "Previous tab", def: "Ctrl+Shift+Tab" },
+  { id: "nextPane", label: "Next terminal in the same tab (only when the tab has several)", def: "Shift+Tab" },
   { id: "sidebar", label: "Show or hide the sidebar", def: "Ctrl+B" },
   { id: "search", label: "Search hosts", def: "Ctrl+F" },
   { id: "settings", label: "Settings", def: "Ctrl+," },

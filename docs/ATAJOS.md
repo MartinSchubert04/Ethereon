@@ -56,6 +56,9 @@ navegador.
 - **Ancho y alto:** arrastrar la separación entre dos terminales.
 - **Reacomodar:** arrastrar una terminal por su nombre (arriba a la izquierda, sobre el borde) a
   otro costado de otra. **Volverla una pestaña sola:** soltarla sobre la barra de pestañas.
+- **Pasar de una a otra:** `Shift Tab` (en orden, y de la última vuelve a la primera). También
+  en las pestañas de grupo. Con una sola terminal en la pestaña, `Shift Tab` sigue siendo de la
+  shell (en PowerShell completa hacia atrás). Se cambia en Settings → Shortcuts.
 - **Cerrar una:** la `×` de su borde, o `Ctrl Shift W` en la que tiene el foco.
 - Si una conexión se cae, las demás siguen. La caída muestra el camino (esta PC, los saltos, el
   host) con el tramo cortado y un botón **Retry**. `Ctrl R` reintenta todas las caídas de la

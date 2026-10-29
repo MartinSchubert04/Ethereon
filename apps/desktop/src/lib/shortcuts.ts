@@ -4,7 +4,7 @@ import { api } from "./api";
 import { comboOf, matches, prefs } from "./prefs.svelte";
 import { app, closeMember, closeTerminal, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
 import { cssVar } from "./themes";
-import { closeLeaf } from "./tiles.svelte";
+import { closeLeaf, leaves } from "./tiles.svelte";
 
 function zoom(d: number) {
   const base = parseInt(cssVar("--term-font-size")) || 13;
@@ -60,6 +60,21 @@ function refreshTab(e: KeyboardEvent): boolean {
   return true;
 }
 
+/** Pasa el foco a la siguiente terminal de la pestaña (mosaico o grupo). Solo si la
+ *  pestaña tiene varias: si no, la tecla sigue siendo de la shell (Shift Tab completa hacia
+ *  atras en PowerShell). */
+function nextPane(): boolean {
+  if (app.view !== "terminal") return false;
+  const top = app.terms.find((x) => x.key === app.activeTerm);
+  if (!top?.members || top.members.length < 2) return false;
+  const order = top.layout ? leaves(top.layout) : top.members.map((m) => m.key);
+  const cur = top.layout ? top.focus : top.activeMember;
+  const next = order[(order.indexOf(cur ?? -1) + 1) % order.length];
+  if (top.layout) top.focus = next;
+  else top.activeMember = next;
+  return true;
+}
+
 /** Teclas con las que el WebView recargaria la pagina y cerraria todas las pestañas. */
 function isReload(e: KeyboardEvent) {
   return e.key === "F5" || ((e.ctrlKey || e.metaKey) && e.code === "KeyR");
@@ -72,6 +87,12 @@ function onKey(e: KeyboardEvent) {
       e.preventDefault();
       e.stopPropagation();
     }
+    return;
+  }
+  // Antes del filtro de "escribiendo": desde una terminal es justamente donde se usa.
+  if (app.status?.unlocked && matches(e, "nextPane") && !document.querySelector(".drawer, [role=alertdialog]") && nextPane()) {
+    e.preventDefault();
+    e.stopPropagation();
     return;
   }
   // Nunca recargar. Sin stopPropagation: F5 sigue llegando al panel de archivos.
