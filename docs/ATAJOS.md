@@ -50,12 +50,26 @@ navegador.
 ## Varias terminales en una pestaña (mosaico)
 
 - **Juntar:** arrastrar una pestaña hacia abajo, sobre una terminal, y soltarla sobre uno de sus
-  bordes (izquierda, derecha, arriba o abajo): ese espacio se parte en dos. Si la pestaña que
-  se arrastra es la que se ve, al bajar aparece la de al lado, como en el navegador. Una pestaña
-  que ya tiene varias terminales se suma entera.
+  bordes (izquierda, derecha, arriba o abajo): ese espacio se parte en dos. Para sumarla a otra
+  pestaña, quedarse medio segundo encima de esa pestaña mientras se arrastra: se muestra, y ahí
+  se baja a su terminal. Funciona también entre ventanas. Una pestaña que ya tiene varias
+  terminales se suma entera.
 - **Ancho y alto:** arrastrar la separación entre dos terminales.
 - **Reacomodar:** arrastrar una terminal por su nombre (arriba a la izquierda, sobre el borde) a
   otro costado de otra. **Volverla una pestaña sola:** soltarla sobre la barra de pestañas.
+- **Reacomodar con el teclado:** con `Ctrl Shift` apretados, las flechas mueven un cursor por el
+  mosaico y una marca muestra a dónde iría la terminal con el foco. Se mueve recién al soltar
+  `Ctrl Shift`; `Esc` cancela.
+  - Hacia otra terminal: el cursor salta a la más cercana de ese lado, recordando la altura o la
+    columna en la que venía. Con dos a la izquierda (arriba y abajo) y una a la derecha, desde la
+    derecha `←` va a la de arriba y desde ahí `↓` a la de abajo. Marca entera = se intercambian;
+    punteada sobre la propia = se queda donde está.
+  - Sin nada más de ese lado: la marca pasa a la mitad de esa terminal (va a ese costado, se
+    parte su lugar). La misma flecha otra vez: todo ese lado del mosaico.
+  - La flecha contraria deshace el último paso.
+
+  Solo en un mosaico: si no, `Ctrl Shift ←/→` sigue siendo de la shell (seleccionar por
+  palabras). Se cambia en Settings → Shortcuts (cuentan los modificadores).
 - **Pasar de una a otra:** `Shift Tab` (en orden, y de la última vuelve a la primera). También
   en las pestañas de grupo. Con una sola terminal en la pestaña, `Shift Tab` sigue siendo de la
   shell (en PowerShell completa hacia atrás). Se cambia en Settings → Shortcuts.

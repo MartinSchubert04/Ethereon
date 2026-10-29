@@ -1,6 +1,6 @@
 [package]
 name = "ethereon"
-version = "2.0.9"
+version = "2.1.0"
 description = "Ethereon: gestor SSH con vault y acceso para agentes"
 edition = "2021"
 

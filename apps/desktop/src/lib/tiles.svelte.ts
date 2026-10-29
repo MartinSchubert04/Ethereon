@@ -20,6 +20,10 @@ export const drop = $state({
   hint: null as null | { tab: number; leaf: number; side: Side },
   /** La pestaña de la barra sobre la que se esta arrastrando otra (de esta ventana o de otra). */
   tabOver: null as number | null,
+  /** Mover con el teclado: la terminal entera con la que se intercambia (o la misma: se queda). */
+  swap: null as null | { tab: number; leaf: number },
+  /** Mover con el teclado: un borde de todo el mosaico (ocupa ese lado entero). */
+  edge: null as null | { tab: number; side: Side },
 });
 
 export function leaves(t: Tile): number[] {
@@ -167,6 +171,23 @@ export async function mergeInto(from: number, to: number, leaf: number, side: Si
   closeTerminal(from);
   app.activeTerm = dst.key;
   app.view = "terminal";
+}
+
+/** Intercambia dos paneles de lugar (cada uno queda con el tamaño del otro). */
+export function swapLeaves(t: TermTab, a: number, b: number) {
+  if (!t.layout || a === b) return;
+  t.layout = remap(t.layout, (k) => (k === a ? b : k === b ? a : k));
+}
+
+/** Lleva un panel a un borde de todo el mosaico: ocupa ese lado entero, con su parte. */
+export function moveToEdge(t: TermTab, key: number, side: Side) {
+  if (!t.layout) return;
+  const rest = remove(t.layout, key);
+  if (!rest) return;
+  const n = leaves(t.layout).length;
+  const first = side === "left" || side === "top";
+  const dir = side === "left" || side === "right" ? "row" : "col";
+  t.layout = { dir, ratio: first ? 1 / n : 1 - 1 / n, a: first ? { leaf: key } : rest, b: first ? rest : { leaf: key } };
 }
 
 /** Mueve un panel al costado de otro, dentro de la misma pestaña. */

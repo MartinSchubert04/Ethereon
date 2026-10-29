@@ -123,6 +123,10 @@
         {#if drop.hint && drop.hint.tab === tab.key && drop.hint.leaf === m.key}
           <div class="drop {drop.hint.side}" transition:fadeQuick></div>
         {/if}
+        {#if drop.swap && drop.swap.tab === tab.key && drop.swap.leaf === m.key}
+          <!-- Con el teclado: se intercambia con esta, o (si es la que se mueve) se queda. -->
+          <div class="drop full" class:here={m.key === tab.focus} transition:fadeQuick></div>
+        {/if}
       </div>
     </div>
   {/each}
@@ -148,6 +152,10 @@
         ></div>
       {/if}
     {/each}
+  {/if}
+  {#if drop.edge && drop.edge.tab === tab.key}
+    <!-- Con el teclado: ocupa ese lado entero del mosaico. -->
+    <div class="drop edge {drop.edge.side}" style="--share: {100 / list.length}%" transition:fadeQuick></div>
   {/if}
 </div>
 
@@ -346,6 +354,31 @@
   }
   .drop.bottom {
     inset: 50% 0 0 0;
+  }
+  /* Con el teclado: intercambiar con esta terminal entera. Sobre la que se mueve: se queda. */
+  .drop.full {
+    inset: 0;
+  }
+  .drop.full.here {
+    background: transparent;
+    outline-style: dashed;
+  }
+  /* Con el teclado: un lado entero del mosaico, con la parte que le tocaria. */
+  .drop.edge {
+    z-index: 6;
+    margin: 5px;
+  }
+  .drop.edge.left {
+    inset: 0 calc(100% - var(--share)) 0 0;
+  }
+  .drop.edge.right {
+    inset: 0 0 0 calc(100% - var(--share));
+  }
+  .drop.edge.top {
+    inset: 0 0 calc(100% - var(--share)) 0;
+  }
+  .drop.edge.bottom {
+    inset: calc(100% - var(--share)) 0 0 0;
   }
   .ghost {
     position: fixed;

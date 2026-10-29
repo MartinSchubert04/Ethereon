@@ -15,6 +15,7 @@ export type Action =
   | "nextTab"
   | "prevTab"
   | "nextPane"
+  | "movePane"
   | "sidebar"
   | "search"
   | "settings"
@@ -31,6 +32,12 @@ export const ACTIONS: { id: Action; label: string; def: string }[] = [
   { id: "nextTab", label: "Next tab", def: "Ctrl+Tab" },
   { id: "prevTab", label: "Previous tab", def: "Ctrl+Shift+Tab" },
   { id: "nextPane", label: "Next terminal in the same tab (only when the tab has several)", def: "Shift+Tab" },
+  // Solo cuentan los modificadores: se mantienen apretados y las flechas eligen a donde va.
+  {
+    id: "movePane",
+    label: "Move the terminal in a mosaic: hold it, the arrows show where it goes, it moves when you let go",
+    def: "Ctrl+Shift+Arrows",
+  },
   { id: "sidebar", label: "Show or hide the sidebar", def: "Ctrl+B" },
   { id: "search", label: "Search hosts", def: "Ctrl+F" },
   { id: "settings", label: "Settings", def: "Ctrl+," },
