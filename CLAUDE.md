@@ -11,6 +11,7 @@ credencial. Tauri 2 + Svelte 5, con el broker en una crate de Rust aparte.
 | Etapas, qué falta, alternativas descartadas | `docs/PLAN.md` |
 | Cómo tiene que verse la interfaz | `DESIGN.md` |
 | Qué hace cada módulo del broker | comentario de cabecera de cada archivo en `crates/ethereon-core/src/` |
+| Cómo depurar la interfaz (modo debug, copia de prueba) | `docs/DEBUG.md` |
 
 ## Comandos
 

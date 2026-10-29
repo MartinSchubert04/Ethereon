@@ -1,7 +1,6 @@
 /// <reference types="vite/client" />
-// Modo debug: un panel con lo que pasa con las pestañas y las terminales, para encontrar
-// por que una terminal queda en blanco. Solo con `npm run dev`, o en la app instalada con
-// localStorage "ethereon.debug" = "1".
+// Modo debug: un panel con lo que pasa con las pestañas y las terminales (ver docs/DEBUG.md).
+// Solo con `npm run dev`, o en la app instalada con localStorage "ethereon.debug" = "1".
 //
 // El panel muestra cada terminal que se ve (tamaño, filas, canvas, si dibuja, que elemento
 // queda encima del centro) y lo ultimo que paso. F9 marca "aca se ve mal" con una foto del

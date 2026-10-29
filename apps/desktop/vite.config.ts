@@ -76,6 +76,26 @@ function sixelLikeWindowsTerminal(): Plugin {
   };
 }
 
+// El addon de imagenes dibuja en un canvas "desynchronized" (de baja latencia: el WebView lo
+// muestra por fuera de la composicion normal). En WebView2, con ese canvas en pantalla, cada vez
+// que la terminal pierde el foco queda toda en negro hasta que vuelve a dibujar. Las imagenes no
+// necesitan baja latencia: canvas comun.
+function imageCanvasSynchronized(): Plugin {
+  const opts = /getContext\("2d",\{alpha:!0,desynchronized:!0\}\)/;
+  return {
+    name: "ethereon-image-canvas",
+    enforce: "pre",
+    transform(code, id) {
+      if (!/@xterm[\\/]addon-image[\\/]lib[\\/]addon-image\.m?js/.test(id)) return;
+      if (!opts.test(code)) {
+        this.warn("xterm addon-image changed: its canvas may still be desynchronized");
+        return;
+      }
+      return { code: code.replace(opts, 'getContext("2d",{alpha:!0})'), map: null };
+    },
+  };
+}
+
 // El panel de debug (src/lib/debug.svelte.ts) manda su registro por el canal de recarga en
 // vivo y aca se guarda en target/ui-debug.log, para leerlo sin copiar y pegar.
 function debugLog(): Plugin {
@@ -92,7 +112,7 @@ function debugLog(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [legacyGlyphs(), pixelBold(), sixelLikeWindowsTerminal(), debugLog(), svelte()],
+  plugins: [legacyGlyphs(), pixelBold(), sixelLikeWindowsTerminal(), imageCanvasSynchronized(), debugLog(), svelte()],
   clearScreen: false,
   server: { port: 1420, strictPort: true, watch: { ignored: ["**/src-tauri/**"] } },
   // Sin pre-empaquetar, para que el plugin de arriba tambien corra en `npm run dev`.
