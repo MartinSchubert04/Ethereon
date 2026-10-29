@@ -247,6 +247,22 @@ pub fn main_window_show(app: AppHandle) {
     let _ = app.run_on_main_thread(move || show_main(&h));
 }
 
+/// Se esta arrastrando una pestaña de otra ventana por encima de `label`: le manda donde
+/// esta el cursor, en coordenadas de esa ventana ("drag-hover" con {x, y}), para que muestre
+/// la pestaña de abajo. Sin cursor (`leave`), le avisa que se fue sin soltar (null).
+#[tauri::command]
+pub fn drag_hover(app: AppHandle, label: String, leave: bool) {
+    use tauri::Emitter;
+    let payload = if leave {
+        None
+    } else {
+        let (Some(w), Ok(c)) = (app.get_webview_window(&label), app.cursor_position()) else { return };
+        let (Ok(p), Ok(s)) = (w.inner_position(), w.scale_factor()) else { return };
+        Some(serde_json::json!({ "x": (c.x - p.x as f64) / s, "y": (c.y - p.y as f64) / s }))
+    };
+    let _ = app.emit_to(label.as_str(), "drag-hover", payload);
+}
+
 /// La otra ventana de Ethereon que esta bajo el cursor (para soltar ahi una pestaña), o
 /// ninguna. Usa la posicion real del cursor: las coordenadas del WebView no sirven entre
 /// monitores con distinta escala.

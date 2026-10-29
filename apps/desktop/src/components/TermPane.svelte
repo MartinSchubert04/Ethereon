@@ -212,6 +212,8 @@
     live.me().sid = sid;
     live.me().connecting = false;
     live.me().error = undefined;
+    // Sesion nueva y viva: si la anterior habia quedado como terminada, ya no.
+    setAlive(true);
     if (term.cols !== cols || term.rows !== rows) api.termResize(sid, term.cols, term.rows).catch(() => {});
     if (active) term.focus();
   }
@@ -402,6 +404,9 @@
     // Estacionada: otro panel de esta ventana la toma, sigue viva.
     if (L.parked) return;
     drop(key, L);
+    // Lo que llegue despues de la sesion que se cierra (su "termino") ya no es de nadie: si
+    // no, marcaria como terminada a la pestaña, que al volver a montarse abre otra sesion.
+    L.handle = () => {};
     // Si se esta pasando a otra ventana, la sesion sigue: la toma la otra.
     if (L.id && !me().moving && !leaving.has(L.id)) api.termClose(L.id);
     L.term.dispose();

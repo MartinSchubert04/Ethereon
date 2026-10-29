@@ -290,6 +290,7 @@ pub fn run() {
             window::term_window_give,
             window::main_window_show,
             window::window_at,
+            window::drag_hover,
             terminal::term_open_local,
             terminal::local_shells,
             fonts::system_fonts,

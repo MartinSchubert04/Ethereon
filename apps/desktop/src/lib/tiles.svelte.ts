@@ -18,6 +18,8 @@ export const isLeaf = (t: Tile): t is { leaf: number } => "leaf" in t;
 /** Donde caeria lo que se esta arrastrando (lo dibuja TilePane). */
 export const drop = $state({
   hint: null as null | { tab: number; leaf: number; side: Side },
+  /** La pestaña de la barra sobre la que se esta arrastrando otra (de esta ventana o de otra). */
+  tabOver: null as number | null,
 });
 
 export function leaves(t: Tile): number[] {

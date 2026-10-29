@@ -8,8 +8,8 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { api } from "./api";
-import { app, closeTerminal, leaving, newKey, toast, type TermTab } from "./state.svelte";
-import { remap, type Tile } from "./tiles.svelte";
+import { app, closeTerminal, leaving, newKey, toast, type TermTab, type View } from "./state.svelte";
+import { drop, remap, type Tile } from "./tiles.svelte";
 import { sizeOf, textOf } from "./live";
 
 /** Lo que viaja de una ventana a otra. */
@@ -134,13 +134,70 @@ export async function approvalsWindow() {
   await invoke("term_window_open", { tabs, x: null, y: null, ...APPROVALS_SIZE }).catch((e) => toast(String(e), true));
 }
 
+// ---- una pestaña de otra ventana pasando por encima de esta
+//
+// La ventana que arrastra le va mandando donde esta el cursor ("drag-hover"). Aca se marca
+// la pestaña de abajo y, si el cursor se queda, se muestra (como en el navegador), para ver
+// que hay antes de soltar. Si se va sin soltar, vuelve la que se veia.
+
+/** Cuanto hay que quedarse encima de una pestaña para que se muestre. */
+const HOVER_SHOW = 450;
+let remote: { orig: { view: View; active: number }; key?: number; timer?: number } | null = null;
+/** Donde poner lo que llegue: al lado de la pestaña sobre la que se solto. */
+let dropAt: number | null = null;
+
+function remoteHover(p: { x: number; y: number } | null) {
+  if (!p) {
+    if (remote) {
+      clearTimeout(remote.timer);
+      if (app.terms.some((t) => t.key === remote!.orig.active)) app.activeTerm = remote.orig.active;
+      app.view = remote.orig.view;
+    }
+    remote = null;
+    drop.tabOver = null;
+    dropAt = null;
+    return;
+  }
+  remote ??= { orig: { view: app.view, active: app.activeTerm } };
+  const bar = document.querySelector(".bar")?.getBoundingClientRect();
+  const inBar = !!bar && p.y >= bar.top - 8 && p.y <= bar.bottom + 8 && p.x >= 0 && p.x <= innerWidth;
+  const el = inBar
+    ? (document
+        .elementsFromPoint(p.x, (bar!.top + bar!.bottom) / 2)
+        .find((e) => e instanceof HTMLElement && e.classList.contains("tab") && e.dataset.key) as HTMLElement | undefined)
+    : undefined;
+  const key = el ? Number(el.dataset.key) : null;
+  drop.tabOver = key;
+  if (el) {
+    const r = el.getBoundingClientRect();
+    const i = app.terms.findIndex((t) => t.key === key);
+    dropAt = p.x < r.left + r.width / 2 ? i : i + 1;
+  } else dropAt = null;
+  if (key === (remote.key ?? null)) return;
+  clearTimeout(remote.timer);
+  remote.key = key ?? undefined;
+  if (key == null) return;
+  remote.timer = window.setTimeout(() => {
+    if (remote?.key !== key || !app.terms.some((t) => t.key === key)) return;
+    app.activeTerm = key;
+    app.view = "terminal";
+  }, HOVER_SHOW);
+}
+
 async function take() {
   const tabs = await invoke<Moved[] | null>("term_window_take").catch(() => null);
+  // Se solto aca: lo que se mostro al pasar queda como esta (no se vuelve atras).
+  const at = dropAt;
+  if (remote) clearTimeout(remote.timer);
+  remote = null;
+  drop.tabOver = null;
+  dropAt = null;
   if (!tabs?.length) return;
   let current = 0;
+  let i = at != null && at >= 0 && at <= app.terms.length ? at : app.terms.length;
   for (const m of tabs) {
     const t = unpack(m);
-    app.terms.push(t);
+    app.terms.splice(i++, 0, t);
     app.activeTerm = t.key;
     if (m.current) current = t.key;
   }
@@ -216,6 +273,7 @@ export function initWindows() {
   if (started) return;
   started = true;
   listen("take-tabs", () => take());
+  listen<{ x: number; y: number } | null>("drag-hover", (e) => remoteHover(e.payload));
   listen("session-save", () => saveSession());
   take();
 }

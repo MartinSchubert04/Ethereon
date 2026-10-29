@@ -5,6 +5,7 @@
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { ArrowDownToLine, Bell, Copy, FolderOpen, Inbox, Layers, Lock, LayoutGrid, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
   import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
+  import { invoke } from "@tauri-apps/api/core";
   import { api } from "../lib/api";
   import { onMount } from "svelte";
   import { app, closeTab, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
@@ -31,8 +32,30 @@
 
   // Bajarla a las terminales la suma a la pestaña que se ve, al costado del panel que se
   // marca (mosaico). Si la que se arrastra es la que se ve, se muestra la de al lado, como
-  // al arrancar una pestaña en el navegador.
-  let td: { key: number; sx: number; sy: number; started: boolean; out: boolean; shown?: number } | null = null;
+  // al arrancar una pestaña en el navegador. Quedarse un momento encima de otra pestaña la
+  // muestra, para soltar ahi. Al soltar sin sumarla a nada, vuelve la que se veia al empezar.
+  let td: {
+    key: number;
+    sx: number;
+    sy: number;
+    started: boolean;
+    out: boolean;
+    /** Lo que se veia al empezar a arrastrar. */
+    orig: { view: typeof app.view; active: number };
+    /** La pestaña bajo el mouse y desde cuando (para mostrarla si se queda ahi). */
+    hover?: number;
+    hoverTimer?: number;
+  } | null = null;
+  /** Cuanto hay que quedarse encima de una pestaña para que se muestre. */
+  const HOVER_SHOW = 450;
+  /** La otra ventana a la que se le esta mandando donde esta el cursor (para que muestre su
+   *  pestaña de abajo). */
+  let hoverWin: string | null = null;
+  function hoverWindow(label: string | null) {
+    if (hoverWin && hoverWin !== label) invoke("drag_hover", { label: hoverWin, leave: true }).catch(() => {});
+    hoverWin = label;
+    if (label) invoke("drag_hover", { label, leave: false }).catch(() => {});
+  }
   let dragKey = $state<number | null>(null);
   let dragOut = $state(false);
   /** Otra ventana de Ethereon bajo el cursor: soltar ahi pasa la pestaña a esa ventana. */
@@ -42,7 +65,7 @@
 
   function tabDown(e: PointerEvent, key: number) {
     if (e.button !== 0 || (e.target as HTMLElement).closest(".x")) return;
-    td = { key, sx: e.clientX, sy: e.clientY, started: false, out: false };
+    td = { key, sx: e.clientX, sy: e.clientY, started: false, out: false, orig: { view: app.view, active: app.activeTerm } };
     // Con captura siguen llegando los movimientos aunque el mouse salga de la ventana.
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
@@ -58,10 +81,11 @@
     const barBottom = (e.currentTarget as HTMLElement).closest(".bar")?.getBoundingClientRect().bottom ?? 46;
     const dragged = app.terms.find((t) => t.key === td!.key);
     if (inside && e.clientY > barBottom + 8 && dragged && splittable(dragged) && app.terms.length > 1) {
-      if (app.activeTerm === td.key) {
+      hoverTab(null);
+      if (app.activeTerm === td.key || app.view !== "terminal") {
         const i = app.terms.findIndex((t) => t.key === td!.key);
-        td.shown = td.key;
-        app.activeTerm = (app.terms[i + 1] ?? app.terms[i - 1]).key;
+        const next = app.activeTerm === td.key || !app.activeTerm ? (app.terms[i + 1] ?? app.terms[i - 1]).key : app.activeTerm;
+        app.activeTerm = next;
         app.view = "terminal";
       }
       const hit = tileAt(e.clientX, e.clientY);
@@ -70,40 +94,74 @@
         td.out = false;
         dragOut = false;
         dropOn = null;
+        hoverWindow(null);
         return;
       }
     } else {
       drop.hint = null;
-      if (td.shown && e.clientY <= barBottom + 8) {
-        app.activeTerm = td.shown;
-        td.shown = undefined;
-      }
     }
     td.out = e.clientY < -16 || e.clientY > 110 || e.clientX < -16 || e.clientX > innerWidth + 16;
     dragOut = td.out;
     if (td.out) {
+      hoverTab(null);
       // Cada tanto: ¿esta encima de otra ventana de Ethereon?
       const now = Date.now();
       if (now - lastAsk > 120) {
         lastAsk = now;
-        windowAtCursor().then((w) => td && (dropOn = w));
+        windowAtCursor().then((w) => {
+          if (!td) return;
+          dropOn = w;
+          hoverWindow(w?.label ?? null);
+        });
       }
       return;
     }
     dropOn = null;
+    hoverWindow(null);
+    if (e.clientY > barBottom + 8) return;
     const over = document
       .elementsFromPoint(e.clientX, 23)
       .find((el) => el instanceof HTMLElement && el.classList.contains("tab") && el.dataset.key) as HTMLElement | undefined;
+    const overKey = over ? Number(over.dataset.key) : null;
+    hoverTab(overKey !== td.key ? overKey : null);
     if (!over) return;
     const from = app.terms.findIndex((t) => t.key === td!.key);
-    const to = app.terms.findIndex((t) => t.key === Number(over.dataset.key));
+    const to = app.terms.findIndex((t) => t.key === overKey);
     if (from < 0 || to < 0 || from === to) return;
+    // Se cambian de lugar recien en el ultimo cuarto de la otra (del lado hacia donde se
+    // va). El medio queda para quedarse encima y verla antes de soltar. Pasado ese punto el
+    // mouse queda sobre la que se arrastra, asi que no se vuelven a cambiar solas aunque
+    // tengan distinto ancho.
+    const r = over.getBoundingClientRect();
+    if ((from < to && e.clientX < r.left + r.width * 0.75) || (from > to && e.clientX > r.left + r.width * 0.25)) return;
     const [t] = app.terms.splice(from, 1);
     app.terms.splice(to, 0, t);
   }
 
+  /** El mouse esta sobre otra pestaña mientras se arrastra: si se queda, se muestra esa. */
+  function hoverTab(key: number | null) {
+    if (!td || td.hover === (key ?? undefined)) return;
+    clearTimeout(td.hoverTimer);
+    td.hover = key ?? undefined;
+    drop.tabOver = key;
+    td.hoverTimer = undefined;
+    if (key == null) return;
+    td.hoverTimer = window.setTimeout(() => {
+      if (!td?.started || td.hover !== key || !app.terms.some((t) => t.key === key)) return;
+      app.activeTerm = key;
+      app.view = "terminal";
+    }, HOVER_SHOW);
+  }
+
   async function tabUp(e: PointerEvent) {
     const d = td;
+    clearTimeout(d?.hoverTimer);
+    drop.tabOver = null;
+    // La otra ventana que mostraba su pestaña: si no se suelta ahi, vuelve a lo que tenia.
+    const hw = hoverWin;
+    hoverWin = null;
+    const leave = () => hw && invoke("drag_hover", { label: hw, leave: true }).catch(() => {});
+    if (!d?.started || !d.out) leave();
     td = null;
     dragKey = null;
     dragOut = false;
@@ -115,11 +173,14 @@
     setTimeout(() => (suppressClick = false), 0);
     if (hint) return mergeInto(d.key, hint.tab, hint.leaf, hint.side);
     if (!d.out) {
-      if (d.shown) app.activeTerm = d.shown;
+      // No se sumo a ninguna: vuelve lo que se veia al empezar.
+      if (app.terms.some((t) => t.key === d.orig.active)) app.activeTerm = d.orig.active;
+      app.view = d.orig.view;
       return;
     }
     // Soltada sobre otra ventana de Ethereon: se pasa a esa. Si no, ventana nueva ahi.
     const target = await windowAtCursor();
+    if (hw && hw !== target?.label) leave();
     if (target) await moveTab(d.key, target.label);
     else await moveTab(d.key, "new", { x: e.screenX, y: e.screenY });
   }
@@ -177,6 +238,7 @@
           class:dragging={dragKey === t.key}
           class:out={dragKey === t.key && dragOut}
           class:collapsed={t.collapsed}
+          class:dropover={drop.tabOver === t.key}
           data-key={t.key}
           role="button"
           tabindex="0"
@@ -322,6 +384,11 @@
   .tab.out {
     opacity: 0.35;
     outline: 1px dashed var(--accent);
+  }
+  /* La pestaña sobre la que se esta arrastrando otra: si el cursor se queda, se muestra. */
+  .tab.dropover {
+    border-color: var(--accent);
+    color: var(--text);
   }
   .tab .n {
     color: var(--text-3);
