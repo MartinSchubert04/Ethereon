@@ -2,7 +2,7 @@
 // los de copiar y pegar de la terminal los maneja TermPane.
 import { api } from "./api";
 import { comboOf, matches, prefs } from "./prefs.svelte";
-import { app, closeMember, closeTerminal, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
+import { app, closeMember, closeTab, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
 import { cssVar } from "./themes";
 import { closeLeaf, leaves } from "./tiles.svelte";
 
@@ -129,7 +129,7 @@ function onKey(e: KeyboardEvent) {
       const top = app.terms.find((x) => x.key === app.activeTerm);
       if (top?.layout && top.focus) closeLeaf(top, top.focus);
       else if (top?.members && top.activeMember) closeMember(top, top.activeMember);
-      else closeTerminal(app.activeTerm);
+      else closeTab(app.activeTerm);
     } else handled = false;
   } else if (matches(e, "nextTab")) goToTab((currentTabIndex() + 1) % tabCount());
   else if (matches(e, "prevTab")) goToTab((currentTabIndex() + tabCount() - 1) % tabCount());

@@ -22,6 +22,7 @@ import "./styles/term-fonts.css";
 import App from "./App.svelte";
 import TermWindow from "./TermWindow.svelte";
 import { applyTheme, currentTheme } from "./lib/themes";
+import { installTooltips } from "./lib/tooltip";
 
 applyTheme(currentTheme());
 
@@ -34,5 +35,8 @@ window.addEventListener("contextmenu", (e) => {
   const t = e.target as HTMLElement;
   if (!t.closest("input, textarea, .xterm")) e.preventDefault();
 });
+
+// Tooltips con mas demora que los del navegador.
+installTooltips();
 
 export default app;

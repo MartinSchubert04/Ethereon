@@ -7,7 +7,7 @@
 // que ya estaba en la pestaña conserva su clave, asi no se vuelve a montar.
 import { api } from "./api";
 import { park } from "./live";
-import { app, closeTerminal, leaving, newKey, toast, type TermTab } from "./state.svelte";
+import { app, closeTerminal, leaving, lockedWarn, newKey, toast, type TermTab } from "./state.svelte";
 
 export type Side = "left" | "right" | "top" | "bottom";
 export type Split = { dir: "row" | "col"; ratio: number; a: Tile; b: Tile };
@@ -185,6 +185,8 @@ function forget(t: TermTab, key: number) {
 
 /** Cierra un panel (y su sesion). Si era el ultimo, la pestaña. */
 export function closeLeaf(t: TermTab, key: number) {
+  // El ultimo panel de una pestaña bloqueada no se cierra (se iria la pestaña).
+  if ((t.members?.length ?? 1) <= 1 && lockedWarn(t)) return;
   forget(t, key);
 }
 

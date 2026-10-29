@@ -20,6 +20,8 @@ interface Moved {
   cwd?: string;
   sftp?: boolean;
   approvals?: boolean;
+  locked?: boolean;
+  collapsed?: boolean;
   attach?: number;
   size?: { cols: number; rows: number };
   members?: Moved[];
@@ -36,6 +38,8 @@ const pack = (t: TermTab): Moved => ({
   cwd: t.cwd,
   sftp: t.sftp,
   approvals: t.approvals,
+  locked: t.locked,
+  collapsed: t.collapsed,
   attach: t.sftp || t.approvals ? undefined : t.sid,
   size: t.sftp || t.approvals || t.members ? undefined : sizeOf(t.key),
   members: t.members?.map(pack),
@@ -53,6 +57,8 @@ function unpack(m: Moved): TermTab {
     cwd: m.cwd,
     sftp: m.sftp,
     approvals: m.approvals,
+    locked: m.locked,
+    collapsed: m.collapsed,
     title: m.title,
     alive: true,
     attach: m.attach,

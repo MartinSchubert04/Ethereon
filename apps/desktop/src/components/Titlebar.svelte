@@ -3,11 +3,11 @@
   // de Windows) y a la vez la tira de pestañas. Se arrastra desde cualquier hueco y doble
   // clic maximiza (data-tauri-drag-region).
   import { getCurrentWindow } from "@tauri-apps/api/window";
-  import { ArrowDownToLine, Bell, Copy, FolderOpen, Inbox, Layers, LayoutGrid, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
+  import { ArrowDownToLine, Bell, Copy, FolderOpen, Inbox, Layers, Lock, LayoutGrid, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
   import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
   import { api } from "../lib/api";
   import { onMount } from "svelte";
-  import { app, closeTerminal, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
+  import { app, closeTab, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
   import { pop } from "../lib/motion";
   import { drop, mergeInto, splittable, tileAt } from "../lib/tiles.svelte";
 
@@ -136,6 +136,12 @@
     menu = null;
     f();
   }
+  const menuTab = $derived(menu ? app.terms.find((t) => t.key === menu!.key) : undefined);
+  function toggle(field: "locked" | "collapsed") {
+    const t = menuTab;
+    menu = null;
+    if (t) t[field] = !t[field];
+  }
 </script>
 
 <svelte:window
@@ -170,25 +176,33 @@
           class:on={onTerm && app.activeTerm === t.key}
           class:dragging={dragKey === t.key}
           class:out={dragKey === t.key && dragOut}
+          class:collapsed={t.collapsed}
           data-key={t.key}
           role="button"
           tabindex="0"
-          title="{t.title}{t.members ? ` · ${t.members.length} terminals` : ''} (Ctrl {detached ? i + 1 : i + 2}). Drag it onto a terminal to split, or out of the window to open it apart."
+          aria-label={t.title}
+          title={t.collapsed ? `${t.title} · Ctrl ${detached ? i + 1 : i + 2}` : `Ctrl ${detached ? i + 1 : i + 2}`}
           onpointerdown={(e) => tabDown(e, t.key)}
           onpointermove={tabMove}
           onpointerup={tabUp}
           oncontextmenu={(e) => tabMenu(e, t.key)}
           onclick={() => !suppressClick && goToTab(i + 1)}
           onkeydown={(e) => e.key === "Enter" && goToTab(i + 1)}
-          onauxclick={(e) => e.button === 1 && closeTerminal(t.key)}
+          onauxclick={(e) => e.button === 1 && closeTab(t.key)}
         >
           <span class="dot" class:dead={!t.alive}>
             {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else if t.approvals}<Inbox size={14} />{:else}<SquareTerminal size={14} />{/if}
           </span>
-          <span class="label ellipsis">{t.title}{#if t.members}<span class="n">{" · "}{t.members.length}</span>{:else if t.approvals && app.approvals.length}<span class="n">{" · "}{app.approvals.length}</span>{/if}</span>
-          <button class="x" aria-label="Close tab" title="Close (Ctrl W)" onclick={(e) => (e.stopPropagation(), closeTerminal(t.key))}>
-            <X size={12} />
-          </button>
+          {#if !t.collapsed}
+            <span class="label ellipsis">{t.title}{#if t.members}<span class="n">{" · "}{t.members.length}</span>{:else if t.approvals && app.approvals.length}<span class="n">{" · "}{app.approvals.length}</span>{/if}</span>
+          {/if}
+          {#if t.locked}
+            <span class="lock" title="Locked"><Lock size={t.collapsed ? 10 : 11} /></span>
+          {:else if !t.collapsed}
+            <button class="x" aria-label="Close tab" title="Close (Ctrl W)" onclick={(e) => (e.stopPropagation(), closeTab(t.key))}>
+              <X size={12} />
+            </button>
+          {/if}
         </div>
       {/each}
       {#if !detached}
@@ -213,7 +227,10 @@
         <button role="menuitem" onclick={() => act(() => moveTab(menu!.key, w.label))}>Move to {w.name}</button>
       {/each}
       <hr />
-      <button role="menuitem" onclick={() => act(() => closeTerminal(menu!.key))}>Close tab</button>
+      <button role="menuitem" onclick={() => toggle("locked")}>{menuTab?.locked ? "Unlock tab" : "Lock tab (can't be closed)"}</button>
+      <button role="menuitem" onclick={() => toggle("collapsed")}>{menuTab?.collapsed ? "Expand tab" : "Collapse to icon"}</button>
+      <hr />
+      <button role="menuitem" disabled={menuTab?.locked} onclick={() => act(() => closeTab(menu!.key))}>Close tab</button>
     </div>
   {/if}
 
@@ -336,8 +353,12 @@
     border-radius: var(--radius-sm);
     font-size: 13px;
   }
-  .tabmenu button:hover {
+  .tabmenu button:hover:not(:disabled) {
     background: var(--hover);
+  }
+  .tabmenu button:disabled {
+    color: var(--text-3);
+    cursor: default;
   }
   .tabmenu hr {
     border: 0;
@@ -395,6 +416,33 @@
   .x:hover {
     opacity: 1;
     background: var(--hover);
+  }
+  /* Colapsada: solo el icono (y el candado chico en la esquina si esta bloqueada). */
+  .tab.collapsed {
+    position: relative;
+    flex: none;
+    gap: 0;
+    width: 36px;
+    padding: 0;
+    justify-content: center;
+  }
+  .lock {
+    display: grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: var(--text-3);
+  }
+  .tab.collapsed .lock {
+    position: absolute;
+    right: 2px;
+    bottom: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--panel-2);
+    color: var(--text-2);
   }
   .drag {
     flex: 1;

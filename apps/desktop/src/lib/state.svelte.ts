@@ -16,6 +16,10 @@ export interface TermTab {
   sftp?: boolean;
   /** Las aprobaciones pendientes en vez de una terminal (pestaña o panel del mosaico). */
   approvals?: boolean;
+  /** Bloqueada: no se puede cerrar (ni con la X, ni Ctrl W, ni el boton del medio). */
+  locked?: boolean;
+  /** Colapsada: en la barra solo se ve el icono (y el candado si esta bloqueada). */
+  collapsed?: boolean;
   title: string;
   alive: boolean;
   /** Conectando todavia (la lista de un grupo lo muestra). */
@@ -232,9 +236,22 @@ export function closeMember(ws: TermTab, key: number) {
   const list = ws.members ?? [];
   const i = list.findIndex((m) => m.key === key);
   if (i < 0) return;
+  if (list.length === 1 && lockedWarn(ws)) return;
   list.splice(i, 1);
   if (!list.length) return closeTerminal(ws.key);
   if (ws.activeMember === key) ws.activeMember = list[Math.max(0, i - 1)].key;
+}
+
+/** Avisa (y devuelve true) si la pestaña esta bloqueada y no se puede cerrar. */
+export function lockedWarn(t: TermTab | undefined): boolean {
+  if (!t?.locked) return false;
+  toast("This tab is locked. Unlock it from its right-click menu to close it.");
+  return true;
+}
+
+/** La persona cierra una pestaña: si esta bloqueada, no. */
+export function closeTab(key: number) {
+  if (!lockedWarn(app.terms.find((t) => t.key === key))) closeTerminal(key);
 }
 
 /** Saca la pestaña de la lista (cerrandola o porque se va a otra ventana). */
