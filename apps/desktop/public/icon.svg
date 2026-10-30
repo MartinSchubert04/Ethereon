@@ -1,14 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Mas ancho que alto, como el de Windows Terminal: se lee como una ventana. -->
+  <!-- Con la misma huella que el de Windows Terminal (todo el ancho, 3/4 del alto) y los grises
+       del tema Neovim. El borde se distingue de la barra de tareas, asi se ve la ventana entera. -->
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#1b2230"/>
-      <stop offset="1" stop-color="#0d1117"/>
+      <stop offset="0" stop-color="#1b1b1b"/>
+      <stop offset="1" stop-color="#0c0c0c"/>
     </linearGradient>
   </defs>
-  <rect x="8" y="60" width="496" height="392" rx="88" fill="url(#g)"/>
-  <rect x="9.5" y="61.5" width="493" height="389" rx="86.5" fill="none" stroke="#ffffff" stroke-opacity=".08" stroke-width="3"/>
-  <path d="M120 190 L196 256 L120 322" fill="none" stroke="#6ee7b7" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M244 322 H380" stroke="#e6e8ee" stroke-width="40" stroke-linecap="round"/>
-  <circle cx="380" cy="184" r="31" fill="none" stroke="#6ee7b7" stroke-width="20"/>
+  <rect x="0" y="64" width="512" height="384" rx="84" fill="url(#g)"/>
+  <rect x="5" y="69" width="502" height="374" rx="79" fill="none" stroke="#3a3a3a" stroke-width="10"/>
+  <path d="M120 190 L196 256 L120 322" fill="none" stroke="#d0d0d0" stroke-width="40" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M244 322 H380" stroke="#d4d4d4" stroke-width="40" stroke-linecap="round"/>
+  <circle cx="380" cy="184" r="31" fill="none" stroke="#d0d0d0" stroke-width="20"/>
 </svg>
