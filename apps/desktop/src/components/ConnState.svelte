@@ -156,17 +156,20 @@
     background: color-mix(in srgb, var(--term-bg) 82%, transparent);
     backdrop-filter: blur(2px);
   }
+  /* La distancia va de circulo a circulo: el nodo mide lo que el circulo y el nombre cuelga
+     debajo, centrado, sin empujar la linea. El relleno deja lugar a los nombres de los
+     extremos ((110 - 34) / 2 a los costados) y a la fila de nombres abajo. */
   .path {
     display: flex;
     align-items: center;
     max-width: 100%;
+    padding: 0 38px 20px;
   }
   .node {
+    position: relative;
     flex: none;
     display: grid;
-    justify-items: center;
-    gap: 6px;
-    max-width: 150px;
+    width: 34px;
   }
   .ic {
     display: grid;
@@ -191,17 +194,28 @@
     color: var(--danger);
     animation: none;
   }
+  /* Hasta 110px: con la linea entera (64 + 2 * 10) no pisa al nombre del nodo de al lado. */
   .name {
-    max-width: 100%;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 110px;
+    text-align: center;
     font: 11px var(--mono);
     color: var(--text-3);
   }
-  /* La linea entre nodos: punteada y avanzando mientras conecta. */
+  /* La linea entre nodos: punteada y avanzando mientras conecta. El margen deja afuera el
+     pulso del circulo (5px) y un poco de aire. */
+  /* Con width y no flex-basis: el ancho intrinseco del flex (la fila esta centrada, mide lo
+     que su contenido) ignora el basis de un span vacio y la dejaba en el minimo. */
   .link {
-    flex: 0 1 64px;
+    flex: 0 1 auto;
+    width: 64px;
     min-width: 18px;
     height: 2px;
-    margin: 0 6px 19px;
+    margin: 0 10px;
     border-radius: 1px;
     background: var(--line-strong);
   }
