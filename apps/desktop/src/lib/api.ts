@@ -72,6 +72,8 @@ export interface Settings {
   approval_timeout_secs: number;
   audit_output: boolean;
   keep_alive_minutes: number;
+  /** 0 a 100; 0 = mudo. */
+  sound_volume: number;
 }
 
 export interface Snapshot {
@@ -210,6 +212,7 @@ export const api = {
   groupDelete: (name: string) => invoke<void>("group_delete", { name }),
   denylistSave: (rules: string[]) => invoke<void>("denylist_save", { rules }),
   settingsSave: (settings: Settings) => invoke<void>("settings_save", { settings }),
+  soundPlay: (name: "approval", volume: number) => invoke<void>("sound_play", { name, volume }),
   agentSet: (on: boolean) => invoke<void>("agent_set", { on }),
   deviceCreate: (name: string, expiresDays: number | null, hosts: string[]) =>
     invoke<{ id: string; token: string; command: string }>("device_create", { name, expiresDays, hosts }),

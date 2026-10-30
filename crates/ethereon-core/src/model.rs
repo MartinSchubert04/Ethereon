@@ -47,11 +47,21 @@ pub struct Settings {
     pub audit_output: bool,
     /// Minutos que una conexion SSH sin uso queda abierta para el proximo comando.
     pub keep_alive_minutes: u64,
+    /// Volumen de los sonidos (el de un pedido de aprobacion), de 0 a 100; 0 = mudo. Aca y
+    /// no en la interfaz: si el agente pudiera silenciarlo, un pedido pasaria sin que lo oigas.
+    pub sound_volume: u8,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { agent_enabled: true, autolock_minutes: 30, approval_timeout_secs: 300, audit_output: false, keep_alive_minutes: 5 }
+        Settings {
+            agent_enabled: true,
+            autolock_minutes: 30,
+            approval_timeout_secs: 300,
+            audit_output: false,
+            keep_alive_minutes: 5,
+            sound_volume: 70,
+        }
     }
 }
 

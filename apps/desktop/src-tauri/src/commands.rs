@@ -420,6 +420,12 @@ pub fn settings_save(s: State<AppState>, settings: Settings) -> R<()> {
     })
 }
 
+/// Para probar el volumen desde Settings antes de que llegue un aviso.
+#[tauri::command]
+pub fn sound_play(name: String, volume: u8) {
+    crate::sound::play(&name, volume);
+}
+
 #[tauri::command]
 pub fn agent_set(s: State<AppState>, on: bool) -> R<()> {
     s.broker.set_agent_enabled(on)

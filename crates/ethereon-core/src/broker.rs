@@ -26,6 +26,8 @@ pub trait Notifier: Send + Sync {
     fn event(&self, name: &str, payload: serde_json::Value);
     /// Notificacion del sistema (escritorio).
     fn notify(&self, title: &str, body: &str);
+    /// Un sonido ("approval"), con volumen de 0 a 100. Quien no tiene parlantes no hace nada.
+    fn sound(&self, _name: &str, _volume: u8) {}
 }
 
 /// Quien pide: un dispositivo (token) y, si se sabe, la sesion MCP.
@@ -505,7 +507,7 @@ impl Broker {
                     warnings,
                     created: now(),
                 };
-                let decision = self.wait_approval(view, &ctx.session, settings.approval_timeout_secs).await;
+                let decision = self.wait_approval(view, &ctx.session, &settings).await;
                 match decision {
                     Some(Decision::Approve) => {}
                     Some(Decision::ApprovePattern { pattern }) => {
@@ -554,7 +556,8 @@ impl Broker {
         Ok(RunResult { edited_command: edited, ..r })
     }
 
-    async fn wait_approval(&self, view: ApprovalView, session: &str, timeout_secs: u64) -> Option<Decision> {
+    async fn wait_approval(&self, view: ApprovalView, session: &str, settings: &Settings) -> Option<Decision> {
+        let timeout_secs = settings.approval_timeout_secs;
         let (tx, rx) = oneshot::channel();
         let id = view.id;
         let title = match view.env {
@@ -564,6 +567,7 @@ impl Broker {
         let body = view.command.chars().take(180).collect::<String>();
         self.approvals.lock().unwrap().insert(id, Pending { view, session: session.into(), tx });
         self.notifier.notify(&title, &body);
+        self.notifier.sound("approval", settings.sound_volume);
         self.emit_approvals();
         let out = tokio::time::timeout(Duration::from_secs(timeout_secs.max(10)), rx).await.ok().and_then(|r| r.ok());
         if self.approvals.lock().unwrap().remove(&id).is_some() {

@@ -39,7 +39,7 @@
   <div class="empty" class:compact>
     <Inbox size={compact ? 24 : 30} />
     <h3>Nothing waiting</h3>
-    <div>You also get a desktop notification when something arrives.</div>
+    <div>You also get a desktop notification and a sound when something arrives (volume in Settings).</div>
   </div>
 {:else}
   <div class="stack">

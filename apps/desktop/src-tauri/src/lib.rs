@@ -5,6 +5,7 @@ mod commands;
 mod files;
 mod fonts;
 mod hotkey;
+mod sound;
 mod terminal;
 mod updater;
 mod window;
@@ -84,6 +85,9 @@ impl Notifier for UiNotifier {
     }
     fn notify(&self, title: &str, body: &str) {
         let _ = self.0.notification().builder().title(title).body(body).show();
+    }
+    fn sound(&self, name: &str, volume: u8) {
+        sound::play(name, volume);
     }
 }
 
@@ -260,6 +264,7 @@ pub fn run() {
             commands::group_delete,
             commands::denylist_save,
             commands::settings_save,
+            commands::sound_play,
             commands::agent_set,
             commands::device_create,
             commands::device_revoke,

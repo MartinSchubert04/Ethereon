@@ -12,7 +12,7 @@
   import Logo from "../components/Logo.svelte";
   import { iconOptions } from "../lib/icons";
   import type { LocalShell } from "../lib/api";
-  import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Power, Shield, ShieldCheck, SquareTerminal } from "@lucide/svelte";
+  import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Play, Power, Shield, ShieldCheck, SquareTerminal, Volume2, VolumeX } from "@lucide/svelte";
   import { importPick } from "../lib/importer";
   import { INCLUDED, ptToPx, systemFonts, wtFont, type WtFont } from "../lib/termfonts";
   import { THEMES, applyTheme, currentPalette, currentTheme, palettesOf, type ThemeId } from "../lib/themes";
@@ -75,6 +75,14 @@
 
   async function saveSettings() {
     await attempt(() => api.settingsSave({ ...s, agent_enabled: app.snap!.settings.agent_enabled }), "Settings saved");
+  }
+
+  // El volumen se guarda al soltar la barra, sin el boton de Security, y suena para que se
+  // escuche como va a quedar. Va con los ajustes guardados, no con lo que se este editando ahi.
+  function saveVolume() {
+    const v = s.sound_volume;
+    api.soundPlay("approval", v).catch(() => {});
+    api.settingsSave({ ...app.snap!.settings, sound_volume: v }).catch((e) => toast(String(e), true));
   }
 
   async function toggleAutostart() {
@@ -252,6 +260,18 @@
         <input type="password" placeholder="New password (8+ characters)" bind:value={newPw} />
       </div>
       <div><button class="btn" disabled={!oldPw || !newPw} onclick={changePw}>Change</button></div>
+    </Section>
+
+    <Section id="sounds" title="Sounds" icon={Volume2} summary={s.sound_volume ? `Volume ${s.sound_volume}%` : "Muted"}>
+      <div class="field">Volume
+        <span class="hint">Plays when a command waits for your approval, even with the window in the tray. 0 = muted.</span>
+        <div class="vol">
+          {#if s.sound_volume}<Volume2 size={15} />{:else}<VolumeX size={15} />{/if}
+          <input type="range" min="0" max="100" step="5" bind:value={s.sound_volume} onchange={saveVolume} aria-label="Volume" />
+          <span class="pct">{s.sound_volume}%</span>
+          <button class="btn" disabled={!s.sound_volume} onclick={() => api.soundPlay("approval", s.sound_volume)}><Play size={13} />Play</button>
+        </div>
+      </div>
     </Section>
 
     <Section id="terminal" title="Terminal" icon={SquareTerminal} summary="Copy, paste, font, tab names and icons">
@@ -449,6 +469,50 @@
 </div>
 
 <style>
+  .vol {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 460px;
+    color: var(--text-2);
+  }
+  /* La barra de volumen: sin la caja de los demas inputs, con los colores del tema. */
+  .vol input[type="range"] {
+    flex: 1;
+    height: 18px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    appearance: none;
+    cursor: pointer;
+  }
+  .vol input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+    background: var(--line-strong);
+  }
+  .vol input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    margin-top: -5px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: 2px solid var(--panel);
+    transition: transform 0.12s;
+  }
+  .vol input[type="range"]:hover::-webkit-slider-thumb {
+    transform: scale(1.15);
+  }
+  .vol input[type="range"]:focus-visible::-webkit-slider-thumb {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  .pct {
+    width: 36px;
+    font: 11.5px var(--mono);
+    color: var(--text-3);
+    text-align: right;
+  }
   .themes {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
