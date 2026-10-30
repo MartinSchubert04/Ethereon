@@ -277,17 +277,19 @@
             ]}
           />
         </div>
-        <div class="field">Tab name follows the folder
-          <Select
-            bind:value={prefs.term.folderTitleDelay}
-            options={[
-              { value: 0, label: "Right away" },
-              ...[3, 5, 10, 15, 30, 60].map((n) => ({ value: n, label: `After ${n} s in the same folder` })),
-              { value: -1, label: "Never", hint: "keeps the folder it started in" },
-            ]}
+        <label class="field">Tab name follows the folder after (seconds)
+          <span class="hint">Local terminals only. 0 = right away, empty = never.</span>
+          <input
+            type="number"
+            min="0"
+            placeholder="Never"
+            value={prefs.term.folderTitleDelay < 0 ? "" : prefs.term.folderTitleDelay}
+            oninput={(e) => {
+              const v = e.currentTarget.value.trim();
+              prefs.term.folderTitleDelay = v === "" ? -1 : Math.max(0, Math.round(Number(v)) || 0);
+            }}
           />
-          <span class="hint">Local terminals only</span>
-        </div>
+        </label>
       </div>
       {#if shells.length}
         <div class="grid2">
@@ -298,7 +300,7 @@
                 options={shellIconOpts}
                 onchange={(v) => (prefs.term.shellIcons = { ...prefs.term.shellIcons, [sh.id]: v })}
               >
-                {#snippet lead()}<Logo id={prefs.term.shellIcons[sh.id] ?? "terminal"} size={14} />{/snippet}
+                {#snippet icon(v)}<Logo id={v} size={14} />{/snippet}
               </Select>
             </div>
           {/each}

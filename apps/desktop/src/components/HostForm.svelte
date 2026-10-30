@@ -7,7 +7,7 @@
   import Seg from "./Seg.svelte";
   import Switch from "./Switch.svelte";
   import Logo from "./Logo.svelte";
-  import { ICONS, hostIcon, iconOptions, osIcon } from "../lib/icons";
+  import { ICONS, iconOptions, osIcon } from "../lib/icons";
   import { X } from "@lucide/svelte";
   import { flip } from "svelte/animate";
   import { flipMs, pop } from "../lib/motion";
@@ -142,7 +142,7 @@
   </div>
   <div class="field">Icon
     <Select bind:value={h.icon} options={iconOpts}>
-      {#snippet lead()}<Logo id={hostIcon(h)} size={14} />{/snippet}
+      {#snippet icon(v)}<Logo id={v ?? detected ?? "server"} size={14} />{/snippet}
     </Select>
   </div>
   <div class="field">

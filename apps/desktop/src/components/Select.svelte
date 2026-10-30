@@ -20,6 +20,7 @@
     onchange,
     ghost = false,
     lead,
+    icon,
   }: {
     value: T;
     options: Option<T>[];
@@ -30,6 +31,8 @@
     ghost?: boolean;
     /** Algo antes del texto del boton (un icono). */
     lead?: import("svelte").Snippet;
+    /** Un icono por opcion (en la lista y en el boton, con la elegida). */
+    icon?: import("svelte").Snippet<[T]>;
   } = $props();
 
   let open = $state(false);
@@ -139,6 +142,7 @@
   onkeydown={onKey}
 >
   {#if lead}<span class="lead">{@render lead()}</span>{/if}
+  {#if icon}<span class="lead">{@render icon(value)}</span>{/if}
   <span class="ellipsis label">{selected?.label ?? placeholder}</span>
   <span class="chev"><ChevronDown size={15} /></span>
 </button>
@@ -176,6 +180,7 @@
           onkeydown={() => {}}
         >
           <span class="check">{#if o.value === value}<Check size={14} />{/if}</span>
+          {#if icon}<span class="lead">{@render icon(o.value)}</span>{/if}
           <span class="txt">
             <span class="ellipsis">{o.label}</span>
             {#if o.hint}<span class="hint ellipsis">{o.hint}</span>{/if}
