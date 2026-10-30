@@ -61,7 +61,9 @@
     { id: "settings", label: "Settings", icon: SettingsIcon },
   ];
 
+  const locked = $derived(!app.status?.unlocked);
   const agentOn = $derived(app.snap?.settings.agent_enabled ?? false);
+  const onTerm = (k: number) => !locked && app.view === "terminal" && app.activeTerm === k;
   const overlay = $derived(app.sidebarOverlay && app.view === "terminal");
 
   // Elegir una seccion desde el menu flotante lleva al vault y lo cierra.
@@ -85,13 +87,20 @@
 <div class="frame">
 {#if !app.status}
   <Titlebar locked />
-{:else if !app.status.unlocked}
-  <Titlebar locked />
-  <div class="fill"><Unlock /></div>
 {:else}
-  <Titlebar />
-  <!-- Como en Termius: la barra lateral es de la pestaña Vault; las terminales usan todo el ancho. -->
-  <div class="shell" class:collapsed={app.sidebarCollapsed && !overlay} class:full={app.view === "terminal"} class:overlay>
+  <Titlebar {locked} />
+  <div class="body">
+  <!-- Como en Termius: la barra lateral es de la pestaña Vault; las terminales usan todo el ancho.
+       Bloqueado, todo esto sigue montado pero invisible e inerte: las terminales (y lo que corra
+       en ellas) no se cortan. Con display:none se achicarian a cero y la shell se desarmaria. -->
+  <div
+    class="shell"
+    class:collapsed={app.sidebarCollapsed && !overlay}
+    class:full={app.view === "terminal"}
+    class:overlay
+    class:hidden={locked}
+    inert={locked}
+  >
     <aside class="sidebar">
       <nav>
         {#each nav as n}
@@ -142,6 +151,8 @@
       {/each}
 
       <div class="view">
+        <!-- Las vistas del vault leen sus datos: bloqueado no hay. -->
+        {#if !locked}
         {#key app.view}
         <div class="view-page" in:rise={{ y: 6 }}>
         {#if app.view === "hosts"}<Hosts />
@@ -154,20 +165,23 @@
         {/if}
         </div>
         {/key}
-        <!-- Las terminales quedan montadas para no perder la sesion al cambiar de vista. -->
+        {/if}
+        <!-- Las terminales quedan montadas para no perder la sesion al cambiar de vista ni al bloquear. -->
         {#each app.terms as t (t.key)}
           <div class="term-wrap" class:shown={app.view === "terminal" && app.activeTerm === t.key}>
             {#if t.members && !t.layout}
-              <WorkspacePane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+              <WorkspacePane tab={t} active={onTerm(t.key)} />
             {:else if t.sftp}
-              <SftpPane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+              <SftpPane tab={t} active={onTerm(t.key)} />
             {:else}
-              <TilePane tab={t} active={app.view === "terminal" && app.activeTerm === t.key} />
+              <TilePane tab={t} active={onTerm(t.key)} />
             {/if}
           </div>
         {/each}
       </div>
     </main>
+  </div>
+  {#if locked}<div class="cover"><Unlock /></div>{/if}
   </div>
 {/if}
 </div>
@@ -198,9 +212,22 @@
     display: flex;
     flex-direction: column;
   }
-  .fill {
+  .body {
     flex: 1;
     min-height: 0;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Opacidad y no visibility: las terminales se muestran con visibility:visible y le ganarian. */
+  .shell.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+  .cover {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
   }
   .shell {
     flex: 1;
