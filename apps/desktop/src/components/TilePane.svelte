@@ -4,6 +4,7 @@
   // en el DOM, y ninguna terminal se vuelve a montar.
   import { X } from "@lucide/svelte";
   import TermPane from "./TermPane.svelte";
+  import Scramble from "./Scramble.svelte";
   import ConnState from "./ConnState.svelte";
   import ApprovalsPane from "./ApprovalsPane.svelte";
   import { fadeQuick, pop } from "../lib/motion";
@@ -108,7 +109,7 @@
           <div class="legend">
             <button class="pill" title="Drag to move it. Drop it on the tab bar to make it a tab." onpointerdown={(e) => pillDown(e, m)}>
               <span class="dot" class:dead={!m.alive && !m.connecting}></span>
-              <span class="ellipsis">{m.title}</span>
+              <span class="ellipsis"><Scramble text={m.title} /></span>
             </button>
             <button class="x" title="Close this terminal" aria-label="Close {m.title}" onclick={() => closeLeaf(tab, m.key)}><X size={11} /></button>
           </div>

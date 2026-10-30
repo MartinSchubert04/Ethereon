@@ -219,7 +219,9 @@ pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<Stri
             Some(h) => {
                 // El sistema detectado sigue valiendo si es la misma maquina; si cambio la
                 // direccion se vuelve a preguntar.
-                host.os = if h.hostname == host.hostname && h.port == host.port { h.os.take() } else { None };
+                let same = h.hostname == host.hostname && h.port == host.port;
+                host.os = if same { h.os.take() } else { None };
+                host.os_rev = if same { h.os_rev } else { 0 };
                 *h = host
             }
             None => d.hosts.push(host),

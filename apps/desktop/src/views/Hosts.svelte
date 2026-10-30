@@ -5,7 +5,8 @@
   import { importLocalSsh, importPath, importPick } from "../lib/importer";
   import HostForm from "../components/HostForm.svelte";
   import GroupForm from "../components/GroupForm.svelte";
-  import OsIcon from "../components/OsIcon.svelte";
+  import Logo from "../components/Logo.svelte";
+  import { hostIcon } from "../lib/icons";
   import { api, MODE_LABEL, userOf, type Group, type Host } from "../lib/api";
   import { app, attempt, openGroup, openSftp, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
@@ -269,7 +270,7 @@
               >
                 <div class="top">
                   <span class="grip" title="Drag to reorder or to another group"><GripVertical size={14} /></span>
-                  <div class="badge {h.env}"><OsIcon os={h.os} size={16} fallback={Server} /></div>
+                  <div class="badge {h.env}"><Logo id={hostIcon(h)} size={16} /></div>
                   <div class="grow info">
                     <div class="name ellipsis">{h.name}</div>
                     <div class="addr mono ellipsis">{userOf(h, app.snap?.credentials)}@{h.hostname}{h.port !== 22 ? `:${h.port}` : ""}</div>
@@ -312,7 +313,7 @@
 {#if drag?.started}
   <div class="ghost card" style="left: {drag.x - drag.offX}px; top: {drag.y - drag.offY}px; width: {drag.w}px">
     <div class="top">
-      <div class="badge {drag.host.env}"><OsIcon os={drag.host.os} size={16} fallback={Server} /></div>
+      <div class="badge {drag.host.env}"><Logo id={hostIcon(drag.host)} size={16} /></div>
       <div class="grow info">
         <div class="name ellipsis">{drag.host.name}</div>
         <div class="addr mono ellipsis">{drag.host.user}@{drag.host.hostname}</div>

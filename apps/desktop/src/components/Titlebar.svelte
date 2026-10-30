@@ -7,7 +7,10 @@
   import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
   import { invoke } from "@tauri-apps/api/core";
   import { api } from "../lib/api";
-  import OsIcon from "./OsIcon.svelte";
+  import Logo from "./Logo.svelte";
+  import { hostIcon } from "../lib/icons";
+  import { prefs } from "../lib/prefs.svelte";
+  import Scramble from "./Scramble.svelte";
   import { onMount } from "svelte";
   import { app, closeTab, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
   import { pop } from "../lib/motion";
@@ -256,10 +259,10 @@
           onauxclick={(e) => e.button === 1 && closeTab(t.key)}
         >
           <span class="dot" class:dead={!t.alive}>
-            {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else if t.approvals}<Inbox size={14} />{:else if t.local}<SquareTerminal size={14} />{:else}<OsIcon os={app.snap?.hosts.find((h) => h.name === t.host)?.os} size={14} fallback={SquareTerminal} />{/if}
+            {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else if t.approvals}<Inbox size={14} />{:else if t.local}<Logo id={prefs.term.shellIcons[t.local] ?? "terminal"} size={14} />{:else}<Logo id={hostIcon(app.snap?.hosts.find((h) => h.name === t.host))} size={14} />{/if}
           </span>
           {#if !t.collapsed}
-            <span class="label ellipsis">{t.title}</span>
+            <span class="label ellipsis"><Scramble text={t.title} /></span>
             {#if t.members}<span class="n">· {t.members.length}</span>{:else if t.approvals && app.approvals.length}<span class="n">· {app.approvals.length}</span>{/if}
           {/if}
           {#if t.locked}

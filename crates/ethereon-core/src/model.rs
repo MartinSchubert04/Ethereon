@@ -141,6 +141,12 @@ pub struct Host {
     /// terminal la primera vez que se conecta (ver `Broker::detect_os`).
     #[serde(default)]
     pub os: Option<String>,
+    /// Con que version de la deteccion se pregunto (ver `ssh::OS_PROBE_REV`); 0 = nunca.
+    #[serde(default)]
+    pub os_rev: u32,
+    /// Icono elegido a mano; si es None se usa el del sistema detectado.
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 impl VaultData {

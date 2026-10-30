@@ -764,8 +764,8 @@ impl Broker {
     /// Que sistema corre el host, para su icono en la interfaz. Se pregunta una sola vez, con
     /// la conexion que ya abrio la terminal, y queda en el vault. El agente no lo ve.
     pub async fn detect_os(&self, name: &str, conn: &Conn) -> Result<()> {
-        let known = self.read(|d| d.hosts.iter().find(|h| h.name == name).map(|h| h.os.is_some()))?;
-        if known != Some(false) {
+        let rev = self.read(|d| d.hosts.iter().find(|h| h.name == name).map(|h| h.os_rev))?;
+        if rev.is_none_or(|r| r >= ssh::OS_PROBE_REV) {
             return Ok(());
         }
         let r = ssh::exec(conn, ssh::OS_PROBE, None, Duration::from_secs(5), 16 * 1024)
@@ -780,10 +780,11 @@ impl Broker {
             exit_code: r.exit_code,
             ..Default::default()
         });
-        let Some(os) = ssh::parse_os(&String::from_utf8_lossy(&r.stdout)) else { return Ok(()) };
+        let os = ssh::parse_os(&String::from_utf8_lossy(&r.stdout));
         self.write(|d| {
             if let Some(h) = d.hosts.iter_mut().find(|h| h.name == name) {
-                h.os = Some(os);
+                h.os = os.or(h.os.take());
+                h.os_rev = ssh::OS_PROBE_REV;
             }
             Ok(())
         })

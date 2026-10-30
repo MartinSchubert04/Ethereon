@@ -5,9 +5,11 @@
 
 <script lang="ts">
   // "New tab": buscar un host (o una shell de esta PC) y abrir su terminal. Flechas para elegir, Enter para abrir.
-  import { Laptop, Search, Server } from "@lucide/svelte";
+  import { Search } from "@lucide/svelte";
   import { api, userOf, type LocalShell } from "../lib/api";
-  import OsIcon from "./OsIcon.svelte";
+  import Logo from "./Logo.svelte";
+  import { hostIcon } from "../lib/icons";
+  import { prefs } from "../lib/prefs.svelte";
   import { app, openLocal, openSftp, openTerminal } from "../lib/state.svelte";
   import { fadeQuick, pop } from "../lib/motion";
 
@@ -75,7 +77,7 @@
     {#each list as it, i (it.kind + (it.kind === "local" ? it.shell.id : it.host.name))}
       {#if it.kind === "local"}
         <button class="item" class:on={i === sel} onmouseenter={() => (sel = i)} onclick={() => pick(it)}>
-          <span class="icon local"><Laptop size={14} /></span>
+          <span class="icon local"><Logo id={prefs.term.shellIcons[it.shell.id] ?? "terminal"} size={14} /></span>
           <span class="name">{it.shell.label}</span>
           <span class="grow"></span>
           <span class="chip">this PC</span>
@@ -83,7 +85,7 @@
       {:else}
       {@const h = it.host}
       <button class="item" class:on={i === sel} onmouseenter={() => (sel = i)} onclick={(e) => pick(it, e.shiftKey)}>
-        <span class="icon {h.env}"><OsIcon os={h.os} size={14} fallback={Server} /></span>
+        <span class="icon {h.env}"><Logo id={hostIcon(h)} size={14} /></span>
         <span class="name">{h.name}</span>
         <span class="addr mono ellipsis">{userOf(h, app.snap?.credentials)}@{h.hostname}</span>
         <span class="grow"></span>

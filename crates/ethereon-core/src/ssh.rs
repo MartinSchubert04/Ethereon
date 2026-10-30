@@ -349,12 +349,19 @@ pub async fn open_shell(conn: &Conn, cols: u32, rows: u32) -> Result<russh::Chan
 }
 
 /// Pregunta que sistema es. Linux contesta con /etc/os-release; los demas (BSD, macOS) con
-/// `uname -s`.
-pub const OS_PROBE: &str = "cat /etc/os-release 2>/dev/null || uname -s";
+/// `uname -s`. Aparte, el modelo de la placa: Raspberry Pi OS dice `ID=debian`, pero la placa
+/// dice "Raspberry Pi".
+pub const OS_PROBE: &str = "cat /etc/os-release 2>/dev/null || uname -s; \
+    printf '\\nMODEL=%s\\n' \"$(tr -d '\\000' 2>/dev/null < /proc/device-tree/model)\"";
+
+/// Sube cuando `OS_PROBE` aprende algo nuevo: los hosts detectados con una version anterior
+/// se vuelven a preguntar una vez.
+pub const OS_PROBE_REV: u32 = 2;
 
 /// La respuesta de `OS_PROBE` en pocas palabras: el `ID` de os-release seguido de su `ID_LIKE`
-/// ("pop ubuntu debian"), o el nombre de `uname` en minusculas ("freebsd"). La interfaz usa la
-/// primera que conoce para el icono. Solo letras, numeros, puntos y guiones.
+/// ("pop ubuntu debian"), o el nombre de `uname` en minusculas ("freebsd"). En una Raspberry
+/// Pi va primero "raspbian". La interfaz usa la primera que conoce para el icono. Solo letras,
+/// numeros, puntos y guiones.
 pub fn parse_os(out: &str) -> Option<String> {
     let clean = |s: &str| -> String {
         s.trim()
@@ -365,10 +372,12 @@ pub fn parse_os(out: &str) -> Option<String> {
             .collect()
     };
     let field = |k: &str| out.lines().find_map(|l| l.trim().strip_prefix(k)?.strip_prefix('=').map(clean));
+    let pi = field("MODEL").is_some_and(|m| m.contains("raspberry pi"));
     let words = match field("ID") {
         Some(id) => format!("{id} {}", field("ID_LIKE").unwrap_or_default()),
-        None => clean(out.lines().find(|l| !l.trim().is_empty())?),
+        None => clean(out.lines().find(|l| !l.trim().is_empty() && !l.starts_with("MODEL="))?),
     };
+    let words = if pi { format!("raspbian {words}") } else { words };
     let words: Vec<&str> = words.split_whitespace().take(4).collect();
     (!words.is_empty()).then(|| words.join(" ").chars().take(64).collect())
 }
@@ -383,8 +392,11 @@ mod tests {
         assert_eq!(parse_os(pop).as_deref(), Some("pop ubuntu debian"));
         assert_eq!(parse_os("ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"").as_deref(), Some("rocky rhel centos fedora"));
         assert_eq!(parse_os("PRETTY_NAME=x\nID=debian\n").as_deref(), Some("debian"));
-        assert_eq!(parse_os("FreeBSD\n").as_deref(), Some("freebsd"));
-        assert_eq!(parse_os("\n  \n"), None);
+        assert_eq!(parse_os("FreeBSD\n\nMODEL=\n").as_deref(), Some("freebsd"));
+        assert_eq!(parse_os("\n  \n\nMODEL=\n"), None);
+        // Raspberry Pi OS se presenta como Debian; la placa la delata.
+        let pi = "PRETTY_NAME=\"Debian GNU/Linux 13 (trixie)\"\nVERSION_ID=\"13\"\nID=debian\n\nMODEL=Raspberry Pi 5 Model B Rev 1.0\n";
+        assert_eq!(parse_os(pi).as_deref(), Some("raspbian debian"));
         assert_eq!(parse_os("ID=$(rm -rf /);<b>").as_deref(), Some("rm -rf b"));
     }
 

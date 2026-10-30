@@ -210,6 +210,7 @@ pub fn term_open_local(
     cwd: Option<String>,
     on_event: Channel<TermEvent>,
 ) -> Result<u32, Error> {
+    let shell_id = shell.clone();
     let (_, path, args) = shells().into_iter().find(|(x, ..)| x.id == shell).ok_or(Error::NotFound(shell))?;
     let pty = native_pty_system()
         .openpty(PtySize { rows: rows as u16, cols: cols as u16, pixel_width: 0, pixel_height: 0 })
@@ -230,6 +231,7 @@ pub fn term_open_local(
         cmd.env("PATH", p);
     }
     scrub_env(&mut cmd);
+    report_cwd(&shell_id, &mut cmd);
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     let child = pty.slave.spawn_command(cmd).map_err(pty_err)?;
@@ -289,6 +291,37 @@ pub fn term_open_local(
 /// (PowerShell saca los colores) y las de Claude Code. NO_COLOR y FORCE_COLOR se respetan
 /// si la persona las puso en las variables de Windows. La shell sabe que esta en Ethereon
 /// por TERM_PROGRAM.
+/// Que la shell diga en que carpeta esta cada vez que muestra el prompt, con la secuencia de
+/// Windows Terminal (OSC 9;9). La interfaz la usa para el nombre de la pestaña. En PowerShell
+/// se envuelve el prompt que haya (el del perfil, oh-my-posh...) despues de cargar el perfil;
+/// va en base64 para no pelear con las comillas de la linea de comando.
+fn report_cwd(shell: &str, cmd: &mut CommandBuilder) {
+    const PS: &str = "$global:__ethereonPrompt = $function:prompt\n\
+        function global:prompt {\n\
+          $l = $executionContext.SessionState.Path.CurrentLocation\n\
+          if ($l.Provider.Name -eq 'FileSystem') { [Console]::Write(('{0}]9;9;{1}{2}{1}{0}\\' -f [char]27, [char]34, $l.ProviderPath)) }\n\
+          & $global:__ethereonPrompt\n\
+        }";
+    const BASH: &str = r#"printf '\033]9;9;"%s"\033\\' "$PWD""#;
+    let joined = |key: &str, ours: &str, sep: &str| match std::env::var(key).ok().filter(|v| !v.trim().is_empty()) {
+        Some(v) => format!("{ours}{sep}{v}"),
+        None => ours.to_string(),
+    };
+    match shell {
+        "pwsh" | "powershell" => {
+            let utf16: Vec<u8> = PS.encode_utf16().flat_map(|u| u.to_le_bytes()).collect();
+            cmd.args(["-NoExit", "-EncodedCommand", &B64.encode(utf16)]);
+        }
+        "cmd" => cmd.env("PROMPT", format!("$e]9;9;\"$P\"$e\\{}", std::env::var("PROMPT").unwrap_or_else(|_| "$P$G".into()))),
+        "gitbash" => cmd.env("PROMPT_COMMAND", joined("PROMPT_COMMAND", BASH, "; ")),
+        "wsl" => {
+            cmd.env("PROMPT_COMMAND", BASH);
+            cmd.env("WSLENV", joined("WSLENV", "PROMPT_COMMAND", ":"));
+        }
+        _ => {}
+    }
+}
+
 fn scrub_env(cmd: &mut CommandBuilder) {
     let keys: Vec<String> = cmd.iter_full_env_as_str().map(|(k, _)| k.to_string()).collect();
     for k in keys {

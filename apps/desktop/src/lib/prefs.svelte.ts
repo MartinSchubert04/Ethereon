@@ -70,6 +70,11 @@ const defaults = () => ({
     fontFamily: "",
     /** Imagenes Sixel con la escala de Windows Terminal (10x20 pixeles por celda). */
     sixelLikeWt: true,
+    /** Segundos en la misma carpeta antes de que la pestaña de una shell local tome su nombre.
+     *  0 = enseguida, -1 = nunca (se queda con la carpeta donde arranco). */
+    folderTitleDelay: 15,
+    /** Icono de cada shell local en las pestañas (id de shell -> id de lib/icons.ts). */
+    shellIcons: {} as Record<string, string>,
   },
   files: {
     /** Donde arranca el panel de esta PC en SFTP: el Escritorio, la carpeta del usuario u otra. */

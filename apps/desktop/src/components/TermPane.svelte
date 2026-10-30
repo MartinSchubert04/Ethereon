@@ -15,6 +15,7 @@
   import { boldWeight, termFont } from "../lib/termfonts";
   import "../lib/sixel";
   import { adopt, drop, own, type Live } from "../lib/live";
+  import { watchCwd } from "../lib/cwd";
   import { dbg, dbgGlLost, dbgGone, dbgTerm, sw } from "../lib/debug.svelte";
 
   // `bare`: dentro de un mosaico, sin margen ni tarjeta propia (el marco lo pone TilePane).
@@ -345,6 +346,7 @@
     // (WezTerm y otros). Con esto se ven los splash, chafa -f sixel, img2sixel, etc.
     t.loadAddon(new ImageAddon({ sixelSupport: true, iipSupport: true, storageLimit: 64 }));
     const live: Live = { term: t, fit: f, id: 0, replaying: false, handle, me, keys: () => true, selection: () => {}, parked: false };
+    watchCwd(t, () => live.me());
     // Lo que la terminal genera va a la sesion, la muestre el panel que la muestre.
     t.attachCustomKeyEventHandler((e) => live.keys(e));
     t.onSelectionChange(() => live.selection());

@@ -6,6 +6,8 @@
   import Select from "./Select.svelte";
   import Seg from "./Seg.svelte";
   import Switch from "./Switch.svelte";
+  import Logo from "./Logo.svelte";
+  import { ICONS, hostIcon, iconOptions, osIcon } from "../lib/icons";
   import { X } from "@lucide/svelte";
   import { flip } from "svelte/animate";
   import { flipMs, pop } from "../lib/motion";
@@ -23,6 +25,13 @@
   let jump = $state<string[]>([...h.jump]);
   let ownRules = $state(h.policy !== null);
   let policy = $state(h.policy ?? defaultPolicy());
+  h.icon ??= null;
+  // "Automatic" dice que se detecto; si todavia no se conecto nunca, que se va a detectar.
+  const detected = osIcon(h.os);
+  const iconOpts = [
+    { value: null as string | null, label: "Automatic", hint: detected ? ICONS[detected].label : "detected when you connect" },
+    ...iconOptions().map((o) => ({ ...o, value: o.value as string | null })),
+  ];
 
 
   const loginCreds = $derived(
@@ -130,6 +139,11 @@
   <div class="grid2">
     <div class="field">Sudo password<Select bind:value={h.sudo_credential} options={sudoOpts} /></div>
     <div class="field">Environment<Seg bind:value={h.env} options={envs} /><span class="hint">Only a label: it colors the host and tells the agent it is production</span></div>
+  </div>
+  <div class="field">Icon
+    <Select bind:value={h.icon} options={iconOpts}>
+      {#snippet lead()}<Logo id={hostIcon(h)} size={14} />{/snippet}
+    </Select>
   </div>
   <div class="field">
     Jump through

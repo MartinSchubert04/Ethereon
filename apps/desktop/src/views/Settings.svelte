@@ -9,6 +9,9 @@
   import Switch from "../components/Switch.svelte";
   import Section from "../components/Section.svelte";
   import Seg from "../components/Seg.svelte";
+  import Logo from "../components/Logo.svelte";
+  import { iconOptions } from "../lib/icons";
+  import type { LocalShell } from "../lib/api";
   import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Power, Shield, ShieldCheck, SquareTerminal } from "@lucide/svelte";
   import { importPick } from "../lib/importer";
   import { INCLUDED, ptToPx, systemFonts, wtFont, type WtFont } from "../lib/termfonts";
@@ -22,6 +25,10 @@
   const paletteName = $derived(palettesOf(theme).find((p) => p.id === palette)?.name ?? "");
   let s = $state<Settings>(structuredClone($state.snapshot(app.snap!.settings)));
   let autostart = $state(false);
+  // Las shells de esta PC, para elegir el icono de cada una.
+  let shells = $state<LocalShell[]>([]);
+  api.localShells().then((l) => (shells = l)).catch(() => {});
+  const shellIconOpts = iconOptions();
   isEnabled().then((v) => (autostart = v)).catch(() => {});
 
   let version = $state("");
@@ -247,7 +254,7 @@
       <div><button class="btn" disabled={!oldPw || !newPw} onclick={changePw}>Change</button></div>
     </Section>
 
-    <Section id="terminal" title="Terminal" icon={SquareTerminal} summary="Copy, paste and font size">
+    <Section id="terminal" title="Terminal" icon={SquareTerminal} summary="Copy, paste, font, tab names and icons">
       <div class="term-opts">
         <Switch bind:checked={prefs.term.ctrlCCopy}>Ctrl C copies when there is a selection (otherwise it stops the command)</Switch>
         <Switch bind:checked={prefs.term.ctrlVPaste}>Ctrl V pastes</Switch>
@@ -270,7 +277,33 @@
             ]}
           />
         </div>
+        <div class="field">Tab name follows the folder
+          <Select
+            bind:value={prefs.term.folderTitleDelay}
+            options={[
+              { value: 0, label: "Right away" },
+              ...[3, 5, 10, 15, 30, 60].map((n) => ({ value: n, label: `After ${n} s in the same folder` })),
+              { value: -1, label: "Never", hint: "keeps the folder it started in" },
+            ]}
+          />
+          <span class="hint">Local terminals only</span>
+        </div>
       </div>
+      {#if shells.length}
+        <div class="grid2">
+          {#each shells as sh (sh.id)}
+            <div class="field">{sh.label} icon
+              <Select
+                value={prefs.term.shellIcons[sh.id] ?? "terminal"}
+                options={shellIconOpts}
+                onchange={(v) => (prefs.term.shellIcons = { ...prefs.term.shellIcons, [sh.id]: v })}
+              >
+                {#snippet lead()}<Logo id={prefs.term.shellIcons[sh.id] ?? "terminal"} size={14} />{/snippet}
+              </Select>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </Section>
 
     <Section

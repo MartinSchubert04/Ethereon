@@ -30,6 +30,9 @@ export interface Host {
   policy: Policy | null;
   /** Sistema detectado al conectar ("ubuntu debian"); lo usa el icono. */
   os?: string | null;
+  /** Icono elegido a mano (id de lib/icons.ts); si no, el del sistema. */
+  icon?: string | null;
+  os_rev?: number;
 }
 
 export interface Group {
