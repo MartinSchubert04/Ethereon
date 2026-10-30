@@ -28,6 +28,8 @@ export interface Host {
   jump: string[];
   description: string;
   policy: Policy | null;
+  /** Sistema detectado al conectar ("ubuntu debian"); lo usa el icono. */
+  os?: string | null;
 }
 
 export interface Group {

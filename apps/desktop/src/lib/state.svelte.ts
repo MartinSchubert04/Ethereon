@@ -1,5 +1,6 @@
 // Estado global de la interfaz. El backend avisa con eventos y aca se vuelve a pedir.
 import { listen } from "@tauri-apps/api/event";
+import { homeDir } from "@tauri-apps/api/path";
 import { api, errText, type Alert, type Approval, type Snapshot, type Status, type UpdateInfo } from "./api";
 
 export type View = "hosts" | "keychain" | "rules" | "approvals" | "agents" | "audit" | "settings" | "terminal";
@@ -129,8 +130,15 @@ async function flushOpenHere() {
   const shells = await api.localShells().catch(() => []);
   const sh = shells.find((s) => s.id === "pwsh") ?? shells[0];
   if (!sh) return toast("No local shell found", true);
-  const folder = cwd.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || cwd;
-  openTerminal(`${sh.label} · ${folder}`, sh.id, cwd);
+  openLocal(sh.id, cwd);
+}
+
+/** Abre una shell local. La pestaña se llama como la carpeta, nada mas: el icono ya dice que
+ *  es una terminal. Sin carpeta arranca en la del usuario (igual que el backend). */
+export async function openLocal(shell: string, cwd?: string) {
+  const dir = cwd ?? (await homeDir().catch(() => undefined));
+  const folder = dir ? dir.replace(/[\\/]+$/, "").split(/[\\/]/).pop() || dir : "This PC";
+  openTerminal(folder, shell, dir);
 }
 
 export async function refresh() {

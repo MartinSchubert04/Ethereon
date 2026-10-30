@@ -216,7 +216,12 @@ pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<Stri
             }
         }
         match d.hosts.iter_mut().find(|h| h.name == orig) {
-            Some(h) => *h = host,
+            Some(h) => {
+                // El sistema detectado sigue valiendo si es la misma maquina; si cambio la
+                // direccion se vuelve a preguntar.
+                host.os = if h.hostname == host.hostname && h.port == host.port { h.os.take() } else { None };
+                *h = host
+            }
             None => d.hosts.push(host),
         }
         Ok(())

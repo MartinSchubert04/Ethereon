@@ -348,9 +348,45 @@ pub async fn open_shell(conn: &Conn, cols: u32, rows: u32) -> Result<russh::Chan
     Ok(ch)
 }
 
+/// Pregunta que sistema es. Linux contesta con /etc/os-release; los demas (BSD, macOS) con
+/// `uname -s`.
+pub const OS_PROBE: &str = "cat /etc/os-release 2>/dev/null || uname -s";
+
+/// La respuesta de `OS_PROBE` en pocas palabras: el `ID` de os-release seguido de su `ID_LIKE`
+/// ("pop ubuntu debian"), o el nombre de `uname` en minusculas ("freebsd"). La interfaz usa la
+/// primera que conoce para el icono. Solo letras, numeros, puntos y guiones.
+pub fn parse_os(out: &str) -> Option<String> {
+    let clean = |s: &str| -> String {
+        s.trim()
+            .trim_matches(|c| c == '"' || c == '\'')
+            .to_lowercase()
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_' | ' '))
+            .collect()
+    };
+    let field = |k: &str| out.lines().find_map(|l| l.trim().strip_prefix(k)?.strip_prefix('=').map(clean));
+    let words = match field("ID") {
+        Some(id) => format!("{id} {}", field("ID_LIKE").unwrap_or_default()),
+        None => clean(out.lines().find(|l| !l.trim().is_empty())?),
+    };
+    let words: Vec<&str> = words.split_whitespace().take(4).collect();
+    (!words.is_empty()).then(|| words.join(" ").chars().take(64).collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn os_from_probe() {
+        let pop = "NAME=\"Pop!_OS\"\nVERSION_ID=\"22.04\"\nID=pop\nID_LIKE=\"ubuntu debian\"\n";
+        assert_eq!(parse_os(pop).as_deref(), Some("pop ubuntu debian"));
+        assert_eq!(parse_os("ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"").as_deref(), Some("rocky rhel centos fedora"));
+        assert_eq!(parse_os("PRETTY_NAME=x\nID=debian\n").as_deref(), Some("debian"));
+        assert_eq!(parse_os("FreeBSD\n").as_deref(), Some("freebsd"));
+        assert_eq!(parse_os("\n  \n"), None);
+        assert_eq!(parse_os("ID=$(rm -rf /);<b>").as_deref(), Some("rm -rf b"));
+    }
 
     #[test]
     fn quoting() {

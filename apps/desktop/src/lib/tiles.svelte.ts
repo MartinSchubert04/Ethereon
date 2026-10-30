@@ -201,9 +201,34 @@ function forget(t: TermTab, key: number) {
   const rest = t.layout ? remove(t.layout, key) : null;
   t.members = (t.members ?? []).filter((m) => m.key !== key);
   if (!rest || !t.members.length) return closeTerminal(t.key);
+  if (t.members.length === 1) return untile(t, t.members[0]);
   t.layout = rest;
   if (t.focus === key) t.focus = leaves(rest)[0];
   t.title = t.members[0].title;
+}
+
+/** Al mosaico le queda un solo panel: vuelve a ser una pestaña comun, con esa terminal viva.
+ *  Si el panel tiene otra clave que la pestaña, la pestaña adopta su terminal (como popOut);
+ *  si es la misma (el primer panel), TermPane ya la encuentra por clave y no se desmonta. */
+function untile(t: TermTab, m: TermTab) {
+  if (m.key !== t.key) {
+    if (!m.approvals && park(m.key)) t.adopt = m.key;
+    // Todavia no montada: lo que iba a tomar el panel lo toma la pestaña.
+    else [t.adopt, t.attach, t.size] = [m.adopt, m.attach, m.size];
+  }
+  t.host = m.host;
+  t.local = m.local;
+  t.cwd = m.cwd;
+  t.title = m.title;
+  t.alive = m.alive;
+  t.sid = m.sid;
+  t.connecting = m.connecting;
+  t.error = m.error;
+  t.failedAt = m.failedAt;
+  t.approvals = m.approvals;
+  t.members = undefined;
+  t.layout = undefined;
+  t.focus = undefined;
 }
 
 /** Cierra un panel (y su sesion). Si era el ultimo, la pestaña. */

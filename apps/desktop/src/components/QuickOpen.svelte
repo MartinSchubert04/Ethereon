@@ -7,7 +7,8 @@
   // "New tab": buscar un host (o una shell de esta PC) y abrir su terminal. Flechas para elegir, Enter para abrir.
   import { Laptop, Search, Server } from "@lucide/svelte";
   import { api, userOf, type LocalShell } from "../lib/api";
-  import { app, openSftp, openTerminal } from "../lib/state.svelte";
+  import OsIcon from "./OsIcon.svelte";
+  import { app, openLocal, openSftp, openTerminal } from "../lib/state.svelte";
   import { fadeQuick, pop } from "../lib/motion";
 
   let query = $state("");
@@ -41,7 +42,7 @@
   /** Enter abre la terminal; Shift Enter, los archivos (SFTP) del host. */
   function pick(it: Item, files = false) {
     close();
-    if (it.kind === "local") openTerminal(it.shell.label, it.shell.id);
+    if (it.kind === "local") openLocal(it.shell.id);
     else if (files) openSftp(it.host.name);
     else openTerminal(it.host.name);
   }
@@ -82,7 +83,7 @@
       {:else}
       {@const h = it.host}
       <button class="item" class:on={i === sel} onmouseenter={() => (sel = i)} onclick={(e) => pick(it, e.shiftKey)}>
-        <span class="icon {h.env}"><Server size={14} /></span>
+        <span class="icon {h.env}"><OsIcon os={h.os} size={14} fallback={Server} /></span>
         <span class="name">{h.name}</span>
         <span class="addr mono ellipsis">{userOf(h, app.snap?.credentials)}@{h.hostname}</span>
         <span class="grow"></span>

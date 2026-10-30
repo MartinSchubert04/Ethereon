@@ -137,6 +137,10 @@ pub struct Host {
     /// Reglas propias; si es None usa las del grupo.
     #[serde(default)]
     pub policy: Option<Policy>,
+    /// Que sistema corre ("ubuntu debian", "freebsd"...), para el icono. Lo detecta la
+    /// terminal la primera vez que se conecta (ver `Broker::detect_os`).
+    #[serde(default)]
+    pub os: Option<String>,
 }
 
 impl VaultData {

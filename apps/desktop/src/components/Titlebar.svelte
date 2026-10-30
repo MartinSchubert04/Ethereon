@@ -7,6 +7,7 @@
   import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
   import { invoke } from "@tauri-apps/api/core";
   import { api } from "../lib/api";
+  import OsIcon from "./OsIcon.svelte";
   import { onMount } from "svelte";
   import { app, closeTab, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
   import { pop } from "../lib/motion";
@@ -245,7 +246,7 @@
           role="button"
           tabindex="0"
           aria-label={t.title}
-          title={t.collapsed ? `${t.title} · Ctrl ${detached ? i + 1 : i + 2}` : `Ctrl ${detached ? i + 1 : i + 2}`}
+          title={`${t.title} · Ctrl ${detached ? i + 1 : i + 2}`}
           onpointerdown={(e) => tabDown(e, t.key)}
           onpointermove={tabMove}
           onpointerup={tabUp}
@@ -255,10 +256,11 @@
           onauxclick={(e) => e.button === 1 && closeTab(t.key)}
         >
           <span class="dot" class:dead={!t.alive}>
-            {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else if t.approvals}<Inbox size={14} />{:else}<SquareTerminal size={14} />{/if}
+            {#if t.layout}<LayoutGrid size={14} />{:else if t.members}<Layers size={14} />{:else if t.sftp}<FolderOpen size={14} />{:else if t.approvals}<Inbox size={14} />{:else if t.local}<SquareTerminal size={14} />{:else}<OsIcon os={app.snap?.hosts.find((h) => h.name === t.host)?.os} size={14} fallback={SquareTerminal} />{/if}
           </span>
           {#if !t.collapsed}
-            <span class="label ellipsis">{t.title}{#if t.members}<span class="n">{" · "}{t.members.length}</span>{:else if t.approvals && app.approvals.length}<span class="n">{" · "}{app.approvals.length}</span>{/if}</span>
+            <span class="label ellipsis">{t.title}</span>
+            {#if t.members}<span class="n">· {t.members.length}</span>{:else if t.approvals && app.approvals.length}<span class="n">· {app.approvals.length}</span>{/if}
           {/if}
           {#if t.locked}
             <span class="lock" title="Locked"><Lock size={t.collapsed ? 10 : 11} /></span>
@@ -376,7 +378,7 @@
     white-space: nowrap;
     cursor: pointer;
     min-width: 0;
-    max-width: 200px;
+    max-width: 240px;
     transition: background 0.12s, color 0.12s;
   }
   .tab.dragging {
@@ -392,9 +394,12 @@
     border-color: var(--accent);
     color: var(--text);
   }
+  /* El contador va aparte del título para que los "…" no se lo coman. */
   .tab .n {
     color: var(--text-3);
     font-weight: 500;
+    flex: none;
+    margin-left: -4px;
   }
   .mark {
     margin: 0 6px 0 8px;

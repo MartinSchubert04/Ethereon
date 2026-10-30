@@ -84,6 +84,14 @@ async fn acceptance() {
     let hosts = serde_json::to_string(&b.agent_list_hosts(&ctx).unwrap()).unwrap();
     assert!(hosts.contains("internal app server") && !hosts.contains("127.0.0.1") && !hosts.contains("target-pw"));
 
+    // El sistema del host (para el icono) se detecta una vez y queda en el vault, sin llegar al agente.
+    let app = b.read(|d| d.hosts.iter().find(|h| h.name == "app").cloned()).unwrap().unwrap();
+    b.detect_os("app", &b.connection(&app).await.unwrap()).await.unwrap();
+    let os = b.read(|d| d.hosts.iter().find(|h| h.name == "app").and_then(|h| h.os.clone())).unwrap();
+    println!("os -> {os:?}");
+    assert!(os.is_some_and(|o| !o.is_empty()));
+    assert!(!serde_json::to_string(&b.agent_list_hosts(&ctx).unwrap()).unwrap().contains("\"os\""));
+
     // 1. Un archivo con un secreto del vault vuelve con ***.
     let r = b.agent_run(&ctx, "app", "cat notes.txt", false, "read notes").await.unwrap();
     println!("cat -> {:?}", r.stdout);

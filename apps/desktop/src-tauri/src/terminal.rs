@@ -123,6 +123,13 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
         decision: "allowed".into(),
         ..Default::default()
     });
+    // La primera vez: que sistema es, para el icono. Aparte, sin demorar la terminal.
+    {
+        let (b, conn) = (b.clone(), conn.clone());
+        tauri::async_runtime::spawn(async move {
+            let _ = b.detect_os(&h.name, &conn).await;
+        });
+    }
 
     let map = s.terms.map.clone();
     tauri::async_runtime::spawn(async move {

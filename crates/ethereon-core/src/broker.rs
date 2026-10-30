@@ -761,6 +761,34 @@ impl Broker {
         ))
     }
 
+    /// Que sistema corre el host, para su icono en la interfaz. Se pregunta una sola vez, con
+    /// la conexion que ya abrio la terminal, y queda en el vault. El agente no lo ve.
+    pub async fn detect_os(&self, name: &str, conn: &Conn) -> Result<()> {
+        let known = self.read(|d| d.hosts.iter().find(|h| h.name == name).map(|h| h.os.is_some()))?;
+        if known != Some(false) {
+            return Ok(());
+        }
+        let r = ssh::exec(conn, ssh::OS_PROBE, None, Duration::from_secs(5), 16 * 1024)
+            .await
+            .map_err(|e| Error::Invalid(format!("ssh error: {e}")))?;
+        self.log(Entry {
+            device: "ui".into(),
+            host: name.into(),
+            command: ssh::OS_PROBE.into(),
+            reason: "detect the OS for its icon".into(),
+            decision: "allowed".into(),
+            exit_code: r.exit_code,
+            ..Default::default()
+        });
+        let Some(os) = ssh::parse_os(&String::from_utf8_lossy(&r.stdout)) else { return Ok(()) };
+        self.write(|d| {
+            if let Some(h) = d.hosts.iter_mut().find(|h| h.name == name) {
+                h.os = Some(os);
+            }
+            Ok(())
+        })
+    }
+
     pub fn masker(&self) -> Result<Arc<Masker>> {
         self.open.lock().unwrap().as_ref().map(|o| o.masker.clone()).ok_or(Error::Locked)
     }

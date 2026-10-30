@@ -2,7 +2,7 @@
 // los de copiar y pegar de la terminal los maneja TermPane.
 import { api } from "./api";
 import { comboOf, matches, prefs } from "./prefs.svelte";
-import { app, closeMember, closeTab, currentTabIndex, goToTab, openTerminal, refresh, toast, toggleSidebar } from "./state.svelte";
+import { app, closeMember, closeTab, currentTabIndex, goToTab, openLocal, refresh, toast, toggleSidebar } from "./state.svelte";
 import { cssVar } from "./themes";
 import { closeLeaf, drop, geometry, leaves, moveLeaf, moveToEdge, swapLeaves, type Rect, type Side } from "./tiles.svelte";
 
@@ -16,7 +16,7 @@ function zoom(d: number) {
 
 async function newLocal() {
   const [first] = await api.localShells().catch(() => []);
-  if (first) openTerminal(first.label, first.id);
+  if (first) openLocal(first.id);
   else toast("No local shell found", true);
 }
 
