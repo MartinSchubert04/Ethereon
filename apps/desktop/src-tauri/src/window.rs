@@ -18,6 +18,10 @@ pub struct WindowBox {
     pub maximized: bool,
 }
 
+/// Tamaño minimo (logico, de adentro) de la principal y de las ventanas de terminales.
+const MAIN_MIN: (f64, f64) = (860.0, 560.0);
+const TERM_MIN: (f64, f64) = (560.0, 340.0);
+
 /// Mientras nace el WebView se siguen atendiendo eventos: otro pedido la crearia dos veces.
 static OPENING: AtomicBool = AtomicBool::new(false);
 
@@ -38,7 +42,7 @@ pub fn show_main(app: &AppHandle) {
     let mut b = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
         .title("Ethereon")
         .inner_size(1200.0, 780.0)
-        .min_inner_size(860.0, 560.0)
+        .min_inner_size(MAIN_MIN.0, MAIN_MIN.1)
         .decorations(false)
         .shadow(true)
         .visible(false);
@@ -61,7 +65,7 @@ pub fn show_main(app: &AppHandle) {
         if place {
             place_outer(&w, Some((s.x, s.y)), None);
         }
-        place_outer(&w, None, Some((s.width, s.height)));
+        place_outer(&w, None, Some(at_least(&w, (s.width, s.height), MAIN_MIN)));
         if !place {
             let _ = w.center();
         }
@@ -97,7 +101,15 @@ pub fn show_main(app: &AppHandle) {
             WindowEvent::Resized(size) => {
                 let max = maximized();
                 let prev = before_move.lock().unwrap().take();
-                let outer = win.as_ref().and_then(|w| w.outer_size().ok());
+                // Minimizada, Windows avisa un tamaño de 160 x 28 (el del icono): no es el suyo.
+                if minimized() {
+                    return;
+                }
+                let scale = win.as_ref().and_then(|w| w.scale_factor().ok()).unwrap_or(1.0);
+                let outer = win
+                    .as_ref()
+                    .and_then(|w| w.outer_size().ok())
+                    .filter(|o| o.width as f64 >= MAIN_MIN.0 * scale && o.height as f64 >= MAIN_MIN.1 * scale);
                 let mut g = state.window.lock().unwrap();
                 let b = g.get_or_insert_with(Default::default);
                 if max || size.width == 0 || size.height == 0 {
@@ -123,6 +135,14 @@ fn on_screen(app: &AppHandle, x: i32, y: i32) -> bool {
         let (p, sz) = (m.position(), m.size());
         px >= p.x && py >= p.y && px < p.x + sz.width as i32 && py < p.y + sz.height as i32
     })
+}
+
+/// El tamaño guardado, nunca menor que el minimo: `SetWindowPos` no lo respeta, y uno viejo
+/// (guardado minimizada, 160 x 28) la abria diminuta. En pixeles fisicos, con la escala del
+/// monitor donde quedo.
+fn at_least(w: &tauri::WebviewWindow, (width, height): (u32, u32), min: (f64, f64)) -> (u32, u32) {
+    let s = w.scale_factor().unwrap_or(1.0);
+    (width.max((min.0 * s).ceil() as u32), height.max((min.1 * s).ceil() as u32))
 }
 
 /// Mueve o agranda la ventana por afuera, en pixeles fisicos.
@@ -188,7 +208,7 @@ pub async fn term_window_open(
     let mut b = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App("index.html?window=term".into()))
         .title("Ethereon")
         .inner_size(width.unwrap_or(1000.0), height.unwrap_or(640.0))
-        .min_inner_size(560.0, 340.0)
+        .min_inner_size(TERM_MIN.0, TERM_MIN.1)
         .decorations(false)
         .shadow(true);
     // Donde se solto la pestaña (coordenadas de pantalla, logicas).
@@ -205,7 +225,7 @@ pub async fn term_window_open(
         if on_screen(&app, p.x, p.y) {
             place_outer(&w, Some((p.x, p.y)), None);
         }
-        place_outer(&w, None, Some((p.width, p.height)));
+        place_outer(&w, None, Some(at_least(&w, (p.width, p.height), TERM_MIN)));
         if p.maximized {
             let _ = w.maximize();
         }
