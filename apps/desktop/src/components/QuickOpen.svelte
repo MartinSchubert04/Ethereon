@@ -94,7 +94,7 @@
       </button>
       {/if}
     {:else}
-      <div class="none faint">Nothing matches.</div>
+      <div class="nothing faint">Nothing matches.</div>
     {/each}
   </div>
 </div></div>
@@ -201,7 +201,7 @@
     color: var(--text-3);
     font-size: 11.5px;
   }
-  .none {
+  .nothing {
     padding: 14px;
   }
 </style>
