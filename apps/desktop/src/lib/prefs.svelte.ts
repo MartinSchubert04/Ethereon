@@ -73,6 +73,8 @@ const defaults = () => ({
     /** Segundos en la misma carpeta antes de que la pestaña de una shell local tome su nombre.
      *  0 = enseguida, -1 = nunca (se queda con la carpeta donde arranco). */
     folderTitleDelay: 15,
+    /** Cuanto tarda la animacion de las letras al cambiar el nombre (ms). 0 = sin animacion. */
+    scrambleMs: 700,
     /** Icono de cada shell local en las pestañas (id de shell -> id de lib/icons.ts). */
     shellIcons: {} as Record<string, string>,
   },

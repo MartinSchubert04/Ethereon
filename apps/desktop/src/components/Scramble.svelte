@@ -1,8 +1,10 @@
 <script lang="ts">
   // Texto que, al cambiar, "decodifica" el nuevo: cada letra gira por letras al azar (como un
   // rodillo de tragamonedas) y se va fijando de izquierda a derecha. La primera vez se muestra
-  // tal cual. Con "reducir movimiento" del sistema cambia sin animar.
+  // tal cual. Dura lo que diga Settings > Terminal (0 = sin animacion); con "reducir
+  // movimiento" del sistema tampoco anima.
   import { untrack } from "svelte";
+  import { prefs } from "../lib/prefs.svelte";
 
   let { text }: { text: string } = $props();
 
@@ -20,24 +22,27 @@
     // Si cambia en medio de una animacion, arranca desde lo que se esta viendo.
     const from = untrack(() => chars?.map((x) => x.c).join("") ?? prev);
     prev = to;
-    if (reduce()) return void (chars = null);
+    const duration = untrack(() => prefs.term.scrambleMs);
+    if (reduce() || duration <= 0) return void (chars = null);
     const n = Math.max(from.length, to.length);
-    // Por letra: en que cuadro empieza a girar y en cuál queda fija.
+    // Por letra, en fraccion de la duracion: cuando empieza a girar y cuando queda fija. De
+    // izquierda a derecha, con algo de azar; la ultima termina justo al final.
     const plan = Array.from({ length: n }, (_, i) => {
-      const start = Math.floor(i * 1.5 + Math.random() * 8);
-      return { start, end: start + 10 + Math.floor(Math.random() * 14), c: glyph() };
+      const start = (i / Math.max(1, n)) * 0.45 + Math.random() * 0.15;
+      return { start, end: start + 0.25 + Math.random() * 0.15, c: glyph() };
     });
     const last = Math.max(...plan.map((p) => p.end));
-    let frame = 0;
+    const t0 = performance.now();
     let raf = 0;
-    const tick = () => {
+    const tick = (now: number) => {
+      const f = ((now - t0) / duration) * last;
       chars = plan.map((p, i) => {
-        if (frame >= p.end) return { c: to[i] ?? "", spin: false };
-        if (frame < p.start) return { c: from[i] ?? "", spin: false };
+        if (f >= p.end) return { c: to[i] ?? "", spin: false };
+        if (f < p.start) return { c: from[i] ?? "", spin: false };
         if (to[i] === " " || Math.random() < 0.35) p.c = to[i] === " " ? " " : glyph();
         return { c: p.c, spin: true };
       });
-      if (++frame > last) return void (chars = null);
+      if (f >= last) return void (chars = null);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);

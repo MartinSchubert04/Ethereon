@@ -290,6 +290,16 @@
             }}
           />
         </label>
+        <label class="field">Name change animation (milliseconds)
+          <span class="hint">How long the letters spin. 0 = no animation.</span>
+          <input
+            type="number"
+            min="0"
+            step="100"
+            value={prefs.term.scrambleMs}
+            oninput={(e) => (prefs.term.scrambleMs = Math.max(0, Math.round(Number(e.currentTarget.value)) || 0))}
+          />
+        </label>
       </div>
       {#if shells.length}
         <div class="grid2">
