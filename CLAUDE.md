@@ -24,6 +24,27 @@ cargo test      # tests del núcleo
 Antes de dar un cambio por terminado: `cargo test` y `npm run check` sin errores ni avisos. Si el
 cambio toca `ssh`, `broker`, `policy` o `mcp`, también las pruebas de aceptación (ver README).
 
+## Versiones: commit, tag y push
+
+Cada fix o feature terminado (tests y check en verde) se publica sin esperar a que lo pidan:
+subir la versión, commitear, tagear y pushear `main` y el tag.
+
+- **Qué número sube** (semver, `MAYOR.MENOR.PARCHE`):
+  - `x.y.Z` (parche): arreglos y retoques chicos de algo que ya existía (un texto, un ancho,
+    un bug).
+  - `x.Y.0` (menor): algo nuevo que se puede usar (una opción, un ícono, una pantalla), sin
+    romper nada.
+  - `X.0.0` (mayor): rompe algo de lo que ya existe (el formato del vault sin migración, la
+    API del MCP, quitar una función). Antes de subirla, preguntar.
+- **Dónde está la versión** (las cinco iguales): `apps/desktop/package.json`,
+  `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/src-tauri/Cargo.toml`,
+  `crates/ethereon-core/Cargo.toml`, y las entradas de `ethereon` / `ethereon-core` en
+  `Cargo.lock` y de `@ethereon/desktop` en `package-lock.json` (ojo con reemplazar a ciegas:
+  otras dependencias pueden tener el mismo número).
+- **Commit**: `vX.Y.Z: <resumen>` y en el cuerpo una línea por cambio, en español, terminando
+  con la versión (ver `git log`). Tag `vX.Y.Z` sobre ese commit.
+- Cambios que no son ni fix ni feature (docs, este archivo) se commitean y pushean sin tag.
+
 ## Estructura
 
 ```
