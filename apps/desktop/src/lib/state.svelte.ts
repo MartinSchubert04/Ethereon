@@ -194,11 +194,21 @@ export function start() {
   refresh();
 }
 
+/** `base`, o si ya hay una pestaña (o un panel de mosaico) que se llama asi, "base (2)",
+ *  "base (3)"... Mira los nombres que se ven ahora, no de donde se abrio cada una: una shell
+ *  local cambia el suyo al moverse de carpeta. */
+function freeTitle(base: string) {
+  const taken = new Set(app.terms.flatMap((t) => [t.title, ...(t.members ?? []).map((m) => m.title)]));
+  if (!taken.has(base)) return base;
+  let n = 2;
+  while (taken.has(`${base} (${n})`)) n++;
+  return `${base} (${n})`;
+}
+
 export function openTerminal(host: string, local?: string, cwd?: string) {
   rememberVaultView(app.view);
   const key = newKey();
-  const n = app.terms.filter((t) => t.host === host).length;
-  app.terms.push({ key, host, local, cwd, title: n ? `${host} (${n + 1})` : host, alive: true });
+  app.terms.push({ key, host, local, cwd, title: freeTitle(host), alive: true });
   app.activeTerm = key;
   app.view = "terminal";
 }
