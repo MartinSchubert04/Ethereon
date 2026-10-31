@@ -6,7 +6,7 @@
 <script lang="ts">
   // "New tab": buscar un host (o una shell de esta PC) y abrir su terminal. Flechas para elegir, Enter para abrir.
   import { Search } from "@lucide/svelte";
-  import { api, userOf, type LocalShell } from "../lib/api";
+  import { addrOf, api, type LocalShell } from "../lib/api";
   import Logo from "./Logo.svelte";
   import { hostIcon } from "../lib/icons";
   import { prefs } from "../lib/prefs.svelte";
@@ -28,7 +28,7 @@
     return [
       ...shells.filter((sh) => has(sh.label, sh.id, "local")).map((shell) => ({ kind: "local" as const, shell })),
       ...(app.snap?.hosts ?? [])
-        .filter((h) => has(h.name, h.hostname, h.group ?? "", h.description, ...h.tags))
+        .filter((h) => has(h.name, h.hostname, h.serial?.port ?? "", h.group ?? "", h.description, ...h.tags))
         .map((host) => ({ kind: "host" as const, host })),
     ];
   });
@@ -41,11 +41,11 @@
     app.quickOpen = false;
   }
 
-  /** Enter abre la terminal; Shift Enter, los archivos (SFTP) del host. */
+  /** Enter abre la terminal; Shift Enter, los archivos (SFTP) del host (no en una consola serial). */
   function pick(it: Item, files = false) {
     close();
     if (it.kind === "local") openLocal(it.shell.id);
-    else if (files) openSftp(it.host.name);
+    else if (files && it.host.transport !== "serial") openSftp(it.host.name);
     else openTerminal(it.host.name);
   }
 
@@ -87,7 +87,7 @@
       <button class="item" class:on={i === sel} onmouseenter={() => (sel = i)} onclick={(e) => pick(it, e.shiftKey)}>
         <span class="icon {h.env}"><Logo id={hostIcon(h)} size={14} /></span>
         <span class="name">{h.name}</span>
-        <span class="addr mono ellipsis">{userOf(h, app.snap?.credentials)}@{h.hostname}</span>
+        <span class="addr mono ellipsis">{addrOf(h, app.snap?.credentials)}</span>
         <span class="grow"></span>
         {#if h.group}<span class="chip">{h.group}</span>{/if}
         {#if h.env !== "none"}<span class="chip {h.env}">{h.env}</span>{/if}

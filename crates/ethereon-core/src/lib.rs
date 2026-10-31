@@ -7,6 +7,7 @@
 //! - `mask`: enmascarado de la salida.
 //! - `audit`: registro encadenado.
 //! - `ssh`: conexiones, saltos y huellas.
+//! - `serial`: consola serial (cable de consola), con `exec` por prompt.
 //! - `broker`: une todo; lo usan la interfaz y el servidor MCP.
 //! - `mcp`: el servidor MCP por HTTP para los agentes.
 //! - `import`: ~/.ssh/config y archivos de clave.
@@ -21,6 +22,7 @@ pub mod mask;
 pub mod mcp;
 pub mod model;
 pub mod policy;
+pub mod serial;
 pub mod shell;
 pub mod ssh;
 pub mod vault;

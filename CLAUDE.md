@@ -55,12 +55,14 @@ crates/ethereon-core/src/   broker sin interfaz
   mask.rs                 enmascarado de la salida
   audit.rs                registro con HMAC encadenado
   ssh.rs                  conexiones, saltos, huellas, exec, PTY
-  broker.rs               une todo; lo único que usan la interfaz y el MCP
+  serial.rs               consola serial (cable de consola): puerto compartido, exec por prompt,
+                          paginadores, login; trait `Link` para probarlo sin hardware
+  broker.rs               une todo y despacha por transporte (SSH o serial); lo único que usan la interfaz y el MCP
   mcp.rs                  servidor MCP (HTTP, JSON-RPC a mano)
   import.rs, export.rs    ssh config, claves, Bitwarden; OpenSSH, Bitwarden, CSV, JSON
   files.rs                SFTP y disco local para la persona (no para el agente)
 crates/ethereon-core/tests/ pruebas de aceptación y los contenedores SSH de prueba
-apps/desktop/src-tauri/   bandeja, ventana, comandos de la interfaz (commands.rs), terminal (SSH y local), files.rs (SFTP),
+apps/desktop/src-tauri/   bandeja, ventana, comandos de la interfaz (commands.rs), terminal (SSH, serial y local), files.rs (SFTP),
                           hotkey.rs (atajo global), conpty/ (ConPTY de Windows Terminal, ver su README)
 apps/desktop/src/         interfaz: views/ (una por sección), components/, lib/, styles/
 ```
@@ -68,8 +70,10 @@ apps/desktop/src/         interfaz: views/ (una por sección), components/, lib/
 ## Reglas del proyecto
 
 - **El agente nunca llega a un secreto.** Nada de lo que devuelve `mcp.rs` o `Broker::agent_*` puede
-  incluir IPs, usuarios, credenciales ni salida sin enmascarar. Lo que desbloquea, edita o exporta
-  solo existe como comando de Tauri.
+  incluir IPs, nombres de puerto serie (`COM3`), usuarios, credenciales ni salida sin enmascarar. Lo
+  que desbloquea, edita o exporta solo existe como comando de Tauri.
+- **El broker no sabe por dónde viaja un comando.** Las reglas, aprobaciones, enmascarado y auditoría
+  son los mismos para SSH y serial; solo `Broker::exec` despacha por `Host::transport`.
 - **Todo lo que afecta la seguridad va dentro del vault** (reglas, huellas, dispositivos, ajustes),
   nunca en un archivo plano: el agente corre en la misma PC y podría editarlo.
 - **Los comandos de Tauri son finitos.** La lógica va en `ethereon-core`, así la etapa 3 los reemplaza

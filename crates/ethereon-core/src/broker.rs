@@ -4,6 +4,7 @@
 //! Lo que puede pedir un agente esta en `agent_*`. Todo lo demas (desbloquear, editar,
 //! exportar) lo llama solo la interfaz, que corre en el mismo proceso.
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
@@ -17,6 +18,7 @@ use crate::audit::{self, Audit, Entry};
 use crate::mask::Masker;
 use crate::model::*;
 use crate::policy::{self, Verdict};
+use crate::serial;
 use crate::ssh::{self, Conn, Hop, SshError};
 use crate::{vault, Error, Result};
 
@@ -54,6 +56,10 @@ pub struct RunResult {
     /// Si una persona cambio el comando antes de aprobarlo, el que corrio.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub edited_command: Option<String>,
+    /// En una consola serial no hay codigo de salida: en su lugar, el prompt con el que
+    /// termino el equipo (`Switch#`). None si vencio el tiempo sin verlo.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -105,6 +111,9 @@ pub struct Broker {
     open: Mutex<Option<Open>>,
     audit: Audit,
     pool: tokio::sync::Mutex<HashMap<String, Arc<Conn>>>,
+    /// Puertos serie abiertos, por host. Uno solo por puerto: lo comparten la terminal y
+    /// el agente.
+    serial_pool: Mutex<HashMap<String, Arc<serial::Conn>>>,
     approvals: Mutex<HashMap<u64, Pending>>,
     session_patterns: Mutex<HashMap<String, Vec<String>>>,
     rate: Mutex<HashMap<String, VecDeque<Instant>>>,
@@ -143,6 +152,7 @@ impl Broker {
             dir,
             open: Mutex::new(None),
             pool: Default::default(),
+            serial_pool: Default::default(),
             approvals: Default::default(),
             session_patterns: Default::default(),
             rate: Default::default(),
@@ -223,6 +233,7 @@ impl Broker {
         let was = self.open.lock().unwrap().take().is_some();
         self.locks.fetch_add(1, Ordering::SeqCst);
         self.pool.lock().await.clear();
+        self.close_serial(|_| true);
         for (_, p) in self.approvals.lock().unwrap().drain() {
             let _ = p.tx.send(Decision::Reject { note: Some("the vault was locked".into()) });
         }
@@ -280,6 +291,29 @@ impl Broker {
 
     pub async fn drop_connections(&self) {
         self.pool.lock().await.clear();
+        // Un puerto serie es exclusivo: si una terminal lo esta usando, se queda; si no,
+        // se suelta para que la proxima conexion lo abra con los datos nuevos.
+        self.close_serial(|c| !c.in_use());
+    }
+
+    /// Cierra el puerto serie de un host, aunque una terminal lo este usando (el host se
+    /// edito o se borro).
+    pub fn drop_serial(&self, name: &str) {
+        if let Some(c) = self.serial_pool.lock().unwrap().remove(name) {
+            c.close();
+        }
+    }
+
+    /// Cierra los puertos serie que cumplen `which` y los saca del pool.
+    fn close_serial(&self, which: impl Fn(&serial::Conn) -> bool) {
+        let mut pool = self.serial_pool.lock().unwrap();
+        pool.retain(|_, c| {
+            let go = which(c);
+            if go {
+                c.close();
+            }
+            !go
+        });
     }
 
     /// Respaldo cifrado: el archivo del vault tal cual.
@@ -370,6 +404,14 @@ impl Broker {
         h.group.as_ref().and_then(|g| d.groups.iter().find(|x| &x.name == g)).map(|g| g.policy.clone()).unwrap_or_default()
     }
 
+    /// Las reglas se aplican igual por SSH que por serial; lo unico que cambia es la lista
+    /// base del modo solo lectura cuando el host no tiene la suya: en un equipo de red los
+    /// comandos que no cambian nada son `show`, `display`, `get`...
+    pub fn evaluate(h: &Host, command: &str, pol: &Policy, deny: &[String], patterns: &[String]) -> Verdict {
+        let base = if h.is_serial() { policy::default_allowlist_serial() } else { policy::default_allowlist() };
+        policy::evaluate_with(command, pol, deny, patterns, &base)
+    }
+
     pub fn agent_list_hosts(&self, ctx: &AgentCtx) -> Result<Vec<AgentHostView>> {
         self.check_agent()?;
         let list = self.read(|d| {
@@ -379,12 +421,13 @@ impl Broker {
                     let p = Self::effective_policy(d, h);
                     AgentHostView {
                         name: h.name.clone(),
+                        transport: h.transport,
                         group: h.group.clone(),
                         env: h.env,
                         tags: h.tags.clone(),
                         description: h.description.clone(),
                         mode: p.mode,
-                        sudo: p.allow_sudo && h.sudo_credential.is_some(),
+                        sudo: p.allow_sudo && h.sudo_credential.is_some() && !h.is_serial(),
                     }
                 })
                 .filter(|v| v.mode != Mode::Off)
@@ -477,6 +520,10 @@ impl Broker {
         let (Some(h), Some(pol)) = (h, pol) else {
             return Err(Error::NotFound(format!("host `{host}` (use list_hosts)")));
         };
+        if sudo && h.is_serial() {
+            entry.decision = "denied".into();
+            return Err(Error::Invalid(format!("`{host}` is a serial console: there is no sudo, use the device's own commands")));
+        }
         if sudo && (!pol.allow_sudo || h.sudo_credential.is_none()) {
             entry.decision = "denied".into();
             return Err(Error::Invalid(format!("sudo is not enabled for `{host}`")));
@@ -489,7 +536,7 @@ impl Broker {
         let patterns = self.session_patterns.lock().unwrap().get(&ctx.session).cloned().unwrap_or_default();
         let mut command = command.to_string();
         let mut edited = None;
-        match policy::evaluate(&command, &pol, &deny, &patterns) {
+        match Self::evaluate(&h, &command, &pol, &deny, &patterns) {
             Verdict::Deny(why) => {
                 entry.decision = "denied".into();
                 return Err(Error::Invalid(format!("rejected: {why}")));
@@ -516,7 +563,7 @@ impl Broker {
                     Some(Decision::ApproveEdited { command: c }) => {
                         // Lo prohibido sigue prohibido aunque lo escriba una persona.
                         let free = Policy { mode: Mode::Guarded, ..pol.clone() };
-                        if let Verdict::Deny(why) = policy::evaluate(&c, &free, &deny, &[]) {
+                        if let Verdict::Deny(why) = Self::evaluate(&h, &c, &free, &deny, &[]) {
                             entry.decision = "rejected".into();
                             return Err(Error::Invalid(format!("the edited command was rejected: {why}")));
                         }
@@ -626,6 +673,9 @@ impl Broker {
     }
 
     pub async fn connection(&self, h: &Host) -> Result<Arc<Conn>> {
+        if h.is_serial() {
+            return Err(Error::Invalid(format!("`{}` is a serial console: it has no SSH connection", h.name)));
+        }
         let mut pool = self.pool.lock().await;
         if let Some(c) = pool.get(&h.name) {
             if !c.is_closed() {
@@ -647,6 +697,67 @@ impl Broker {
         };
         pool.insert(h.name.clone(), conn.clone());
         Ok(conn)
+    }
+
+    /// El puerto serie de un host, abierto si hacia falta. El nombre del puerto y los
+    /// parametros van al registro de conexion (solo la persona lo ve).
+    pub fn serial_connection(&self, h: &Host) -> Result<Arc<serial::Conn>> {
+        if !h.is_serial() {
+            return Err(Error::Invalid(format!("`{}` is not a serial console", h.name)));
+        }
+        let mut pool = self.serial_pool.lock().unwrap();
+        if let Some(c) = pool.get(&h.name) {
+            if !c.is_closed() {
+                return Ok(c.clone());
+            }
+            pool.remove(&h.name);
+        }
+        let log = self.conn_log(&h.name);
+        let s = &h.serial;
+        let parity = match s.parity {
+            Parity::None => 'N',
+            Parity::Even => 'E',
+            Parity::Odd => 'O',
+        };
+        log(format!("Opening {} at {} {}{}{}", s.port, s.baud, s.data_bits, parity, s.stop_bits));
+        let conn = serial::open(s).and_then(serial::Conn::new).map_err(|e| {
+            log(format!("Could not open {}: {e}", s.port));
+            Error::Invalid(format!("could not open the serial port of `{}`: {e}", h.name))
+        })?;
+        log("Port open".into());
+        let conn = Arc::new(conn);
+        pool.insert(h.name.clone(), conn.clone());
+        Ok(conn)
+    }
+
+    /// Usa `conn` como el puerto de `name` en vez de abrirlo: para probar el flujo completo
+    /// con un puerto falso, sin hardware.
+    pub fn add_serial_connection(&self, name: &str, conn: serial::Conn) {
+        self.serial_pool.lock().unwrap().insert(name.into(), Arc::new(conn));
+    }
+
+    /// Las credenciales de la consola serial de `h`: usuario, contrasena de login y de `enable`.
+    fn serial_login(&self, h: &Host) -> Result<serial::Login> {
+        self.read(|d| {
+            let secret = |id: &str| d.credentials.iter().find(|c| c.id == id).map(|c| Zeroizing::new(c.secret.clone()));
+            let user = d.user_of(h);
+            serial::Login {
+                user: (!user.is_empty()).then_some(user),
+                password: (!h.credential.is_empty()).then(|| secret(&h.credential)).flatten(),
+                enable: h.serial.enable_credential.as_deref().and_then(secret),
+            }
+        })
+    }
+
+    /// Despierta la consola serial y la deja en el prompt (login y `enable` incluidos). En
+    /// otro hilo: el puerto es bloqueante.
+    async fn serial_ready(&self, h: &Host, conn: Arc<serial::Conn>) -> std::io::Result<String> {
+        let prompt = Regex::new(&h.serial.prompt).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
+        let login = self.serial_login(h).map_err(|e| std::io::Error::other(e.to_string()))?;
+        let timeout = Duration::from_secs(h.serial.timeout_secs.clamp(1, 60));
+        tokio::task::spawn_blocking(move || serial::ready(&conn, &prompt, &login, timeout))
+            .await
+            .map_err(|e| std::io::Error::other(e.to_string()))?
     }
 
     fn raise_alert(&self, e: SshError) {
@@ -693,8 +804,19 @@ impl Broker {
     pub async fn test_host(&self, name: &str) -> Result<Option<SshError>> {
         self.touch_ui();
         let h = self.read(|d| d.hosts.iter().find(|x| x.name == name).cloned())?.ok_or(Error::NotFound(name.into()))?;
-        let hops = self.hops(&h)?;
         let log = self.conn_log(&h.name);
+        if h.is_serial() {
+            // Lo que falla es no poder abrir el puerto. Que el equipo no conteste (apagado,
+            // arrancando) o no acepte el login se anota, pero la terminal se abre igual: la
+            // persona puede querer ver el arranque o loguearse a mano.
+            let conn = self.serial_connection(&h)?;
+            match self.serial_ready(&h, conn).await {
+                Ok(p) => log(format!("Console ready at prompt {p}")),
+                Err(e) => log(format!("No prompt yet: {e}. The terminal opens anyway; press Enter to wake the device")),
+            }
+            return Ok(None);
+        }
+        let hops = self.hops(&h)?;
         let res = ssh::probe(&hops, &log).await;
         match &res {
             Ok(Some(e)) | Err(e) => log(e.to_string()),
@@ -713,7 +835,73 @@ impl Broker {
         })
     }
 
-    async fn exec(&self, h: &Host, command: &str, sudo: bool, pol: &Policy, _s: &Settings) -> Result<(RunResult, String, String)> {
+    /// Corre el comando por el transporte del host. Devuelve el resultado enmascarado, el
+    /// hash de la salida cruda y el texto enmascarado para la auditoria.
+    async fn exec(&self, h: &Host, command: &str, sudo: bool, pol: &Policy, s: &Settings) -> Result<(RunResult, String, String)> {
+        if h.is_serial() {
+            self.exec_serial(h, command, pol).await
+        } else {
+            self.exec_ssh(h, command, sudo, pol, s).await
+        }
+    }
+
+    /// Por el cable de consola: despierta la linea (login si hace falta), manda el comando
+    /// y lee hasta el prompt. Lo que falle al abrir el puerto va al registro de conexion;
+    /// al agente le llega un error sin el nombre del puerto.
+    async fn exec_serial(&self, h: &Host, command: &str, pol: &Policy) -> Result<(RunResult, String, String)> {
+        let started = Instant::now();
+        let max = pol.max_output_kb.max(1) * 1024;
+        let timeout = Duration::from_secs(pol.timeout_secs.max(1));
+        let prompt = Regex::new(&h.serial.prompt).map_err(|e| Error::Invalid(format!("bad prompt pattern on `{}`: {e}", h.name)))?;
+        let generic = |what: &str| Error::Invalid(format!("serial console of `{}`: {what} (details in the connection log in Ethereon)", h.name));
+        let mut attempt = 0;
+        let out = loop {
+            let conn = self.serial_connection(h).map_err(|_| generic("could not open the port"))?;
+            let res: std::io::Result<serial::ExecOut> = async {
+                self.serial_ready(h, conn.clone()).await?;
+                let (c, cmd, p) = (conn.clone(), command.to_string(), prompt.clone());
+                tokio::task::spawn_blocking(move || serial::exec(&c, &cmd, &p, timeout, max)).await.map_err(|e| std::io::Error::other(e.to_string()))?
+            }
+            .await;
+            match res {
+                Ok(o) => break o,
+                // El puerto se cerro debajo (se desenchufo el cable): una vez mas con uno nuevo.
+                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe && attempt == 0 => {
+                    self.drop_serial(&h.name);
+                    attempt += 1;
+                }
+                Err(e) => {
+                    self.conn_log(&h.name)(format!("Command failed: {e}"));
+                    return Err(match e.kind() {
+                        std::io::ErrorKind::PermissionDenied => generic("the console asked for a login that the host does not have"),
+                        std::io::ErrorKind::TimedOut => generic("the device did not show a prompt"),
+                        _ => generic("the port failed"),
+                    });
+                }
+            }
+        };
+        let masker = self.masker()?;
+        let raw_hash = audit::sha256_hex(out.output.as_bytes());
+        let (stdout, masked) = masker.mask(&out.output);
+        let joined = stdout.clone();
+        Ok((
+            RunResult {
+                stdout,
+                stderr: String::new(),
+                exit_code: None,
+                duration_ms: started.elapsed().as_millis() as u64,
+                truncated: out.truncated,
+                timed_out: out.timed_out,
+                masked,
+                edited_command: None,
+                prompt: out.prompt.map(|p| masker.mask(&p).0),
+            },
+            raw_hash,
+            joined,
+        ))
+    }
+
+    async fn exec_ssh(&self, h: &Host, command: &str, sudo: bool, pol: &Policy, _s: &Settings) -> Result<(RunResult, String, String)> {
         let stdin = if sudo {
             let id = h.sudo_credential.clone().unwrap_or_default();
             let pw = self
@@ -759,6 +947,7 @@ impl Broker {
                 timed_out: out.timed_out,
                 masked: n1 + n2,
                 edited_command: None,
+                prompt: None,
             },
             raw_hash,
             joined,
@@ -830,6 +1019,100 @@ impl Broker {
             }
             let idle = Duration::from_secs(s.keep_alive_minutes.max(1) * 60);
             self.pool.lock().await.retain(|_, c| !c.is_closed() && c.last_used.lock().unwrap().elapsed() < idle);
+            // Un puerto serie con una terminal abierta no esta sin uso.
+            self.close_serial(|c| c.is_closed() || (!c.in_use() && c.last_used.lock().unwrap().elapsed() >= idle));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::serial::fake::FakeLink;
+
+    struct Quiet;
+    impl Notifier for Quiet {
+        fn event(&self, _: &str, _: serde_json::Value) {}
+        fn notify(&self, _: &str, _: &str) {}
+    }
+
+    /// Un switch por consola serial, con login y `enable`: el agente corre un comando de solo
+    /// lectura, recibe la salida con los secretos tapados y el prompt; lo que configura se
+    /// rechaza; y ni el puerto ni las credenciales salen por `list_hosts` ni por los errores.
+    #[tokio::test]
+    async fn serial_host_end_to_end() {
+        let dir = tempfile::tempdir().unwrap();
+        let b = Broker::new(dir.path().to_path_buf(), Arc::new(Quiet));
+        b.create("tester-pass-123").unwrap();
+        b.write(|d| {
+            let cred = |id: &str, secret: &str| Credential {
+                id: id.into(),
+                kind: CredentialKind::Password,
+                username: String::new(),
+                secret: secret.into(),
+                passphrase: String::new(),
+                certificate: String::new(),
+                note: String::new(),
+            };
+            d.credentials.push(cred("sw-pw", "s3cret-pass"));
+            d.credentials.push(cred("sw-en", "en4ble-pass"));
+            d.hosts.push(Host {
+                name: "sw1".into(),
+                transport: Transport::Serial,
+                serial: SerialConfig { port: "COM99".into(), enable_credential: Some("sw-en".into()), ..Default::default() },
+                user: "admin".into(),
+                credential: "sw-pw".into(),
+                description: "access switch".into(),
+                policy: Some(Policy { mode: Mode::ReadOnly, ..Default::default() }),
+                ..Default::default()
+            });
+            Ok(())
+        })
+        .unwrap();
+        let link = FakeLink::new(&[
+            ("\r", "\r\nUser Access Verification\r\n\r\nUsername: "),
+            ("admin\r", "admin\r\nPassword: "),
+            ("s3cret-pass\r", "\r\nsw1>"),
+            ("enable\r", "enable\r\nPassword: "),
+            ("en4ble-pass\r", "\r\nsw1#"),
+            ("show run\r", "show run\r\nenable secret en4ble-pass\r\nsnmp-server community s3cret-pass RO\r\n --More-- "),
+            (" ", "\r        \rend\r\nsw1#"),
+        ]);
+        b.add_serial_connection("sw1", serial::Conn::new(Box::new(link.clone())).unwrap());
+        let (_, token) = b.create_device("pc", None, vec![]).unwrap();
+        let ctx = b.authenticate(&token, "127.0.0.1", "s1").unwrap();
+
+        let hosts = b.agent_list_hosts(&ctx).unwrap();
+        let json = serde_json::to_string(&hosts).unwrap();
+        assert!(json.contains("\"transport\":\"serial\""));
+        assert!(!json.contains("COM99") && !json.contains("admin") && !json.contains("sw-pw"), "{json}");
+
+        let r = b.agent_run(&ctx, "sw1", "show run", false, "check config").await.unwrap();
+        assert_eq!(r.stdout, "enable secret ***\nsnmp-server community *** RO\nend");
+        assert_eq!(r.prompt.as_deref(), Some("sw1#"));
+        assert_eq!(r.exit_code, None);
+        assert!(!r.timed_out);
+        assert_eq!(r.masked, 2);
+        assert!(!link.written().contains("configure"));
+
+        // Solo lectura: lo que configura se rechaza antes de tocar el puerto.
+        let e = b.agent_run(&ctx, "sw1", "configure terminal", false, "x").await.unwrap_err().to_string();
+        assert!(e.contains("not in the allowed list"), "{e}");
+        // Sudo no existe en una consola.
+        let e = b.agent_run(&ctx, "sw1", "show version", true, "x").await.unwrap_err().to_string();
+        assert!(e.contains("serial console"), "{e}");
+        assert!(!link.written().contains("show version"));
+
+        // La auditoria tiene el comando, el host y el hash de la salida sin enmascarar.
+        let entries = b.audit().search("show run", 10);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].decision, "allowed");
+        assert_eq!(entries[0].output_sha256, audit::sha256_hex(b"enable secret en4ble-pass\nsnmp-server community s3cret-pass RO\nend"));
+
+        // Al bloquear, el puerto se cierra.
+        b.lock().await;
+        assert!(link.written().len() > 0);
+        let e = b.agent_run(&ctx, "sw1", "show run", false, "x").await.unwrap_err();
+        assert!(matches!(e, Error::Locked));
     }
 }

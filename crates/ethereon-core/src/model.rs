@@ -119,15 +119,82 @@ impl Env {
     }
 }
 
+/// Por donde viaja un comando. Los vaults de antes no tienen el campo: se leen como SSH.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Transport {
+    #[default]
+    Ssh,
+    /// Cable de consola (switches, APs, routers). Ver `serial.rs`.
+    Serial,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Parity {
+    #[default]
+    None,
+    Even,
+    Odd,
+}
+
+/// Como se habla por el cable de consola. Los defaults son 9600 8N1, lo que traen casi
+/// todos los equipos de red.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SerialConfig {
+    /// `COM3`, `/dev/ttyUSB0`. Para el agente es como la IP: nunca sale por el MCP.
+    pub port: String,
+    pub baud: u32,
+    pub data_bits: u8,
+    pub parity: Parity,
+    pub stop_bits: u8,
+    /// Expresion regular que reconoce el prompt del equipo al final de la salida. En serial
+    /// no hay codigo de salida: el comando termino cuando vuelve el prompt.
+    pub prompt: String,
+    /// Cuanto espera el prompt despues de mandar un comando (segundos).
+    pub timeout_secs: u64,
+    /// ID de la contrasena de `enable` (modo privilegiado), si el equipo la pide.
+    pub enable_credential: Option<String>,
+}
+
+impl Default for SerialConfig {
+    fn default() -> Self {
+        SerialConfig {
+            port: String::new(),
+            baud: 9600,
+            data_bits: 8,
+            parity: Parity::None,
+            stop_bits: 1,
+            prompt: DEFAULT_PROMPT.into(),
+            timeout_secs: 20,
+            enable_credential: None,
+        }
+    }
+}
+
+/// `Switch#`, `Router>`, `user@host:~$`, `[edit] user@fw#`, `AP(config)#`.
+pub const DEFAULT_PROMPT: &str = r"[\w\-\.()\[\]/:@~]*[#>$]\s*$";
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Host {
     /// Nombre unico; es lo que usa el agente en `run(host, ...)`.
     pub name: String,
+    #[serde(default)]
+    pub transport: Transport,
+    /// Solo con `transport == Serial`; los hosts SSH lo llevan en blanco.
+    #[serde(default)]
+    pub serial: SerialConfig,
+    /// Direccion del host SSH (vacia en uno serial).
+    #[serde(default)]
     pub hostname: String,
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Usuario de login. En un host serial puede quedar vacio si la consola no pide login.
+    #[serde(default)]
     pub user: String,
     /// ID de la credencial de login.
+    #[serde(default)]
     pub credential: String,
     /// ID de la contrasena de sudo (opcional).
     #[serde(default)]
@@ -157,6 +224,12 @@ pub struct Host {
     /// Icono elegido a mano; si es None se usa el del sistema detectado.
     #[serde(default)]
     pub icon: Option<String>,
+}
+
+impl Host {
+    pub fn is_serial(&self) -> bool {
+        self.transport == Transport::Serial
+    }
 }
 
 impl VaultData {
@@ -272,10 +345,12 @@ pub struct Device {
     pub revoked: bool,
 }
 
-/// Lo que ve el agente de un host: nunca IPs, usuarios ni credenciales.
+/// Lo que ve el agente de un host: nunca IPs, puertos serie, usuarios ni credenciales.
 #[derive(Clone, Debug, Serialize)]
 pub struct AgentHostView {
     pub name: String,
+    /// "ssh" o "serial": en una consola serial no hay shell, los comandos son los del equipo.
+    pub transport: Transport,
     pub group: Option<String>,
     pub env: Env,
     pub tags: Vec<String>,

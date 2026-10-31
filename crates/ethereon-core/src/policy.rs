@@ -81,10 +81,36 @@ pub fn default_allowlist() -> Vec<String> {
     .collect()
 }
 
+/// Lista base del modo solo lectura para una consola serial (equipos de red: IOS, NX-OS,
+/// Junos, Comware, FortiOS, EdgeOS, MikroTik...): lo que muestra sin cambiar nada, y los
+/// filtros que van despues del `|` (`show run | include ip`). Como la de shell, se
+/// reemplaza por la lista propia del host o del grupo si la tiene.
+pub fn default_allowlist_serial() -> Vec<String> {
+    [
+        "show", "display", "get", "dir", "more", "ping", "traceroute", "tracert", "where", "who", "whoami", "uptime",
+        "version", "ls", "cat", "pwd", "diagnose", "execute ping|traceroute",
+        "terminal length|width|monitor|no", "screen-length", "set cli screen-length|complete-on-space",
+        "/system resource print", "/interface print", "/ip address print", "/export",
+        // Filtros de salida (lo que va despues de `|`).
+        "include", "exclude", "begin", "section", "count", "grep", "last", "match", "except", "find", "trim", "no-more",
+        "json", "xml", "display set|xml|json|inheritance",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
+}
+
 /// Envoltorios que no cambian lo que hace el comando de adentro.
 const SAFE_WRAPPERS: &[&str] = &["timeout", "nice", "ionice", "nohup", "time", "stdbuf", "xargs", "command", "watch", "unbuffer"];
 
+/// Con la lista base de shell en modo solo lectura (ver `evaluate_with`).
 pub fn evaluate(cmd: &str, policy: &Policy, global_deny: &[String], session_patterns: &[String]) -> Verdict {
+    evaluate_with(cmd, policy, global_deny, session_patterns, &default_allowlist())
+}
+
+/// `default_allow` es la lista que vale en modo solo lectura cuando `policy.allow` esta
+/// vacia: la de shell para un host SSH, la de equipos de red para uno serial.
+pub fn evaluate_with(cmd: &str, policy: &Policy, global_deny: &[String], session_patterns: &[String], default_allow: &[String]) -> Verdict {
     if policy.mode == Mode::Off {
         return Verdict::Deny("the agent has no access to this host".into());
     }
@@ -131,7 +157,7 @@ pub fn evaluate(cmd: &str, policy: &Policy, global_deny: &[String], session_patt
             if let Some(h) = hidden.first() {
                 return Verdict::Deny(format!("{h}; write the command explicitly"));
             }
-            let allow: Vec<Rule> = if policy.allow.is_empty() { default_allowlist() } else { policy.allow.clone() }
+            let allow: Vec<Rule> = if policy.allow.is_empty() { default_allow } else { &policy.allow[..] }
                 .iter()
                 .map(|s| Rule::parse(s))
                 .collect();
@@ -570,6 +596,34 @@ mod tests {
         let p = vec!["systemctl restart *".to_string()];
         assert_eq!(evaluate("systemctl  restart nginx", &pol(Mode::Approval), &default_denylist(), &p), Verdict::Allow);
         assert!(denied(&evaluate("rm -rf /", &pol(Mode::Approval), &default_denylist(), &["*".into()])));
+    }
+
+    /// Una consola serial en solo lectura: los comandos de un switch que no cambian nada
+    /// pasan, los que configuran o reinician no.
+    #[test]
+    fn serial_read_only_list() {
+        let base = default_allowlist_serial();
+        let ok = |cmd: &str| evaluate_with(cmd, &pol(Mode::ReadOnly), &default_denylist(), &[], &base);
+        for cmd in [
+            "show running-config",
+            "show ip interface brief | include up",
+            "show run | section ^interface",
+            "display current-configuration",
+            "get system status",
+            "show configuration | display set | match ge-0/0/0",
+            "terminal length 0",
+            "ping 10.0.0.1",
+        ] {
+            assert_eq!(ok(cmd), Verdict::Allow, "{cmd}");
+        }
+        for cmd in ["configure terminal", "reload", "write memory", "copy running-config startup-config", "erase startup-config", "show run > x"] {
+            assert!(denied(&ok(cmd)), "{cmd}");
+        }
+        // La lista propia del host manda, como en SSH.
+        let mut p = pol(Mode::ReadOnly);
+        p.allow = vec!["show version".into()];
+        assert_eq!(evaluate_with("show version", &p, &default_denylist(), &[], &base), Verdict::Allow);
+        assert!(denied(&evaluate_with("show running-config", &p, &default_denylist(), &[], &base)));
     }
 
     #[test]

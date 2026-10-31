@@ -7,7 +7,7 @@
   import GroupForm from "../components/GroupForm.svelte";
   import Logo from "../components/Logo.svelte";
   import { hostIcon } from "../lib/icons";
-  import { api, MODE_LABEL, userOf, type Group, type Host } from "../lib/api";
+  import { addrOf, api, MODE_LABEL, type Group, type Host } from "../lib/api";
   import { app, attempt, openGroup, openSftp, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
   import { pop } from "../lib/motion";
@@ -29,7 +29,7 @@
   const hosts = $derived(
     (app.snap?.hosts ?? []).filter((h) => {
       const q = query.toLowerCase();
-      return !q || [h.name, h.hostname, h.description, ...h.tags].some((x) => x.toLowerCase().includes(q));
+      return !q || [h.name, h.hostname, h.serial?.port ?? "", h.description, ...h.tags].some((x) => x.toLowerCase().includes(q));
     }),
   );
   const groups = $derived.by(() => {
@@ -273,7 +273,7 @@
                   <div class="badge {h.env}"><Logo id={hostIcon(h)} size={16} /></div>
                   <div class="grow info">
                     <div class="name ellipsis">{h.name}</div>
-                    <div class="addr mono ellipsis">{userOf(h, app.snap?.credentials)}@{h.hostname}{h.port !== 22 ? `:${h.port}` : ""}</div>
+                    <div class="addr mono ellipsis">{addrOf(h, app.snap?.credentials)}</div>
                   </div>
                   <div class="actions">
                     <button class="icon-btn" title="Test connection" onclick={() => testHost(h.name)}><Plug size={14} /></button>
@@ -284,12 +284,15 @@
                 <div class="chips">
                   {#if h.env !== "none"}<span class="chip {h.env}">{h.env}</span>{/if}
                   <span class="chip">{MODE_LABEL[mode(h)]}</span>
+                  {#if h.transport === "serial"}<span class="chip">serial</span>{/if}
                   {#if h.jump.length}<span class="chip">via {h.jump.join(" → ")}</span>{/if}
                   {#each h.tags as t}<span class="chip">{t}</span>{/each}
                 </div>
                 <div class="connect-row">
                   <button class="btn sm connect" onclick={() => openTerminal(h.name)}>Connect</button>
-                  <button class="btn sm" title="Browse files (SFTP)" onclick={() => openSftp(h.name)}><FolderOpen size={13} /> SFTP</button>
+                  {#if h.transport !== "serial"}
+                    <button class="btn sm" title="Browse files (SFTP)" onclick={() => openSftp(h.name)}><FolderOpen size={13} /> SFTP</button>
+                  {/if}
                 </div>
               </div>
             {/each}
@@ -316,7 +319,7 @@
       <div class="badge {drag.host.env}"><Logo id={hostIcon(drag.host)} size={16} /></div>
       <div class="grow info">
         <div class="name ellipsis">{drag.host.name}</div>
-        <div class="addr mono ellipsis">{drag.host.user}@{drag.host.hostname}</div>
+        <div class="addr mono ellipsis">{addrOf(drag.host, app.snap?.credentials)}</div>
       </div>
     </div>
     <div class="ghost-to">

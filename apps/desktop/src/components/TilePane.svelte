@@ -8,6 +8,7 @@
   import ConnState from "./ConnState.svelte";
   import ApprovalsPane from "./ApprovalsPane.svelte";
   import { fadeQuick, pop } from "../lib/motion";
+  import { addrOf } from "../lib/api";
   import { app, type TermTab } from "../lib/state.svelte";
   import { closeLeaf, drop, geometry, moveLeaf, popOut, tileAt, type Split, type Rect } from "../lib/tiles.svelte";
 
@@ -31,7 +32,7 @@
     if (m.approvals) return app.approvals.length ? `${app.approvals.length} waiting` : "nothing waiting";
     if (m.local) return m.cwd ? `this PC · ${m.cwd}` : "this PC";
     const h = app.snap?.hosts.find((x) => x.name === m.host);
-    return h ? `${h.user}@${h.hostname}${h.port !== 22 ? `:${h.port}` : ""}` : m.host;
+    return h ? addrOf(h, app.snap?.credentials) : m.host;
   }
 
   // ---- separaciones: arrastrar cambia la proporcion de esa division

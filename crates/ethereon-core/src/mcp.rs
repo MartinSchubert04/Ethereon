@@ -22,11 +22,15 @@ use crate::Error;
 
 const PROTOCOLS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS: &str = "Ethereon runs shell commands on the user's SSH hosts for you. You never get passwords, keys \
-or IPs: call list_hosts to see what exists (with a description of each host), then run(host, command). \
+const INSTRUCTIONS: &str = "Ethereon runs commands on the user's hosts for you: SSH servers and devices on a serial \
+console cable (switches, routers, access points). You never get passwords, keys, IPs or port names: call list_hosts \
+to see what exists (with a description of each host), then run(host, command). \
 Output has secrets replaced by ***. Each host has a mode: read_only (only listed commands), approval (a person \
 approves each command: always give a clear `reason`), guarded (anything except forbidden commands like rm -rf or \
 reading ~/.ssh) or unrestricted (anything). \
+On a host with transport \"serial\" there is no shell and no exit code: send the device's own CLI commands one at a \
+time (for example `show version`), and you get the output up to the next prompt, plus that prompt (`Switch#`). \
+Pagers are handled for you. Commands that wait for a confirmation ([confirm], yes/no) time out: avoid them. \
 If a command is rejected, do not try to get around the rule; tell the user.";
 
 pub fn router(b: Arc<Broker>) -> Router {
@@ -45,21 +49,23 @@ fn tools() -> Value {
     json!([
         {
             "name": "list_hosts",
-            "description": "List the SSH hosts you can use: name, group, environment (prod/test/dev), tags, a description \
-                of what runs there, the rule mode (read_only, approval, guarded, unrestricted) and whether sudo is available.",
+            "description": "List the hosts you can use: name, transport (ssh, or serial for a console cable), group, \
+                environment (prod/test/dev), tags, a description of what runs there, the rule mode (read_only, approval, \
+                guarded, unrestricted) and whether sudo is available.",
             "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false },
             "annotations": { "readOnlyHint": true }
         },
         {
             "name": "run",
-            "description": "Run a shell command on a host and get stdout, stderr, the exit code and the duration. \
+            "description": "Run a command on a host and get stdout, stderr, the exit code and the duration. On a serial \
+                host there is no exit code: you get the device's output up to its prompt, and the prompt itself. \
                 Secrets in the output are replaced by ***. The whole command is checked (pipes, ;, $( ), redirects). \
                 On hosts in approval mode this waits until a person approves it.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
                     "host": { "type": "string", "description": "Host name from list_hosts." },
-                    "command": { "type": "string", "description": "Shell command (sh syntax). No heredocs." },
+                    "command": { "type": "string", "description": "Shell command (sh syntax, no heredocs), or the device's CLI command on a serial host." },
                     "reason": { "type": "string", "description": "Why you need this; shown to the person who approves it." },
                     "sudo": { "type": "boolean", "description": "Run as root. Ethereon types the sudo password; never call sudo yourself.", "default": false }
                 },
@@ -199,8 +205,11 @@ async fn call(b: &Broker, ctx: Option<&AgentCtx>, _session: &str, client: &str, 
             }
             match b.agent_run(ctx, &host, &command, sudo, &reason).await {
                 Ok(r) => {
-                    let failed = r.exit_code != Some(0);
-                    tool_text(serde_json::to_string_pretty(&r).unwrap(), failed && r.exit_code.is_none())
+                    // Sin codigo de salida (se corto, vencio el tiempo) es un error de la
+                    // herramienta; un codigo distinto de 0 es un resultado. En serial no hay
+                    // codigo: lo que dice que termino es el prompt.
+                    let broken = r.exit_code.is_none() && r.prompt.is_none();
+                    tool_text(serde_json::to_string_pretty(&r).unwrap(), broken)
                 }
                 Err(e) => tool_text(e.to_string(), true),
             }

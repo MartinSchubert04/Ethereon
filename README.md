@@ -15,6 +15,11 @@ credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
   encadenados y una descripción que el agente lee para tener contexto.
 - **Terminal propia:** doble clic en un host y se abre una terminal en la app, con pestañas. También
   terminales locales (PowerShell, CMD, WSL, Git Bash).
+- **Consola serial:** un host puede ser un switch, AP o router por cable de consola (puerto, baudios,
+  8N1, patrón de prompt, login y `enable` del vault). La terminal habla con el equipo en crudo, y el
+  agente usa el mismo `run(host, comando)`: Ethereon manda el comando, lee hasta el prompt, contesta
+  los `--More--` y devuelve la salida enmascarada. Las reglas de solo lectura traen una lista base
+  para equipos de red (`show`, `display`, `get`...).
 - **SFTP:** esta PC y el servidor lado a lado; se pasan archivos arrastrando (también desde el
   Explorador), con progreso y cancelación.
 - **Para Claude Code (MCP):** `list_hosts` y `run(host, comando)`. El agente ve nombres y

@@ -102,6 +102,8 @@ pub struct Snapshot {
     denylist: Vec<String>,
     settings: Settings,
     default_allow: Vec<String>,
+    /// La lista base de solo lectura para una consola serial (equipos de red).
+    default_allow_serial: Vec<String>,
     default_deny: Vec<String>,
 }
 
@@ -124,7 +126,7 @@ pub fn snapshot(s: State<AppState>) -> R<Snapshot> {
                 used_by: d
                     .hosts
                     .iter()
-                    .filter(|h| h.credential == c.id || h.sudo_credential.as_deref() == Some(&c.id))
+                    .filter(|h| h.credential == c.id || h.sudo_credential.as_deref() == Some(&c.id) || h.serial.enable_credential.as_deref() == Some(&c.id))
                     .map(|h| h.name.clone())
                     .collect(),
             })
@@ -145,6 +147,7 @@ pub fn snapshot(s: State<AppState>) -> R<Snapshot> {
         denylist: d.denylist.clone(),
         settings: d.settings.clone(),
         default_allow: policy::default_allowlist(),
+        default_allow_serial: policy::default_allowlist_serial(),
         default_deny: policy::default_denylist(),
     })
 }
@@ -186,19 +189,36 @@ pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<Stri
     host.hostname = host.hostname.trim().to_string();
     valid_name(&host.name)?;
     host.user = host.user.trim().to_string();
-    if host.hostname.is_empty() {
-        return Err(invalid("hostname is required"));
+    if host.is_serial() {
+        host.serial.port = host.serial.port.trim().to_string();
+        ethereon_core::serial::validate(&host.serial).map_err(invalid)?;
+        // Una consola no tiene direccion, saltos ni sudo.
+        host.hostname.clear();
+        host.jump.clear();
+        host.sudo_credential = None;
+    } else {
+        host.serial = SerialConfig::default();
+        if host.hostname.is_empty() {
+            return Err(invalid("hostname is required"));
+        }
     }
+    let orig = original.unwrap_or_else(|| host.name.clone());
+    // El puerto serie de la version anterior ya no sirve si cambio algo de la consola.
+    let reopen = s.broker.read(|d| d.hosts.iter().find(|h| h.name == orig).is_some_and(|h| h.is_serial() && (h.transport != host.transport || h.serial != host.serial)))?;
     s.broker.write(|d| {
-        if d.user_of(&host).is_empty() {
+        if !host.is_serial() && d.user_of(&host).is_empty() {
             return Err(invalid("type a user, or pick a credential that has one"));
         }
-        let orig = original.unwrap_or_else(|| host.name.clone());
         if host.name != orig && d.hosts.iter().any(|h| h.name == host.name) {
             return Err(invalid(format!("a host named `{}` already exists", host.name)));
         }
         if !host.credential.is_empty() && !d.credentials.iter().any(|c| c.id == host.credential) {
             return Err(invalid(format!("credential `{}` does not exist", host.credential)));
+        }
+        if let Some(e) = &host.serial.enable_credential {
+            if !d.credentials.iter().any(|c| &c.id == e) {
+                return Err(invalid(format!("credential `{e}` does not exist")));
+            }
         }
         for j in &host.jump {
             if j == &host.name || !d.hosts.iter().any(|h| &h.name == j) {
@@ -228,6 +248,9 @@ pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<Stri
         }
         Ok(())
     })?;
+    if reopen {
+        s.broker.drop_serial(&orig);
+    }
     s.broker.drop_connections().await;
     Ok(())
 }
@@ -241,8 +264,15 @@ pub async fn host_delete(s: State<'_, AppState>, name: String) -> R<()> {
         d.hosts.retain(|h| h.name != name);
         Ok(())
     })?;
+    s.broker.drop_serial(&name);
     s.broker.drop_connections().await;
     Ok(())
+}
+
+/// Los puertos serie de esta PC, para elegir uno en el formulario de host.
+#[tauri::command]
+pub fn serial_ports() -> Vec<ethereon_core::serial::PortInfo> {
+    ethereon_core::serial::available_ports()
 }
 
 /// Prueba la conexion. Devuelve null si todo esta bien, o la huella a confirmar.
@@ -350,6 +380,9 @@ pub async fn cred_save(s: State<'_, AppState>, cred: CredInput) -> R<()> {
                 if h.sudo_credential.as_deref() == Some(&orig) {
                     h.sudo_credential = Some(id.clone());
                 }
+                if h.serial.enable_credential.as_deref() == Some(&orig) {
+                    h.serial.enable_credential = Some(id.clone());
+                }
             }
         }
         Ok(())
@@ -361,7 +394,9 @@ pub async fn cred_save(s: State<'_, AppState>, cred: CredInput) -> R<()> {
 #[tauri::command]
 pub async fn cred_delete(s: State<'_, AppState>, id: String) -> R<()> {
     s.broker.write(|d| {
-        if let Some(h) = d.hosts.iter().find(|h| h.credential == id || h.sudo_credential.as_deref() == Some(&id)) {
+        if let Some(h) =
+            d.hosts.iter().find(|h| h.credential == id || h.sudo_credential.as_deref() == Some(&id) || h.serial.enable_credential.as_deref() == Some(&id))
+        {
             return Err(invalid(format!("`{}` uses this credential", h.name)));
         }
         d.credentials.retain(|c| c.id != id);
@@ -494,7 +529,7 @@ pub fn policy_test(s: State<AppState>, host: String, command: String) -> R<TestR
     s.broker.read(|d| {
         let h = d.hosts.iter().find(|h| h.name == host).ok_or(Error::NotFound(host.clone()))?;
         let p = ethereon_core::Broker::effective_policy(d, h);
-        Ok(match policy::evaluate(&command, &p, &d.denylist, &[]) {
+        Ok(match ethereon_core::Broker::evaluate(h, &command, &p, &d.denylist, &[]) {
             policy::Verdict::Allow => TestResult { verdict: "allow", detail: "runs without asking".into() },
             policy::Verdict::Ask(w) => TestResult {
                 verdict: "ask",

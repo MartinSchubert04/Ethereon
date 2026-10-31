@@ -3,7 +3,7 @@
 // (CC0), en un solo color: toman el del texto, como los de lucide. Microsoft saco los suyos
 // de simple-icons, asi que para PowerShell y cmd quedan los genericos.
 import type { Component } from "svelte";
-import { Box, Cloud, Code, Database, Laptop, Monitor, Server, SquareTerminal, Terminal } from "@lucide/svelte";
+import { Box, Cable, Cloud, Code, Database, Laptop, Monitor, Network, Router, Server, SquareTerminal, Terminal } from "@lucide/svelte";
 import {
   siAlmalinux,
   siAlpinelinux,
@@ -64,6 +64,9 @@ export const ICONS: Record<string, IconDef> = {
   cloud: L("Cloud", Cloud),
   database: L("Database", Database),
   box: L("Box", Box),
+  cable: L("Console cable", Cable),
+  router: L("Router", Router),
+  network: L("Network", Network),
   linux: S(siLinux),
   debian: S(siDebian),
   ubuntu: S(siUbuntu),
@@ -151,9 +154,10 @@ export function osIcon(os: string | null | undefined): string | null {
   return "linux";
 }
 
-/** El icono de un host: el elegido a mano, el de su sistema, o el de servidor. */
-export const hostIcon = (h: { icon?: string | null; os?: string | null } | undefined) =>
-  (h?.icon && ICONS[h.icon] ? h.icon : null) ?? osIcon(h?.os) ?? "server";
+/** El icono de un host: el elegido a mano, el de su sistema, o el de servidor (el cable de
+ *  consola si es serial: ahi no se detecta ningun sistema). */
+export const hostIcon = (h: { icon?: string | null; os?: string | null; transport?: string } | undefined) =>
+  (h?.icon && ICONS[h.icon] ? h.icon : null) ?? osIcon(h?.os) ?? (h?.transport === "serial" ? "cable" : "server");
 
 /** Para un Select: todos los iconos. */
 export const iconOptions = () => Object.entries(ICONS).map(([value, d]) => ({ value, label: d.label }));

@@ -1,5 +1,6 @@
 //! Terminal interactiva para la persona (no para el agente: no pasa por las reglas).
-//! Puede ser una shell en un host por SSH o una shell local de esta PC (ConPTY).
+//! Puede ser una shell en un host por SSH, una consola serial (los bytes del puerto tal
+//! cual, sin login automatico) o una shell local de esta PC (ConPTY).
 //! La salida va al WebView por un canal IPC en base64; si la ventana se cierra, el
 //! canal falla y la sesion se corta sola. Una terminal se puede pasar a otra ventana sin
 //! cortarse: la vieja suelta el canal (`term_detach`) y la nueva lo toma (`term_attach`).
@@ -33,6 +34,9 @@ struct Local {
 enum Session {
     Ssh(Arc<ChannelWriteHalf<Msg>>),
     Local(Arc<Mutex<Local>>),
+    /// El puerto compartido con el agente; `stop` corta el hilo que escucha sin cerrar el
+    /// puerto (otra terminal o el agente pueden seguir usandolo).
+    Serial(Arc<ethereon_core::serial::Conn>, Arc<std::sync::atomic::AtomicBool>),
 }
 
 /// Cuanto de la salida reciente se guarda para la ventana que toma la terminal.
@@ -111,6 +115,9 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
     let b = s.broker.clone();
     b.touch_ui();
     let h = b.read(|d| d.hosts.iter().find(|x| x.name == host).cloned())?.ok_or(Error::NotFound(host.clone()))?;
+    if h.is_serial() {
+        return open_serial(&s, &h, on_event);
+    }
     let conn = b.connection(&h).await?;
     let ch = ethereon_core::ssh::open_shell(&conn, cols, rows).await.map_err(|e| Error::Invalid(format!("ssh error: {e}")))?;
     let (mut read, write) = ch.split();
@@ -151,6 +158,47 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
             }
         }
         sink.lock().unwrap().exit(code);
+        map.lock().unwrap().remove(&id);
+    });
+    Ok(id)
+}
+
+// ---- consola serial
+
+/// La consola en crudo: lo que llega del puerto va al xterm y lo que se teclea va al puerto.
+/// Si el agente corre un comando mientras tanto, se ve pasar aca. Un Enter despierta al
+/// equipo; el login lo hace la persona.
+fn open_serial(s: &State<'_, AppState>, h: &ethereon_core::model::Host, on_event: Channel<TermEvent>) -> Result<u32, Error> {
+    use std::sync::atomic::AtomicBool;
+    let b = s.broker.clone();
+    let conn = b.serial_connection(h)?;
+    let tap = conn.tap();
+    let stop = Arc::new(AtomicBool::new(false));
+    let sink = Sink::new(on_event);
+    let id = s.terms.add(Session::Serial(conn.clone(), stop.clone()), sink.clone());
+    b.audit_log(Entry {
+        device: "ui".into(),
+        host: h.name.clone(),
+        command: "[interactive terminal]".into(),
+        decision: "allowed".into(),
+        ..Default::default()
+    });
+    let _ = conn.write(b"\r");
+    let map = s.terms.map.clone();
+    std::thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+            match tap.recv(std::time::Duration::from_millis(500)) {
+                Ok(Some(data)) => {
+                    conn.touch();
+                    if !sink.lock().unwrap().push(&data) {
+                        break; // la ventana ya no esta
+                    }
+                }
+                Ok(None) => {}
+                Err(_) => break, // el puerto se cerro (vault bloqueado, cable afuera)
+            }
+        }
+        sink.lock().unwrap().exit(None);
         map.lock().unwrap().remove(&id);
     });
     Ok(id)
@@ -405,6 +453,7 @@ fn close_session(session: Session) {
         Session::Local(l) => {
             let _ = l.lock().unwrap().child.kill();
         }
+        Session::Serial(_, stop) => stop.store(true, Ordering::Relaxed),
     }
 }
 
@@ -453,6 +502,7 @@ pub async fn term_write(s: State<'_, AppState>, id: u32, data: String) -> Result
             let mut l = l.lock().unwrap();
             l.writer.write_all(data.as_bytes()).and_then(|_| l.writer.flush()).map_err(|e| Error::Invalid(e.to_string()))
         }
+        Session::Serial(c, _) => c.write(data.as_bytes()).map_err(|e| Error::Invalid(e.to_string())),
     }
 }
 
@@ -466,6 +516,8 @@ pub async fn term_resize(s: State<'_, AppState>, id: u32, cols: u32, rows: u32) 
                 .map_err(|e| Error::Invalid(e.to_string())),
             None => Ok(()), // ya termino
         },
+        // Un cable de consola no sabe de tamaños.
+        Session::Serial(..) => Ok(()),
     }
 }
 

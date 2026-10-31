@@ -260,6 +260,7 @@ pub fn run() {
             commands::host_move,
             commands::host_delete,
             commands::host_test,
+            commands::serial_ports,
             commands::open_link,
             updater::session_part,
             updater::session_take,

@@ -40,7 +40,9 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
         Format::Csv => {
             let q = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
             let mut s = String::from("name,hostname,port,user,credential,group,env,tags,jump,description\n");
-            for h in &d.hosts {
+            // Los hosts por consola serial no tienen direccion: solo van en el JSON de Ethereon.
+            let ssh: Vec<&crate::model::Host> = d.hosts.iter().filter(|h| !h.is_serial()).collect();
+            for h in &ssh {
                 s += &format!(
                     "{},{},{},{},{},{},{},{},{},{}\n",
                     q(&h.name),
@@ -56,7 +58,7 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                 );
             }
             std::fs::write(to, s)?;
-            Ok(format!("{} hosts", d.hosts.len()))
+            Ok(format!("{} hosts", ssh.len()))
         }
         Format::Bitwarden => {
             let mut items = Vec::new();
@@ -65,7 +67,7 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                 let uris: Vec<_> = d
                     .hosts
                     .iter()
-                    .filter(|h| h.credential == c.id || h.sudo_credential.as_deref() == Some(&c.id))
+                    .filter(|h| !h.is_serial() && (h.credential == c.id || h.sudo_credential.as_deref() == Some(&c.id)))
                     .map(|h| json!({ "match": null, "uri": format!("ssh://{}:{}", h.hostname, h.port) }))
                     .collect();
                 let item = match c.kind {
@@ -96,7 +98,8 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                     }
                 }
             }
-            for h in &d.hosts {
+            let ssh: Vec<&crate::model::Host> = d.hosts.iter().filter(|h| !h.is_serial()).collect();
+            for h in &ssh {
                 cfg += &format!("\nHost {}\n  HostName {}\n  Port {}\n  User {}\n", h.name, h.hostname, h.port, d.user_of(h));
                 let is_key = d.credentials.iter().any(|c| c.id == h.credential && matches!(c.kind, CredentialKind::PrivateKey | CredentialKind::Certificate));
                 if is_key {
@@ -107,7 +110,7 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                 }
             }
             std::fs::write(to.join("config"), cfg)?;
-            Ok(format!("{} hosts; copy the folder contents to ~/.ssh", d.hosts.len()))
+            Ok(format!("{} hosts; copy the folder contents to ~/.ssh", ssh.len()))
         }
     }
 }

@@ -15,8 +15,40 @@ export interface Policy {
   allow_sudo: boolean;
 }
 
+export type Transport = "ssh" | "serial";
+export type Parity = "none" | "even" | "odd";
+
+/** Como se habla por el cable de consola (ver `serial.rs`). */
+export interface SerialConfig {
+  /** `COM3`, `/dev/ttyUSB0`. */
+  port: string;
+  baud: number;
+  data_bits: number;
+  parity: Parity;
+  stop_bits: number;
+  /** Regex que reconoce el prompt del equipo al final de la salida. */
+  prompt: string;
+  timeout_secs: number;
+  /** Credencial con la contraseña de `enable`, si el equipo la pide. */
+  enable_credential: string | null;
+}
+
+export const DEFAULT_PROMPT = String.raw`[\w\-\.()\[\]/:@~]*[#>$]\s*$`;
+
+export function defaultSerial(): SerialConfig {
+  return { port: "", baud: 9600, data_bits: 8, parity: "none", stop_bits: 1, prompt: DEFAULT_PROMPT, timeout_secs: 20, enable_credential: null };
+}
+
+export interface SerialPortInfo {
+  name: string;
+  label: string;
+}
+
 export interface Host {
   name: string;
+  transport: Transport;
+  serial: SerialConfig;
+  /** Direccion del host SSH (vacia en una consola serial). */
   hostname: string;
   port: number;
   user: string;
@@ -85,6 +117,8 @@ export interface Snapshot {
   denylist: string[];
   settings: Settings;
   default_allow: string[];
+  /** La lista base de solo lectura para una consola serial (equipos de red). */
+  default_allow_serial: string[];
   default_deny: string[];
 }
 
@@ -203,6 +237,8 @@ export const api = {
   hostDelete: (name: string) => invoke<void>("host_delete", { name }),
   hostMove: (name: string, group: string | null, before: string | null) => invoke<void>("host_move", { name, group, before }),
   hostTest: (name: string) => invoke<SshError | null>("host_test", { name }),
+  /** Los puertos serie de esta PC. */
+  serialPorts: () => invoke<SerialPortInfo[]>("serial_ports"),
   openLink: (url: string) => invoke<void>("open_link", { url }),
   hostTrust: (addr: string, fingerprint: string, algorithm: string) =>
     invoke<void>("host_trust", { addr, fingerprint, algorithm }),
@@ -284,6 +320,8 @@ export function defaultPolicy(): Policy {
 export function newHost(): Host {
   return {
     name: "",
+    transport: "ssh",
+    serial: defaultSerial(),
     hostname: "",
     port: 22,
     user: "",
@@ -321,4 +359,16 @@ export function errText(e: unknown): string {
 /** El usuario con el que se entra: el del host, o si esta vacio el de su credencial. */
 export function userOf(h: Host, creds: CredView[] | undefined): string {
   return h.user || creds?.find((c) => c.id === h.credential)?.username || "";
+}
+
+/** `8N1`, `7E1`: bits de datos, paridad y de parada. */
+export function framing(s: SerialConfig): string {
+  return `${s.data_bits}${s.parity[0].toUpperCase()}${s.stop_bits}`;
+}
+
+/** La linea debajo del nombre de un host: `user@host:puerto`, o `COM3 · 9600 8N1` en serial. */
+export function addrOf(h: Host, creds: CredView[] | undefined): string {
+  if (h.transport === "serial") return `${h.serial.port || "no port"} · ${h.serial.baud} ${framing(h.serial)}`;
+  const user = userOf(h, creds);
+  return `${user ? `${user}@` : ""}${h.hostname}${h.port !== 22 ? `:${h.port}` : ""}`;
 }

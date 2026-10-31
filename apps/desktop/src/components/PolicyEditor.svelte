@@ -6,7 +6,9 @@
   import Switch from "./Switch.svelte";
   import { ask } from "../lib/confirm.svelte";
 
-  let { policy = $bindable() }: { policy: Policy } = $props();
+  // `serial`: el host es una consola serial, asi que la lista base de solo lectura es la de
+  // equipos de red (show, display, get...) y no la de shell.
+  let { policy = $bindable(), serial = false }: { policy: Policy; serial?: boolean } = $props();
 
   const modes: Mode[] = ["read_only", "approval", "guarded", "unrestricted", "off"];
   const help: Record<Mode, string> = {
@@ -44,11 +46,11 @@
 
   {#if policy.mode === "read_only"}
     <label class="field">
-      Allowed commands <span class="hint">One rule per line. Empty uses the default list.</span>
+      Allowed commands <span class="hint">One rule per line. Empty uses the default list{serial ? " for network devices (show, display, get...)" : ""}.</span>
       <textarea
         class="mono"
         rows="6"
-        placeholder={app.snap?.default_allow.join("\n")}
+        placeholder={(serial ? app.snap?.default_allow_serial : app.snap?.default_allow)?.join("\n")}
         value={policy.allow.join("\n")}
         oninput={(e) => (policy.allow = lines(e.currentTarget.value))}
       ></textarea>

@@ -38,6 +38,10 @@ como cliente SSH.
 - Verificación de la clave del host: la primera vez muestra la huella y la tiene que confirmar una
   persona. Si después cambia, se bloquea la conexión y se avisa.
 - Una descripción del host que el agente puede leer para tener contexto.
+- (Agregado después) Un host también puede ser un equipo por cable de consola serial (switch,
+  AP, router): puerto, baudios, 8N1, patrón de prompt y, si hace falta, usuario, contraseña y
+  contraseña de `enable` del vault. El agente lo usa con el mismo `run(host, comando)` y las mismas
+  reglas; nunca ve el nombre del puerto.
 
 ## 4. Lo que puede hacer el agente
 
