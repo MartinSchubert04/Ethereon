@@ -26,6 +26,12 @@ import { installTooltips } from "./lib/tooltip";
 import { installDebug } from "./lib/debug.svelte";
 
 applyTheme(currentTheme());
+// Tema, paleta u opacidad cambiados desde otra ventana (Settings esta en la principal).
+window.addEventListener("storage", (e) => {
+  if (e.key?.startsWith("ethereon.theme") || e.key?.startsWith("ethereon.palette.") || e.key?.startsWith("ethereon.opacity.")) {
+    applyTheme(currentTheme());
+  }
+});
 
 // Las ventanas de terminales sacadas de la principal cargan la misma interfaz con ?window=term.
 const isTermWindow = new URLSearchParams(location.search).get("window") === "term";

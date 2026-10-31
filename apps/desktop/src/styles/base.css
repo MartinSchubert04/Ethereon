@@ -9,14 +9,30 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  /* Forma corta: --bg-image puede traer tamaño por capa (tramas como "0 0 / 3px 3px"). */
-  background: var(--bg-image), var(--bg);
-  background-attachment: fixed;
+  /* La ventana es transparente: lo que no pinta la interfaz deja ver el escritorio. */
+  background: transparent;
   color: var(--text);
   font-family: var(--font);
   font-size: 13.5px;
   -webkit-font-smoothing: antialiased;
   user-select: none;
+}
+
+/* El fondo del tema va en una capa propia para bajarle la opacidad sin tocar el contenido
+   (--opacity la pone lib/themes.ts en <body>). --bg-solid es el --bg del tema sin
+   translucidez: el alfa aca lo da la opacidad de la capa, no el color. */
+body {
+  isolation: isolate;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  /* Forma corta: --bg-image puede traer tamaño por capa (tramas como "0 0 / 3px 3px"). */
+  background: var(--bg-image), var(--bg-solid, var(--bg));
+  opacity: var(--opacity, 1);
+  pointer-events: none;
 }
 
 #app {

@@ -15,10 +15,21 @@
   import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Play, Power, Shield, ShieldCheck, SquareTerminal, Volume2, VolumeX } from "@lucide/svelte";
   import { importPick } from "../lib/importer";
   import { INCLUDED, ptToPx, systemFonts, wtFont, type WtFont } from "../lib/termfonts";
-  import { THEMES, applyTheme, currentPalette, currentTheme, palettesOf, type ThemeId } from "../lib/themes";
+  import {
+    OPACITY_MAX,
+    OPACITY_MIN,
+    THEMES,
+    applyTheme,
+    currentOpacity,
+    currentPalette,
+    currentTheme,
+    palettesOf,
+    type ThemeId,
+  } from "../lib/themes";
 
   let theme = $state<ThemeId>(currentTheme());
   let palette = $state(currentPalette(currentTheme()));
+  let opacity = $state(currentOpacity(currentTheme()));
   // La muestra de cada tema usa la paleta que tiene elegida.
   const swatchOf = (t: ThemeId) => palettesOf(t).find((p) => p.id === currentPalette(t))?.swatch ?? ["#000", "#000", "#000"];
   const themeName = $derived(THEMES.find((t) => t.id === theme)?.name ?? "");
@@ -65,12 +76,19 @@
   function pickTheme(t: ThemeId) {
     theme = t;
     palette = currentPalette(t);
-    applyTheme(t, palette);
+    opacity = currentOpacity(t);
+    applyTheme(t, palette, opacity);
   }
 
   function pickPalette(p: string) {
     palette = p;
-    applyTheme(theme, p);
+    applyTheme(theme, p, opacity);
+  }
+
+  // Se aplica mientras se arrastra la barra: es solo CSS, y el vidrio de Windows se prende
+  // una sola vez al bajar del 100 %.
+  function pickOpacity() {
+    applyTheme(theme, palette, opacity);
   }
 
   async function saveSettings() {
@@ -211,7 +229,12 @@
   <div class="page-head"><h1>Settings</h1></div>
 
   <div class="sections">
-    <Section id="appearance" title="Appearance" icon={Palette} summary="{themeName} · {paletteName}">
+    <Section
+      id="appearance"
+      title="Appearance"
+      icon={Palette}
+      summary="{themeName} · {paletteName}{opacity < OPACITY_MAX ? ` · ${opacity}% opacity` : ''}"
+    >
       <div class="sub">Theme</div>
       <div class="themes">
         {#each THEMES as t}
@@ -232,6 +255,22 @@
             {p.name}
           </button>
         {/each}
+      </div>
+      <div class="sub">Opacity for {themeName}</div>
+      <div class="field">
+        <span class="hint">Below 100% the window turns to frosted glass: the desktop shows through, blurred. Each theme remembers its own.</span>
+        <div class="vol">
+          <input
+            type="range"
+            min={OPACITY_MIN}
+            max={OPACITY_MAX}
+            step="5"
+            bind:value={opacity}
+            oninput={pickOpacity}
+            aria-label="Opacity"
+          />
+          <span class="pct">{opacity}%</span>
+        </div>
       </div>
     </Section>
 

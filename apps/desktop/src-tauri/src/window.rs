@@ -1,12 +1,39 @@
 //! La ventana principal: sin marco de Windows (la barra la dibuja la interfaz) y vuelve
 //! con la misma posicion, tamaño y estado maximizado que tenia al cerrarse.
+//!
+//! Todas las ventanas nacen transparentes: con la opacidad al 100 % la interfaz las pinta
+//! enteras y no se nota; con menos, el escritorio se ve detras desenfocado (el Acrylic de
+//! Windows, como en Haze). El desenfoque se prende y apaga desde la interfaz con
+//! `window_glass`, y queda en `config.json` para que las ventanas ya nazcan con el.
 
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
+use tauri::utils::config::WindowEffectsConfig;
+use tauri::window::{Effect, EffectsBuilder};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 use crate::AppState;
+
+/// El efecto de vidrio, si esta prendido. Apagado no se paga su costo (mover o agrandar la
+/// ventana con Acrylic es mas pesado).
+fn glass_effects(app: &AppHandle) -> Option<WindowEffectsConfig> {
+    let on = app.state::<AppState>().glass.load(Ordering::SeqCst);
+    on.then(|| EffectsBuilder::new().effect(Effect::Acrylic).build())
+}
+
+/// Prende o apaga el vidrio en todas las ventanas abiertas y lo recuerda para las nuevas.
+#[tauri::command]
+pub fn window_glass(app: AppHandle, on: bool) {
+    if app.state::<AppState>().glass.swap(on, Ordering::SeqCst) == on {
+        return;
+    }
+    let fx = glass_effects(&app);
+    for w in app.webview_windows().values() {
+        let _ = w.set_effects(fx.clone());
+    }
+    crate::save_config(&app);
+}
 
 /// Posicion y tamaño de afuera, en pixeles fisicos.
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize)]
@@ -44,10 +71,14 @@ pub fn show_main(app: &AppHandle) {
         .inner_size(1200.0, 780.0)
         .min_inner_size(MAIN_MIN.0, MAIN_MIN.1)
         .decorations(false)
+        .transparent(true)
         .shadow(true)
         .visible(false);
     if !place {
         b = b.center();
+    }
+    if let Some(fx) = glass_effects(app) {
+        b = b.effects(fx);
     }
     let built = b.build();
     OPENING.store(false, Ordering::SeqCst);
@@ -210,7 +241,11 @@ pub async fn term_window_open(
         .inner_size(width.unwrap_or(1000.0), height.unwrap_or(640.0))
         .min_inner_size(TERM_MIN.0, TERM_MIN.1)
         .decorations(false)
+        .transparent(true)
         .shadow(true);
+    if let Some(fx) = glass_effects(&app) {
+        b = b.effects(fx);
+    }
     // Donde se solto la pestaña (coordenadas de pantalla, logicas).
     b = match (x, y) {
         (Some(x), Some(y)) => b.position((x - 120.0).max(0.0), (y - 20.0).max(0.0)),

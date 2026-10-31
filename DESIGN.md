@@ -18,6 +18,11 @@ estados (entorno, modo de reglas, aprobaciones pendientes, acceso del agente) y 
 
 Todos los colores son variables de `apps/desktop/src/styles/themes.css`.
 
+Cada tema tiene además una opacidad (Settings → Appearance, 30–100 %, cada tema recuerda la suya).
+Por debajo del 100 % la ventana es vidrio esmerilado: el escritorio se ve detrás desenfocado (el
+Acrylic de Windows, como en la app Haze) y el fondo y las superficies del tema se vuelven
+translúcidas. Lo resuelve `lib/themes.ts` sobre `<body>`; los temas no saben de ella.
+
 | Variable | Rol |
 |---|---|
 | `--bg`, `--bg-image` | Fondo de la ventana (Warp y Haze usan gradientes, Poolsuite un atardecer) |

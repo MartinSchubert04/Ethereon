@@ -34,11 +34,14 @@ pub struct LocalConfig {
     pub hotkey: Option<String>,
     /// Donde abre la carpeta del Explorador el atajo: "wt" o "tab".
     pub open_in: String,
+    /// Vidrio de Windows detras de las ventanas (la opacidad de los temas esta por debajo
+    /// del 100 %). Hace falta al crearlas, antes de que cargue la interfaz.
+    pub glass: bool,
 }
 
 impl Default for LocalConfig {
     fn default() -> Self {
-        LocalConfig { port: DEFAULT_PORT, window: None, hotkey: Some(hotkey::DEFAULT.into()), open_in: "wt".into() }
+        LocalConfig { port: DEFAULT_PORT, window: None, hotkey: Some(hotkey::DEFAULT.into()), open_in: "wt".into(), glass: false }
     }
 }
 
@@ -51,6 +54,7 @@ pub fn save_config(app: &AppHandle) {
     cfg.window = *st.window.lock().unwrap();
     cfg.hotkey = st.hotkey.combo.lock().unwrap().clone();
     cfg.open_in = st.hotkey.open_in.lock().unwrap().clone();
+    cfg.glass = st.glass.load(std::sync::atomic::Ordering::SeqCst);
     let _ = std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap());
 }
 
@@ -62,6 +66,7 @@ pub struct AppState {
     pub sftps: files::Sftps,
     pub hotkey: hotkey::HotkeyState,
     pub window: Mutex<Option<window::WindowBox>>,
+    pub glass: std::sync::atomic::AtomicBool,
     pub update: Mutex<updater::Pending>,
     tray: Mutex<Option<TrayItems>>,
 }
@@ -209,6 +214,7 @@ pub fn run() {
                     open_in: Mutex::new(config.open_in.clone()),
                 },
                 window: Mutex::new(config.window),
+                glass: std::sync::atomic::AtomicBool::new(config.glass),
                 update: Mutex::new(Default::default()),
                 tray: Mutex::new(None),
             });
@@ -301,6 +307,7 @@ pub fn run() {
             window::main_window_show,
             window::window_at,
             window::drag_hover,
+            window::window_glass,
             terminal::term_open_local,
             terminal::local_shells,
             fonts::system_fonts,

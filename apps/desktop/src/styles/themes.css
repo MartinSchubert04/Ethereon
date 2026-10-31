@@ -15,6 +15,11 @@
   --term-font-size    tamaño de la terminal (la fuente VGA solo es nitida a 16 px)
 
   Athanor ademas cambia formas (pixel clay): eso esta en athanor.css.
+
+  Opacidad (Settings → Appearance): ningun tema sabe de ella. lib/themes.ts escribe en
+  <body> versiones translucidas de --bg, --sidebar, --panel, --panel-2 y --term-bg, y
+  base.css pinta el fondo en body::before con esa opacidad. Un tema nuevo no tiene que
+  hacer nada para soportarla.
 */
 
 :root,
