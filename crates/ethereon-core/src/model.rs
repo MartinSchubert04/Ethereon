@@ -292,6 +292,14 @@ pub struct Policy {
     pub max_per_minute: u32,
     #[serde(default = "d_true")]
     pub allow_sudo: bool,
+    /// Pasar archivos por SFTP (herramientas `download` y `upload` del MCP). Apagado por
+    /// defecto: un vault de antes no lo tiene y se lee apagado. Solo hosts SSH; en solo
+    /// lectura, solo bajar. Ver `transfer.rs`.
+    #[serde(default)]
+    pub files: bool,
+    /// Tamano maximo de un archivo que pasa el agente, en KB (en las dos direcciones).
+    #[serde(default = "d_file_kb")]
+    pub max_file_kb: usize,
 }
 
 impl Default for Policy {
@@ -304,6 +312,8 @@ impl Default for Policy {
             max_output_kb: d_output(),
             max_per_minute: d_rate(),
             allow_sudo: true,
+            files: false,
+            max_file_kb: d_file_kb(),
         }
     }
 }
@@ -319,6 +329,9 @@ fn d_rate() -> u32 {
 }
 fn d_true() -> bool {
     true
+}
+fn d_file_kb() -> usize {
+    1024
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -357,4 +370,8 @@ pub struct AgentHostView {
     pub description: String,
     pub mode: Mode,
     pub sudo: bool,
+    /// Se puede pasar archivos con `download` / `upload`. Solo aparece si esta prendido, asi
+    /// la respuesta de un host sin archivos queda igual que antes.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub files: bool,
 }

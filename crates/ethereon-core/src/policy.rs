@@ -10,6 +10,9 @@
 //! - `path:.ssh`                cualquier argumento o redireccion que toque esa ruta
 //!                              (sin `/`: un componente en cualquier lado; con `/`: la ruta
 //!                              o algo adentro).
+//!
+//! Las reglas `path:` tambien valen para las rutas de las transferencias de archivos del
+//! agente (`path_blocked`, ver `transfer.rs`): `path:.ssh` prohibe bajar o subir algo ahi.
 
 use crate::model::{Mode, Policy};
 use crate::shell::{self, Simple, Word};
@@ -175,6 +178,14 @@ pub fn evaluate_with(cmd: &str, policy: &Policy, global_deny: &[String], session
             Verdict::Allow
         }
     }
+}
+
+/// La primera regla `path:` de `rules` que toca `path`, o None. Las reglas de comandos
+/// (`rm -r`, `shutdown`) no dicen nada de una ruta y se ignoran. Lo usan las
+/// transferencias de archivos, con la misma logica que un argumento de un comando.
+pub fn path_blocked<'a>(path: &str, rules: impl IntoIterator<Item = &'a String>) -> Option<&'a String> {
+    let w = Word { text: path.to_string(), dynamic: false, glob: false, quoted: true, hide: None };
+    rules.into_iter().find(|r| matches!(Rule::parse(r), Rule::Path(p) if path_hit(&p, &w)))
 }
 
 pub fn matches_session(cmd: &str, patterns: &[String]) -> bool {
@@ -624,6 +635,21 @@ mod tests {
         p.allow = vec!["show version".into()];
         assert_eq!(evaluate_with("show version", &p, &default_denylist(), &[], &base), Verdict::Allow);
         assert!(denied(&evaluate_with("show running-config", &p, &default_denylist(), &[], &base)));
+    }
+
+    #[test]
+    fn path_rules_for_files() {
+        let deny = default_denylist();
+        let hit = |p: &str| path_blocked(p, &deny).cloned();
+        assert_eq!(hit("/home/u/.ssh/authorized_keys").as_deref(), Some("path:.ssh"));
+        assert_eq!(hit("~/.ssh/id_rsa").as_deref(), Some("path:.ssh"));
+        assert_eq!(hit("/etc/shadow").as_deref(), Some("path:/etc/shadow"));
+        assert_eq!(hit("/etc/../etc/./shadow").as_deref(), Some("path:/etc/shadow"));
+        assert_eq!(hit("/root/.bash_history").as_deref(), Some("path:*_history"));
+        // Las reglas de comandos no cuentan, y una ruta comun pasa.
+        assert_eq!(hit("/var/log/shutdown.log"), None);
+        assert_eq!(hit("/etc/nginx/nginx.conf"), None);
+        assert_eq!(hit("/home/u/notes.txt"), None);
     }
 
     #[test]

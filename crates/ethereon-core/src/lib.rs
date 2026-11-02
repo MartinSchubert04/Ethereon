@@ -11,7 +11,8 @@
 //! - `broker`: une todo; lo usan la interfaz y el servidor MCP.
 //! - `mcp`: el servidor MCP por HTTP para los agentes.
 //! - `import`: ~/.ssh/config y archivos de clave.
-//! - `files`: SFTP y disco local para la persona (no para el agente).
+//! - `files`: SFTP y disco local para la persona.
+//! - `transfer`: archivos del agente por SFTP (`download` / `upload`), con sus reglas.
 
 pub mod audit;
 pub mod broker;
@@ -25,6 +26,7 @@ pub mod policy;
 pub mod serial;
 pub mod shell;
 pub mod ssh;
+pub mod transfer;
 pub mod vault;
 
 pub use broker::{Broker, Notifier};

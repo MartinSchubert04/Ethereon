@@ -1,8 +1,11 @@
 //! El broker: tiene el vault abierto, abre las conexiones, aplica las reglas, pide
 //! aprobaciones y anota todo. La interfaz y el servidor MCP solo hablan con esto.
 //!
-//! Lo que puede pedir un agente esta en `agent_*`. Todo lo demas (desbloquear, editar,
-//! exportar) lo llama solo la interfaz, que corre en el mismo proceso.
+//! Lo que puede pedir un agente esta en `agent_*`: `agent_list_hosts`, `agent_run` y, si
+//! el host lo tiene prendido en sus reglas (`Policy::files`), `agent_download` y
+//! `agent_upload` por SFTP (los chequeos propios de un archivo estan en `transfer.rs`).
+//! Todo lo demas (desbloquear, editar, exportar) lo llama solo la interfaz, que corre en
+//! el mismo proceso.
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -20,7 +23,8 @@ use crate::model::*;
 use crate::policy::{self, Verdict};
 use crate::serial;
 use crate::ssh::{self, Conn, Hop, SshError};
-use crate::{vault, Error, Result};
+use crate::transfer::{self, Direction, DownloadResult, FileRequest, UploadResult};
+use crate::{files, vault, Error, Result};
 
 /// Como avisa el broker a quien lo aloja (la app de escritorio o el servidor).
 pub trait Notifier: Send + Sync {
@@ -73,6 +77,10 @@ pub struct ApprovalView {
     pub device: String,
     pub warnings: Vec<String>,
     pub created: String,
+    /// Un pedido de archivo (`download` / `upload`): que archivo, en que direccion y de que
+    /// tamano. En ese caso `command` es solo un resumen y no se puede editar.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<FileRequest>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -138,6 +146,25 @@ impl Drop for RunGuard<'_> {
 
 fn now() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+/// Un pedido rechazado por las reglas: queda como "denied" en la auditoria.
+fn denied(entry: &mut Entry, msg: String) -> Error {
+    entry.decision = "denied".into();
+    Error::Invalid(msg)
+}
+
+fn too_big(size: u64, pol: &Policy, host: &str) -> String {
+    format!(
+        "rejected: the file is {}, more than the {} limit for `{host}` (the user can raise it in the host's agent rules)",
+        transfer::human_size(size),
+        transfer::human_size(pol.max_file_kb.max(1) as u64 * 1024)
+    )
+}
+
+/// Corta una operacion de archivos al llegar el limite de tiempo del host.
+async fn timed<T>(deadline: tokio::time::Instant, f: impl std::future::Future<Output = Result<T>>) -> Result<T> {
+    tokio::time::timeout_at(deadline, f).await.unwrap_or_else(|_| Err(Error::Invalid("the file transfer timed out".into())))
 }
 
 fn token_hash(token: &str) -> String {
@@ -428,6 +455,7 @@ impl Broker {
                         description: h.description.clone(),
                         mode: p.mode,
                         sudo: p.allow_sudo && h.sudo_credential.is_some() && !h.is_serial(),
+                        files: p.files && !h.is_serial(),
                     }
                 })
                 .filter(|v| v.mode != Mode::Off)
@@ -553,6 +581,7 @@ impl Broker {
                     device: ctx.device_name.clone(),
                     warnings,
                     created: now(),
+                    file: None,
                 };
                 let decision = self.wait_approval(view, &ctx.session, &settings).await;
                 match decision {
@@ -611,7 +640,11 @@ impl Broker {
             Env::Unset => format!("Approve on {}", view.host),
             e => format!("Approve on {} ({})", view.host, e.as_str()),
         };
-        let body = view.command.chars().take(180).collect::<String>();
+        let body = match &view.file {
+            Some(f) => format!("{} {} ({})", if f.direction == Direction::Download { "Download" } else { "Upload" }, f.path, transfer::human_size(f.size)),
+            None => view.command.clone(),
+        };
+        let body = body.chars().take(180).collect::<String>();
         self.approvals.lock().unwrap().insert(id, Pending { view, session: session.into(), tx });
         self.notifier.notify(&title, &body);
         self.notifier.sound("approval", settings.sound_volume);
@@ -954,6 +987,325 @@ impl Broker {
         ))
     }
 
+    // ------------------------------------------------------- archivos (SFTP)
+
+    /// Baja un archivo de texto y lo devuelve enmascarado. Mismas reglas que `run`: modo del
+    /// host, reglas `path:`, aprobacion, frecuencia y auditoria (con tamano y hash).
+    pub async fn agent_download(&self, ctx: &AgentCtx, host: &str, path: &str, reason: &str) -> Result<DownloadResult> {
+        self.running.fetch_add(1, Ordering::Relaxed);
+        let _guard = RunGuard(&self.running);
+        let mut entry = self.file_entry(ctx, host, format!("download {path}"), reason);
+        let res = self.agent_download_inner(ctx, host, path, reason, &mut entry).await;
+        self.finish_file(entry, res)
+    }
+
+    /// Sube `content` (texto del pedido) o el archivo `local_path` de esta PC a `path`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn agent_upload(
+        &self,
+        ctx: &AgentCtx,
+        host: &str,
+        path: &str,
+        content: Option<&str>,
+        local_path: Option<&str>,
+        overwrite: bool,
+        reason: &str,
+    ) -> Result<UploadResult> {
+        self.running.fetch_add(1, Ordering::Relaxed);
+        let _guard = RunGuard(&self.running);
+        let mut entry = self.file_entry(ctx, host, format!("upload {path}"), reason);
+        let res = self.agent_upload_inner(ctx, host, path, content, local_path, overwrite, reason, &mut entry).await;
+        self.finish_file(entry, res)
+    }
+
+    fn file_entry(&self, ctx: &AgentCtx, host: &str, command: String, reason: &str) -> Entry {
+        Entry {
+            device: ctx.device_name.clone(),
+            client: ctx.client.clone(),
+            host: host.into(),
+            command,
+            reason: reason.into(),
+            ..Default::default()
+        }
+    }
+
+    /// Anota el pedido (salio bien o no) y devuelve el resultado.
+    fn finish_file<T>(&self, mut entry: Entry, res: Result<T>) -> Result<T> {
+        if let Err(e) = &res {
+            if entry.decision.is_empty() || entry.decision == "allowed" || entry.decision == "approved" {
+                entry.decision = if matches!(e, Error::Locked) { "locked".into() } else { "error".into() };
+            }
+            entry.detail = [entry.detail.as_str(), &e.to_string()].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("; ");
+        }
+        self.log(entry);
+        res
+    }
+
+    /// Lo comun a bajar y subir: el host, sus reglas y si el agente puede pasar archivos ahi.
+    fn file_prelude(&self, ctx: &AgentCtx, host: &str, dir: Direction, entry: &mut Entry) -> Result<(Host, Policy, Vec<String>, Settings)> {
+        self.check_agent()?;
+        if !self.device_allows(ctx, host) {
+            return Err(denied(entry, format!("this device has no access to `{host}`")));
+        }
+        let (h, pol, deny, settings) = self.read(|d| {
+            let h = d.hosts.iter().find(|x| x.name == host).cloned();
+            let pol = h.as_ref().map(|h| Self::effective_policy(d, h));
+            (h, pol, d.denylist.clone(), d.settings.clone())
+        })?;
+        let (Some(h), Some(pol)) = (h, pol) else {
+            return Err(Error::NotFound(format!("host `{host}` (use list_hosts)")));
+        };
+        if h.is_serial() {
+            return Err(denied(entry, format!("`{host}` is a serial console: file transfer needs an SSH host")));
+        }
+        if pol.mode == Mode::Off {
+            return Err(denied(entry, "rejected: the agent has no access to this host".into()));
+        }
+        if !pol.files {
+            return Err(denied(
+                entry,
+                format!("file transfer is not enabled for `{host}`; the user can turn it on in the host's agent rules in Ethereon"),
+            ));
+        }
+        if dir == Direction::Upload && pol.mode == Mode::ReadOnly {
+            return Err(denied(entry, format!("rejected: `{host}` is read-only, so you can download but not upload")));
+        }
+        if !self.rate_ok(&format!("{}/{}", ctx.device_id, host), pol.max_per_minute) {
+            return Err(denied(entry, format!("rate limit: more than {} requests per minute on `{host}`", pol.max_per_minute)));
+        }
+        Ok((h, pol, deny, settings))
+    }
+
+    /// Una sesion SFTP con el host para el agente. Si la conexion guardada se cayo, una vez
+    /// mas con una nueva. Los errores no dicen la direccion ni el usuario: el detalle va al
+    /// registro de conexion, que solo ve la persona.
+    async fn agent_sftp(&self, h: &Host) -> Result<files::Sftp> {
+        let mut attempt = 0;
+        loop {
+            let conn = self.connection(h).await.map_err(|e| self.agent_conn_err(h, e))?;
+            match files::Sftp::open(conn).await {
+                Ok(s) => return Ok(s),
+                Err(_) if attempt == 0 => {
+                    self.pool.lock().await.remove(&h.name);
+                    attempt += 1;
+                }
+                Err(e) => {
+                    self.conn_log(&h.name)(format!("SFTP failed: {e}"));
+                    return Err(Error::Invalid(format!("could not open SFTP on `{}`: the server may not have the SFTP subsystem enabled", h.name)));
+                }
+            }
+        }
+    }
+
+    /// Un error al conectar, dicho sin direcciones ni usuarios (los de `SshError` los traen).
+    fn agent_conn_err(&self, h: &Host, e: Error) -> Error {
+        let host = &h.name;
+        let msg = match e {
+            Error::Locked => return Error::Locked,
+            Error::Ssh(SshError::HostKeyUnknown { .. }) => format!("the host key of `{host}` is not confirmed yet: ask the user to confirm it in Ethereon"),
+            Error::Ssh(SshError::HostKeyChanged { .. }) => format!("the host key of `{host}` CHANGED and the connection was blocked: tell the user"),
+            Error::Ssh(SshError::Auth { .. }) => format!("could not log in to `{host}` (details in the connection log in Ethereon)"),
+            Error::Ssh(SshError::Connect { .. }) => format!("could not connect to `{host}` (details in the connection log in Ethereon)"),
+            other => {
+                self.conn_log(host)(other.to_string());
+                format!("`{host}` is not set up correctly in Ethereon (details in the connection log)")
+            }
+        };
+        Error::Invalid(msg)
+    }
+
+    /// Espera a la persona para un pedido de archivo.
+    #[allow(clippy::too_many_arguments)]
+    async fn approve_file(
+        &self,
+        ctx: &AgentCtx,
+        h: &Host,
+        req: FileRequest,
+        reason: &str,
+        warnings: Vec<String>,
+        settings: &Settings,
+        entry: &mut Entry,
+    ) -> Result<()> {
+        let view = ApprovalView {
+            id: self.next_id(),
+            host: h.name.clone(),
+            env: h.env,
+            command: format!("{} {}", req.direction.as_str(), req.path),
+            sudo: false,
+            reason: reason.into(),
+            device: ctx.device_name.clone(),
+            warnings,
+            created: now(),
+            file: Some(req),
+        };
+        let (decision, msg) = match self.wait_approval(view, &ctx.session, settings).await {
+            // Un patron de sesion es para comandos: en un archivo vale como aprobar este.
+            Some(Decision::Approve) | Some(Decision::ApprovePattern { .. }) => {
+                entry.decision = "approved".into();
+                entry.approved_by = "ui".into();
+                return Ok(());
+            }
+            Some(Decision::ApproveEdited { .. }) => ("rejected", "a file request cannot be edited, so it was not approved".to_string()),
+            Some(Decision::Reject { note }) => {
+                let note = note.filter(|n| !n.trim().is_empty()).map(|n| format!(": {n}")).unwrap_or_default();
+                ("rejected", format!("a person rejected this transfer{note}"))
+            }
+            None => ("timeout", "nobody approved the transfer in time".to_string()),
+        };
+        entry.decision = decision.into();
+        Err(Error::Invalid(msg))
+    }
+
+    async fn agent_download_inner(&self, ctx: &AgentCtx, host: &str, path: &str, reason: &str, entry: &mut Entry) -> Result<DownloadResult> {
+        let (h, pol, deny, settings) = self.file_prelude(ctx, host, Direction::Download, entry)?;
+        let max = pol.max_file_kb.max(1) * 1024;
+        let started = Instant::now();
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(pol.timeout_secs.max(1));
+
+        let sftp = self.agent_sftp(&h).await?;
+        let s = sftp.session();
+        let home = timed(deadline, transfer::home(s)).await?;
+        let abs = transfer::remote_abs(path, &home).map_err(|e| denied(entry, e))?;
+        if let Some(why) = transfer::remote_blocked(&transfer::rule_forms(&abs, &home), &pol, &deny) {
+            return Err(denied(entry, format!("rejected: {why}")));
+        }
+        let plan = timed(deadline, transfer::plan_download(s, &abs)).await?;
+        if plan.real != abs {
+            if let Some(why) = transfer::remote_blocked(&transfer::rule_forms(&plan.real, &home), &pol, &deny) {
+                return Err(denied(entry, format!("rejected: the path leads through a link to a forbidden place ({why})")));
+            }
+            entry.detail = "followed a link".into();
+        }
+        if plan.size > max as u64 {
+            return Err(denied(entry, too_big(plan.size, &pol, host)));
+        }
+        // Se lee antes de pedir aprobacion: la persona aprueba estos bytes, y si cambian
+        // mientras espera, no importa.
+        let data = timed(deadline, transfer::read_capped(s, &plan.real, max)).await?;
+        drop(sftp);
+        if data.len() > max {
+            return Err(denied(entry, too_big(data.len() as u64, &pol, host)));
+        }
+        entry.bytes = Some(data.len() as u64);
+        entry.output_sha256 = audit::sha256_hex(&data);
+        let Some(text) = transfer::as_text(&data) else {
+            return Err(denied(
+                entry,
+                "rejected: binary file. Ethereon only passes text, because it cannot hide secrets inside a binary; ask the user to download it from the SFTP tab".into(),
+            ));
+        };
+        let (content, masked) = self.masker()?.mask(text);
+
+        if pol.mode == Mode::Approval {
+            let req = FileRequest { direction: Direction::Download, path: path.into(), size: data.len() as u64, local: None, replaces: false };
+            self.approve_file(ctx, &h, req, reason, vec![], &settings, entry).await?;
+        } else {
+            entry.decision = "allowed".into();
+        }
+        entry.masked = masked;
+        entry.duration_ms = Some(started.elapsed().as_millis() as u64);
+        if settings.audit_output {
+            entry.output = Some(content.clone());
+        }
+        Ok(DownloadResult { path: path.into(), content, masked, duration_ms: started.elapsed().as_millis() as u64 })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn agent_upload_inner(
+        &self,
+        ctx: &AgentCtx,
+        host: &str,
+        path: &str,
+        content: Option<&str>,
+        local_path: Option<&str>,
+        overwrite: bool,
+        reason: &str,
+        entry: &mut Entry,
+    ) -> Result<UploadResult> {
+        let (h, pol, deny, settings) = self.file_prelude(ctx, host, Direction::Upload, entry)?;
+        let max = pol.max_file_kb.max(1) * 1024;
+        let started = Instant::now();
+
+        // De donde sale: el texto del pedido o un archivo de esta PC que se puede mostrar.
+        let (data, local) = match (content, local_path.map(str::trim).filter(|p| !p.is_empty())) {
+            (Some(_), Some(_)) => return Err(Error::Invalid("give either `content` or `local_path`, not both".into())),
+            (None, None) => return Err(Error::Invalid("give the file's text in `content`, or a file on this PC in `local_path`".into())),
+            (Some(c), None) => (c.as_bytes().to_vec(), None),
+            (None, Some(lp)) => {
+                let guard = transfer::LocalGuard::new(&self.dir, &files::home_local(), &deny);
+                let real = guard.check(lp).map_err(|e| denied(entry, format!("rejected: {e}")))?;
+                let len = std::fs::metadata(&real).map(|m| m.len()).unwrap_or(0);
+                if len > max as u64 {
+                    return Err(denied(entry, too_big(len, &pol, host)));
+                }
+                let (_, data) = guard.read(lp, max).map_err(|e| denied(entry, format!("rejected: {e}")))?;
+                (data, Some(lp.to_string()))
+            }
+        };
+        if let Some(l) = &local {
+            entry.detail = format!("from {l}");
+        }
+        entry.bytes = Some(data.len() as u64);
+        entry.output_sha256 = audit::sha256_hex(&data);
+        if data.len() > max {
+            return Err(denied(entry, too_big(data.len() as u64, &pol, host)));
+        }
+        let scan = transfer::scan_upload(&data, &*self.masker()?);
+        if let Some(why) = scan.hard {
+            return Err(denied(entry, format!("rejected: {why}. It is not uploaded in any mode; the user can do it from the SFTP tab in Ethereon")));
+        }
+
+        let timeout = Duration::from_secs(pol.timeout_secs.max(1));
+        let sftp = self.agent_sftp(&h).await?;
+        let (home, abs, plan) = timed(tokio::time::Instant::now() + timeout, transfer::locate_upload(sftp.session(), path)).await?;
+        if let Some(why) = transfer::remote_blocked(&transfer::rule_forms(&abs, &home), &pol, &deny) {
+            return Err(denied(entry, format!("rejected: {why}")));
+        }
+        let plan = plan?;
+        if plan.real != abs {
+            if let Some(why) = transfer::remote_blocked(&transfer::rule_forms(&plan.real, &home), &pol, &deny) {
+                return Err(denied(entry, format!("rejected: the folder leads through a link to a forbidden place ({why})")));
+            }
+        }
+        if plan.exists && !overwrite {
+            return Err(denied(entry, format!("`{path}` already exists on `{host}`: pass overwrite: true to replace it")));
+        }
+
+        let sftp = match pol.mode {
+            Mode::Approval => {
+                drop(sftp); // no tener un canal abierto mientras la persona decide
+                let req = FileRequest { direction: Direction::Upload, path: path.into(), size: data.len() as u64, local: local.clone(), replaces: plan.exists };
+                self.approve_file(ctx, &h, req, reason, scan.warnings.clone(), &settings, entry).await?;
+                // Lo que se aprobo tiene que seguir siendo lo mismo en el servidor.
+                let sftp = self.agent_sftp(&h).await?;
+                let (_, _, again) = timed(tokio::time::Instant::now() + timeout, transfer::locate_upload(sftp.session(), path)).await?;
+                if again.ok().is_none_or(|p| p != plan) {
+                    return Err(Error::Invalid("the target changed on the host while waiting for approval; nothing was written".into()));
+                }
+                sftp
+            }
+            Mode::Guarded if scan.masked_marker && plan.exists => {
+                return Err(denied(
+                    entry,
+                    "rejected: the text has ***, which is how Ethereon hides secrets in downloads. Replacing the existing file would put *** where its real secrets are; ask the user".into(),
+                ));
+            }
+            _ => {
+                entry.decision = "allowed".into();
+                sftp
+            }
+        };
+        timed(tokio::time::Instant::now() + timeout, transfer::write_replace(sftp.session(), &plan, &data)).await?;
+        if plan.exists {
+            entry.detail = [entry.detail.as_str(), "replaced the existing file"].iter().filter(|s| !s.is_empty()).copied().collect::<Vec<_>>().join("; ");
+        }
+        if !scan.warnings.is_empty() {
+            entry.detail = [entry.detail.clone(), scan.warnings.join("; ")].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("; ");
+        }
+        entry.duration_ms = Some(started.elapsed().as_millis() as u64);
+        Ok(UploadResult { path: path.into(), size: data.len() as u64, replaced: plan.exists, duration_ms: started.elapsed().as_millis() as u64 })
+    }
+
     /// Que sistema corre el host, para su icono en la interfaz. Se pregunta una sola vez, con
     /// la conexion que ya abrio la terminal, y queda en el vault. El agente no lo ve.
     pub async fn detect_os(&self, name: &str, conn: &Conn) -> Result<()> {
@@ -1114,5 +1466,111 @@ mod tests {
         assert!(link.written().len() > 0);
         let e = b.agent_run(&ctx, "sw1", "show run", false, "x").await.unwrap_err();
         assert!(matches!(e, Error::Locked));
+    }
+
+    /// Archivos del agente: lo que se decide antes de conectar (sin servidor SSH; lo que
+    /// pasa por SFTP esta en tests/acceptance.rs). Apagado por defecto y heredado del grupo,
+    /// solo SSH, solo lectura solo baja, archivos locales y secretos del vault no salen, y
+    /// cada rechazo queda en la auditoria.
+    #[tokio::test]
+    async fn file_transfer_rules_before_connecting() {
+        let dir = tempfile::tempdir().unwrap();
+        let b = Broker::new(dir.path().join("data"), Arc::new(Quiet));
+        b.create("tester-pass-123").unwrap();
+        let files_on = |mode| Some(Policy { mode, files: true, ..Default::default() });
+        b.write(|d| {
+            d.credentials.push(Credential {
+                id: "pw".into(),
+                kind: CredentialKind::Password,
+                username: "deploy".into(),
+                secret: "Sup3r-S3cret-Value".into(),
+                passphrase: String::new(),
+                certificate: String::new(),
+                note: String::new(),
+            });
+            // Nada escucha en el puerto 1: si algo llegara a conectar, fallaria distinto.
+            let host = |name: &str, policy, group: Option<&str>| Host {
+                name: name.into(),
+                hostname: "127.0.0.1".into(),
+                port: 1,
+                credential: "pw".into(),
+                group: group.map(String::from),
+                policy,
+                ..Default::default()
+            };
+            d.groups.push(Group { name: "lab".into(), policy: Policy { mode: Mode::Guarded, files: true, ..Default::default() } });
+            d.hosts.push(host("plain", Some(Policy { mode: Mode::Guarded, ..Default::default() }), None));
+            d.hosts.push(host("ro", files_on(Mode::ReadOnly), None));
+            d.hosts.push(host("guarded", files_on(Mode::Guarded), None));
+            d.hosts.push(host("in-lab", None, Some("lab")));
+            d.hosts.push(Host { transport: Transport::Serial, serial: SerialConfig { port: "COM99".into(), ..Default::default() }, ..host("sw", files_on(Mode::Guarded), None) });
+            Ok(())
+        })
+        .unwrap();
+        let (_, token) = b.create_device("pc", None, vec![]).unwrap();
+        let ctx = b.authenticate(&token, "127.0.0.1", "s1").unwrap();
+
+        // list_hosts dice cuales tienen archivos (heredado del grupo tambien) y nada mas.
+        let hosts = serde_json::to_value(b.agent_list_hosts(&ctx).unwrap()).unwrap();
+        let files = |n: &str| hosts.as_array().unwrap().iter().find(|h| h["name"] == n).unwrap().get("files").cloned();
+        assert_eq!(files("plain"), None, "off by default, and the field is not even there");
+        assert_eq!(files("guarded"), Some(serde_json::json!(true)));
+        assert_eq!(files("in-lab"), Some(serde_json::json!(true)), "inherited from the group");
+        assert_eq!(files("sw"), None, "serial hosts never have files");
+        let json = hosts.to_string();
+        assert!(!json.contains("127.0.0.1") && !json.contains("deploy") && !json.contains("COM99"));
+
+        let err = |r: Result<DownloadResult>| r.unwrap_err().to_string();
+        let up_err = |r: Result<UploadResult>| r.unwrap_err().to_string();
+        assert!(err(b.agent_download(&ctx, "plain", "/etc/hosts", "x").await).contains("not enabled"));
+        assert!(err(b.agent_download(&ctx, "sw", "/etc/hosts", "x").await).contains("serial console"));
+        assert!(up_err(b.agent_upload(&ctx, "ro", "/tmp/x", Some("hi"), None, false, "x").await).contains("read-only"));
+        assert!(err(b.agent_download(&ctx, "nope", "/etc/hosts", "x").await).contains("not found"));
+
+        // Subir: un secreto del vault o una clave no salen en ningun modo, aunque el
+        // texto venga en el pedido.
+        let e = up_err(b.agent_upload(&ctx, "guarded", "/tmp/x", Some("pass=Sup3r-S3cret-Value"), None, false, "x").await);
+        assert!(e.contains("secret stored in Ethereon"), "{e}");
+        assert!(!e.contains("Sup3r"));
+        let key = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3Blbg==\n-----END OPENSSH PRIVATE KEY-----\n";
+        assert!(up_err(b.agent_upload(&ctx, "guarded", "/tmp/k", Some(key), None, false, "x").await).contains("private key"));
+        // Ni el vault ni la auditoria de Ethereon, ni rutas de red ni relativas.
+        let vault = dir.path().join("data").join("vault.json");
+        let e = up_err(b.agent_upload(&ctx, "guarded", "/tmp/v", None, Some(&vault.to_string_lossy()), false, "x").await);
+        assert!(e.contains("Ethereon's own data"), "{e}");
+        assert!(up_err(b.agent_upload(&ctx, "guarded", "/tmp/v", None, Some(r"\\evil\share\f"), false, "x").await).contains("network"));
+        assert!(up_err(b.agent_upload(&ctx, "guarded", "/tmp/v", None, Some("notes.txt"), false, "x").await).contains("absolute"));
+        assert!(up_err(b.agent_upload(&ctx, "guarded", "/tmp/v", Some("a"), Some("/x"), false, "x").await).contains("not both"));
+        // Muy grande, antes de conectar.
+        let big = "x".repeat(1024 * 1024 + 1);
+        assert!(up_err(b.agent_upload(&ctx, "guarded", "/tmp/big", Some(&big), None, false, "x").await).contains("limit"));
+
+        // La auditoria tiene cada intento, rechazado, con tamano y hash cuando hay contenido.
+        let log = b.audit().search("upload /tmp/", 20);
+        let secret = log.iter().find(|e| e.host == "guarded" && e.command == "upload /tmp/x").unwrap();
+        assert_eq!(secret.decision, "denied");
+        assert_eq!(secret.bytes, Some(23));
+        assert_eq!(secret.output_sha256, audit::sha256_hex(b"pass=Sup3r-S3cret-Value"));
+        let ro = log.iter().find(|e| e.host == "ro").unwrap();
+        assert!(ro.decision == "denied" && ro.detail.contains("read-only"));
+        let raw = std::fs::read_to_string(dir.path().join("data").join("audit.jsonl")).unwrap();
+        assert!(!raw.contains("Sup3r-S3cret-Value"));
+        assert!(b.audit_verify().unwrap().is_ok());
+
+        // Frecuencia: comparte el limite de `run` del host.
+        b.write(|d| {
+            d.hosts.iter_mut().find(|h| h.name == "ro").unwrap().policy = Some(Policy { mode: Mode::ReadOnly, files: true, max_per_minute: 1, ..Default::default() });
+            Ok(())
+        })
+        .unwrap();
+        // El primero llega a conectar (y falla: no hay nada en el puerto 1) sin decir la direccion.
+        let e = err(b.agent_download(&ctx, "ro", "/etc/hosts", "x").await);
+        assert!(e.contains("could not connect to `ro`") && !e.contains("127.0.0.1"), "{e}");
+        assert!(err(b.agent_download(&ctx, "ro", "/etc/hosts", "x").await).contains("rate limit"));
+
+        // Un vault de antes (sin los campos) se lee con los archivos apagados.
+        let old: Policy = serde_json::from_str(r#"{"mode":"guarded","allow":[],"deny":[]}"#).unwrap();
+        assert!(!old.files);
+        assert_eq!(old.max_file_kb, 1024);
     }
 }

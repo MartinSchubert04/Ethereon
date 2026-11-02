@@ -83,7 +83,9 @@ negrita ni cursiva; los títulos en Jacquard 24 a 48 px. Ver `styles/athanor.css
 - **Chip:** pastilla de 20 px. Variantes `prod`, `test`, `dev`, `ok`, `warn`, `bad`.
 - **Control segmentado:** modo de reglas y entorno.
 - **Tarjeta de aprobación:** host + entorno + sudo, motivo en cursiva, advertencias, el comando
-  editable en mono, y las acciones.
+  editable en mono, y las acciones. Un pedido de archivo muestra en su lugar un recuadro con la
+  dirección (Download / Upload), el tamaño, la ruta en mono y, si sube algo de esta PC, de dónde;
+  solo se aprueba o se rechaza.
 - **Alerta de huella:** franja arriba del contenido; roja si la clave cambió.
 - **Botón Agent access:** siempre visible abajo en la barra lateral; verde encendido, rojo apagado.
 - **Select** (`components/Select.svelte`): reemplaza al `<select>` nativo. Lista flotante con

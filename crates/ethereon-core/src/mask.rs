@@ -3,6 +3,10 @@
 //! Dos pasadas: primero cada secreto del vault (tal cual y en base64), despues patrones
 //! conocidos (claves privadas, JWT, `password=`, cabeceras Authorization, cadenas de
 //! conexion con contrasena y prefijos de tokens comunes).
+//!
+//! Para lo que el agente sube por SFTP (`transfer.rs`) no se enmascara (romperia el archivo):
+//! `secret_hits` y `has_private_key` dicen si lleva un secreto del vault o una clave, y en
+//! ese caso no sale.
 
 use base64::{engine::general_purpose::STANDARD as B64, Engine};
 use regex::Regex;
@@ -59,6 +63,23 @@ impl Masker {
         let (out, n) = mask_patterns(&out);
         (out, hits + n)
     }
+
+    /// Cuantas veces aparece un secreto del vault (tal cual o en base64) en `data`. Sobre
+    /// bytes: sirve tambien para un archivo binario.
+    pub fn secret_hits(&self, data: &[u8]) -> usize {
+        self.secrets
+            .iter()
+            .map(|s| {
+                let n = s.as_bytes();
+                data.windows(n.len()).filter(|w| *w == n).count()
+            })
+            .sum()
+    }
+}
+
+/// Tiene una clave privada (PEM, OpenSSH o PuTTY).
+pub fn has_private_key(text: &str) -> bool {
+    patterns()[..2].iter().any(|p| p.re.is_match(text))
 }
 
 struct Pat {
@@ -132,6 +153,18 @@ mod tests {
         assert_eq!(n, 1);
         let b64 = B64.encode("hunter2-very-secret");
         assert!(!m.mask(&b64).0.contains(&b64));
+    }
+
+    #[test]
+    fn finds_secrets_in_bytes() {
+        let mut v = VaultData::default();
+        v.credentials.push(cred("hunter2-very-secret"));
+        let m = Masker::from_vault(&v);
+        assert_eq!(m.secret_hits(b"\x00\x01hunter2-very-secret\xff"), 1);
+        assert_eq!(m.secret_hits(B64.encode("hunter2-very-secret").as_bytes()), 1);
+        assert_eq!(m.secret_hits(b"nothing here"), 0);
+        assert!(has_private_key("x\n-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----"));
+        assert!(!has_private_key("ssh-ed25519 AAAAC3Nza user@pc"));
     }
 
     #[test]

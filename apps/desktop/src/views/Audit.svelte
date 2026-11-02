@@ -5,6 +5,7 @@
   import { onDestroy } from "svelte";
   import { api, type AuditEntry } from "../lib/api";
   import { attempt, toast } from "../lib/state.svelte";
+  import { human } from "../components/FilePanel.svelte";
 
   let query = $state("");
   let rows = $state<AuditEntry[]>([]);
@@ -78,7 +79,8 @@
                     {#if r.detail}<span>Detail</span><span>{r.detail}</span>{/if}
                     {#if r.approved_by}<span>Approved by</span><span>{r.approved_by}</span>{/if}
                     {#if r.client}<span>From</span><span class="mono">{r.client}</span>{/if}
-                    {#if r.output_sha256}<span>Output SHA-256</span><span class="mono">{r.output_sha256}</span>{/if}
+                    {#if r.bytes != null}<span>File size</span><span>{human(r.bytes)}</span>{/if}
+                    {#if r.output_sha256}<span>{r.bytes != null ? "File SHA-256" : "Output SHA-256"}</span><span class="mono">{r.output_sha256}</span>{/if}
                     {#if r.masked}<span>Masked</span><span>{r.masked} secrets replaced by ***</span>{/if}
                   </div>
                   {#if r.output}<pre>{r.output}</pre>{/if}

@@ -60,7 +60,8 @@ crates/ethereon-core/src/   broker sin interfaz
   broker.rs               une todo y despacha por transporte (SSH o serial); lo único que usan la interfaz y el MCP
   mcp.rs                  servidor MCP (HTTP, JSON-RPC a mano)
   import.rs, export.rs    ssh config, claves, Bitwarden; OpenSSH, Bitwarden, CSV, JSON
-  files.rs                SFTP y disco local para la persona (no para el agente)
+  files.rs                SFTP y disco local para la persona (sin reglas)
+  transfer.rs             archivos del agente por SFTP (`download` / `upload`): rutas, contenido, archivos locales
 crates/ethereon-core/tests/ pruebas de aceptación y los contenedores SSH de prueba
 apps/desktop/src-tauri/   bandeja, ventana, comandos de la interfaz (commands.rs), terminal (SSH, serial y local), files.rs (SFTP),
                           hotkey.rs (atajo global), conpty/ (ConPTY de Windows Terminal, ver su README)

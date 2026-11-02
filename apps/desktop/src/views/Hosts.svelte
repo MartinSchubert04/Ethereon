@@ -161,9 +161,16 @@
     await attempt(() => api.hostMove(h.name, to, place), sameGroup ? undefined : `${h.name} moved to ${to ?? "No group"}`);
   }
 
+  function policyOf(h: Host) {
+    return h.policy ?? app.snap?.groups.find((g) => g.name === h.group)?.policy;
+  }
   function mode(h: Host) {
-    const p = h.policy ?? app.snap?.groups.find((g) => g.name === h.group)?.policy;
-    return p?.mode ?? "approval";
+    return policyOf(h)?.mode ?? "approval";
+  }
+  // El agente puede pasar archivos por SFTP (solo SSH, y no con el agente apagado).
+  function files(h: Host) {
+    const p = policyOf(h);
+    return h.transport !== "serial" && !!p?.files && p.mode !== "off";
   }
 
   // Soltar un archivo o carpeta sobre Hosts lo importa (el formato se reconoce solo).
@@ -285,6 +292,7 @@
                   {#if h.env !== "none"}<span class="chip {h.env}">{h.env}</span>{/if}
                   <span class="chip">{MODE_LABEL[mode(h)]}</span>
                   {#if h.transport === "serial"}<span class="chip">serial</span>{/if}
+                  {#if files(h)}<span class="chip" title={mode(h) === "read_only" ? "The agent can download files over SFTP" : "The agent can download and upload files over SFTP"}>files</span>{/if}
                   {#if h.jump.length}<span class="chip">via {h.jump.join(" → ")}</span>{/if}
                   {#each h.tags as t}<span class="chip">{t}</span>{/each}
                 </div>
