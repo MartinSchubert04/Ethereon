@@ -97,7 +97,7 @@
 </script>
 
 <div class="tiles" class:tiled class:resizing bind:this={box}>
-  {#each list as m (m.key)}
+  {#each list as m (m.slot ?? m.key)}
     <div class="slot" style={pct(geo.panes.get(m.key))} in:pop={{ start: 0.96 }}>
       <div
         class="frame"

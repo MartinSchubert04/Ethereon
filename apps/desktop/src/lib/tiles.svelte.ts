@@ -121,6 +121,8 @@ function tile(t: TermTab) {
     sid: t.sid,
     connecting: t.connecting,
     approvals: t.approvals,
+    // El mismo bloque de TilePane sigue dibujandola: no se desmonta.
+    slot: t.slot,
   };
   t.members = [first];
   t.layout = { leaf: t.key };
@@ -215,6 +217,10 @@ function untile(t: TermTab, m: TermTab) {
     if (!m.approvals && park(m.key)) t.adopt = m.key;
     // Todavia no montada: lo que iba a tomar el panel lo toma la pestaña.
     else [t.adopt, t.attach, t.size] = [m.adopt, m.attach, m.size];
+    // El bloque de la clave de la pestaña era el primer panel (el que se cerro): con otra
+    // identidad se desmonta (cierra su sesion) y el nuevo adopta la terminal de `m`. Con la
+    // misma, Svelte lo reusaba y seguia mostrando la terminal cerrada.
+    t.slot = newKey();
   }
   t.host = m.host;
   t.local = m.local;

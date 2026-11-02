@@ -199,9 +199,11 @@
     const wins = await otherWindows();
     menu = { x: Math.min(e.clientX, innerWidth - 240), key, wins };
   }
-  function act(f: () => void) {
+  /** Cierra el menu y hace `f` con la pestaña de ese menu (despues de cerrarlo ya no esta). */
+  function act(f: (key: number) => unknown) {
+    const key = menu?.key;
     menu = null;
-    f();
+    if (key != null) f(key);
   }
   const menuTab = $derived(menu ? app.terms.find((t) => t.key === menu!.key) : undefined);
   function toggle(field: "locked" | "collapsed") {
@@ -291,15 +293,15 @@
 
   {#if menu}
     <div class="tabmenu card" style="left: {menu.x}px" role="menu">
-      <button role="menuitem" onclick={() => act(() => moveTab(menu!.key, "new"))}>Move to new window</button>
+      <button role="menuitem" onclick={() => act((k) => moveTab(k, "new"))}>Move to new window</button>
       {#each menu.wins as w (w.label)}
-        <button role="menuitem" onclick={() => act(() => moveTab(menu!.key, w.label))}>Move to {w.name}</button>
+        <button role="menuitem" onclick={() => act((k) => moveTab(k, w.label))}>Move to {w.name}</button>
       {/each}
       <hr />
       <button role="menuitem" onclick={() => toggle("locked")}>{menuTab?.locked ? "Unlock tab" : "Lock tab (can't be closed)"}</button>
       <button role="menuitem" onclick={() => toggle("collapsed")}>{menuTab?.collapsed ? "Expand tab" : "Collapse to icon"}</button>
       <hr />
-      <button role="menuitem" disabled={menuTab?.locked} onclick={() => act(() => closeTab(menu!.key))}>Close tab</button>
+      <button role="menuitem" disabled={menuTab?.locked} onclick={() => act(closeTab)}>Close tab</button>
     </div>
   {/if}
 

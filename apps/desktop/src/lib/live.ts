@@ -37,15 +37,22 @@ export function drop(key: number, l: Live) {
   if (byKey.get(key) === l) byKey.delete(key);
 }
 
+/** Estacionadas, por la clave del panel que las solto. Aparte de `byKey`: un panel nuevo con
+ *  esa misma clave (la pestaña que vuelve a ser comun, ver `untile`) puede adoptar otra
+ *  terminal sin pisar la que espera ser adoptada en otro lado. */
+const parkedByKey = new Map<number, Live>();
+
 /** El panel `key` se va a desmontar y otro va a tomar su terminal. Si nadie la toma en unos
  *  segundos (algo fallo), se cierra para no dejar sesiones colgadas. */
 export function park(key: number): boolean {
-  const l = byKey.get(key);
+  const l = byKey.get(key) ?? parkedByKey.get(key);
   if (!l) return false;
+  byKey.delete(key);
+  parkedByKey.set(key, l);
   l.parked = true;
   setTimeout(() => {
-    if (!l.parked) return;
-    byKey.delete(key);
+    if (!l.parked || parkedByKey.get(key) !== l) return;
+    parkedByKey.delete(key);
     if (l.id) api.termClose(l.id).catch(() => {});
     l.term.dispose();
   }, 5000);
@@ -79,10 +86,10 @@ export function sizeOf(key: number): { cols: number; rows: number } | undefined 
 
 /** Toma la terminal que estaciono el panel `from`. */
 export function adopt(from: number, key: number): Live | null {
-  const l = byKey.get(from);
+  const l = parkedByKey.get(from);
   if (!l?.parked) return null;
   l.parked = false;
-  byKey.delete(from);
+  parkedByKey.delete(from);
   byKey.set(key, l);
   return l;
 }

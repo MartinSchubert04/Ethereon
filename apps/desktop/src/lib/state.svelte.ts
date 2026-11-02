@@ -48,6 +48,10 @@ export interface TermTab {
   layout?: import("./tiles.svelte").Tile;
   /** El panel con el foco, en mosaico. */
   focus?: number;
+  /** Identidad del bloque que la dibuja en TilePane (si falta, `key`). Cambia cuando la pestaña
+   *  deja de mostrar la terminal de su clave (ver `untile`): asi ese panel se desmonta y cierra
+   *  su sesion, y uno nuevo adopta la terminal que queda. */
+  slot?: number;
 }
 
 /** Sesiones que se estan mudando (a otra ventana, pestaña o panel): al desmontarse su
