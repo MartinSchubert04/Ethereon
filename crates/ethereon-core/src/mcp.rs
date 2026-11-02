@@ -4,8 +4,9 @@
 //!   claude mcp add --transport http ethereon http://127.0.0.1:47321/mcp \
 //!     --header "Authorization: Bearer eth_..."
 //!
-//! Herramientas: `list_hosts` y `run`. No hay ninguna para desbloquear, leer secretos ni
-//! cambiar reglas: eso no existe del lado del agente.
+//! Herramientas: `list_hosts`, `run`, y `download` / `upload` (archivos por SFTP, solo en
+//! los hosts SSH que lo tienen prendido en sus reglas; ver `transfer.rs`). No hay ninguna
+//! para desbloquear, leer secretos ni cambiar reglas: eso no existe del lado del agente.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -31,7 +32,11 @@ reading ~/.ssh) or unrestricted (anything). \
 On a host with transport \"serial\" there is no shell and no exit code: send the device's own CLI commands one at a \
 time (for example `show version`), and you get the output up to the next prompt, plus that prompt (`Switch#`). \
 Pagers are handled for you. Commands that wait for a confirmation ([confirm], yes/no) time out: avoid them. \
-If a command is rejected, do not try to get around the rule; tell the user.";
+Hosts that list_hosts shows with \"files\": true also take download(host, path) and upload(host, path, content or \
+local_path) over SFTP, with the same mode and forbidden paths as run (read_only hosts: download only). download \
+returns the text with secrets replaced by ***; binary files are refused. Never upload a file you edited from a \
+download that had masked secrets: the *** would replace the real ones. \
+If a command or transfer is rejected, do not try to get around the rule; tell the user.";
 
 pub fn router(b: Arc<Broker>) -> Router {
     Router::new()
@@ -70,6 +75,45 @@ fn tools() -> Value {
                     "sudo": { "type": "boolean", "description": "Run as root. Ethereon types the sudo password; never call sudo yourself.", "default": false }
                 },
                 "required": ["host", "command", "reason"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "download",
+            "description": "Read a text file from an SSH host over SFTP (only hosts that list_hosts shows with \"files\": true). \
+                You get its content in the response, with secrets replaced by ***; nothing is written on this PC. Binary \
+                files, folders and files over the host's size limit are refused, and so are forbidden paths (like ~/.ssh). \
+                Relative paths and ~ start at the login user's home. On hosts in approval mode this waits until a person approves it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": { "type": "string", "description": "Host name from list_hosts." },
+                    "path": { "type": "string", "description": "Path of the file on the host." },
+                    "reason": { "type": "string", "description": "Why you need this file; shown to the person who approves it." }
+                },
+                "required": ["host", "path", "reason"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "upload",
+            "description": "Write a file on an SSH host over SFTP (only hosts that list_hosts shows with \"files\": true, and not \
+                read_only ones). Give the text in `content`, or a file on this PC in `local_path` (absolute path; folders with \
+                credentials, keys, .env files and Ethereon's own data are refused). Nothing that contains a secret stored in \
+                Ethereon or a private key is uploaded. An existing file is only replaced with `overwrite: true`. On hosts in \
+                approval mode this waits until a person approves it.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": { "type": "string", "description": "Host name from list_hosts." },
+                    "path": { "type": "string", "description": "Path of the file to write on the host. Its folder must exist." },
+                    "content": { "type": "string", "description": "The file's text. Use this or local_path." },
+                    "local_path": { "type": "string", "description": "Absolute path of a file on this PC to upload. Use this or content." },
+                    "overwrite": { "type": "boolean", "description": "Replace the file if it already exists.", "default": false },
+                    "reason": { "type": "string", "description": "Why you need this; shown to the person who approves it." }
+                },
+                "required": ["host", "path", "reason"],
                 "additionalProperties": false
             }
         }
@@ -178,13 +222,19 @@ async fn one(b: &Broker, ctx: Option<&AgentCtx>, session: &str, client: &str, ms
 }
 
 async fn call(b: &Broker, ctx: Option<&AgentCtx>, _session: &str, client: &str, name: &str, args: &Value) -> Value {
+    let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
     let Some(ctx) = ctx else {
-        if name == "run" {
+        let command = match name {
+            "run" => Some(s("command")),
+            "download" | "upload" => Some(format!("{name} {}", s("path"))),
+            _ => None,
+        };
+        if let Some(command) = command {
             b.audit_log(Entry {
                 device: "unknown (vault locked)".into(),
                 client: client.into(),
-                host: args.get("host").and_then(|v| v.as_str()).unwrap_or("").into(),
-                command: args.get("command").and_then(|v| v.as_str()).unwrap_or("").into(),
+                host: s("host"),
+                command,
                 decision: "locked".into(),
                 ..Default::default()
             });
@@ -197,7 +247,6 @@ async fn call(b: &Broker, ctx: Option<&AgentCtx>, _session: &str, client: &str, 
             Err(e) => tool_text(e.to_string(), true),
         },
         "run" => {
-            let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("").to_string();
             let (host, command, reason) = (s("host"), s("command"), s("reason"));
             let sudo = args.get("sudo").and_then(|v| v.as_bool()).unwrap_or(false);
             if host.is_empty() || command.is_empty() {
@@ -211,6 +260,29 @@ async fn call(b: &Broker, ctx: Option<&AgentCtx>, _session: &str, client: &str, 
                     let broken = r.exit_code.is_none() && r.prompt.is_none();
                     tool_text(serde_json::to_string_pretty(&r).unwrap(), broken)
                 }
+                Err(e) => tool_text(e.to_string(), true),
+            }
+        }
+        "download" => {
+            let (host, path, reason) = (s("host"), s("path"), s("reason"));
+            if host.is_empty() || path.is_empty() {
+                return tool_text("`host` and `path` are required".into(), true);
+            }
+            match b.agent_download(ctx, &host, &path, &reason).await {
+                Ok(r) => tool_text(serde_json::to_string_pretty(&r).unwrap(), false),
+                Err(e) => tool_text(e.to_string(), true),
+            }
+        }
+        "upload" => {
+            let (host, path, reason) = (s("host"), s("path"), s("reason"));
+            if host.is_empty() || path.is_empty() {
+                return tool_text("`host` and `path` are required".into(), true);
+            }
+            let content = args.get("content").and_then(|v| v.as_str());
+            let local = args.get("local_path").and_then(|v| v.as_str());
+            let overwrite = args.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
+            match b.agent_upload(ctx, &host, &path, content, local, overwrite, &reason).await {
+                Ok(r) => tool_text(serde_json::to_string_pretty(&r).unwrap(), false),
                 Err(e) => tool_text(e.to_string(), true),
             }
         }

@@ -1,6 +1,7 @@
 //! Archivos para la persona: SFTP sobre una conexion del pool y el disco de esta PC.
-//! El agente no usa nada de aca (no pasa por las reglas); la interfaz deja cada accion
-//! en la auditoria.
+//! Nada de aca pasa por las reglas; la interfaz deja cada accion en la auditoria. El
+//! agente solo usa `Sftp::open` y `Sftp::session`, desde `transfer.rs`, que pone sus
+//! propias reglas encima.
 //!
 //! Las transferencias recorren carpetas con una pila (sin recursion async), avisan el
 //! progreso por un callback y se pueden cancelar con un flag. Van en las cuatro
@@ -80,6 +81,12 @@ impl Sftp {
 
     pub fn is_closed(&self) -> bool {
         self.conn.is_closed()
+    }
+
+    /// La sesion SFTP, para las transferencias del agente (`transfer.rs`).
+    pub fn session(&self) -> &SftpSession {
+        self.conn.touch();
+        &self.s
     }
 
     pub async fn home(&self) -> Result<String> {

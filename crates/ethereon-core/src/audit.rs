@@ -1,4 +1,5 @@
-//! Auditoria: una linea JSON por pedido del agente (y por sesion de terminal).
+//! Auditoria: una linea JSON por pedido del agente (comando o archivo) y por sesion de
+//! terminal.
 //!
 //! Cada linea lleva un HMAC encadenado con la anterior, con una clave que vive dentro
 //! del vault: si alguien borra o edita una linea, `verify` lo encuentra. Los pedidos
@@ -41,6 +42,11 @@ pub struct Entry {
     pub output: Option<String>,
     #[serde(default)]
     pub masked: usize,
+    /// Tamano del archivo en una transferencia del agente (`download` / `upload`); su hash
+    /// va en `output_sha256`. Se omite si no hay: las lineas de antes quedan identicas y su
+    /// HMAC sigue valiendo.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u64>,
     #[serde(default)]
     pub mac: String,
 }

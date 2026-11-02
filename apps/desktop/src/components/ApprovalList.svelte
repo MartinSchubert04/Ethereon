@@ -1,8 +1,11 @@
 <script lang="ts">
   // Los pedidos que esperan aprobacion, con sus acciones. Se usa en la vista Approvals y en
   // la pestaña o panel de aprobaciones (que se puede sacar a otra ventana o poner al lado de
-  // una terminal). `compact`: para un panel angosto, con menos aire.
-  import { Inbox, TriangleAlert } from "@lucide/svelte";
+  // una terminal). `compact`: para un panel angosto, con menos aire. Un pedido de archivo
+  // (`a.file`) muestra que archivo, en que direccion y de que tamano, y solo se aprueba o
+  // se rechaza: no hay comando que editar ni patron de sesion.
+  import { FileDown, FileUp, Inbox, TriangleAlert } from "@lucide/svelte";
+  import { human } from "./FilePanel.svelte";
   import { api, type Approval } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
   import { flip } from "svelte/animate";
@@ -56,6 +59,24 @@
         {#each a.warnings as w}
           <div class="warn"><TriangleAlert size={14} /> {w}</div>
         {/each}
+        {#if a.file}
+          {@const f = a.file}
+          <div class="file">
+            {#if f.direction === "download"}<FileDown size={18} />{:else}<FileUp size={18} />{/if}
+            <div class="what">
+              <div><b>{f.direction === "download" ? "Download" : "Upload"}</b> · {human(f.size)}{#if f.replaces} · <span class="replace">replaces the existing file</span>{/if}</div>
+              <div class="mono path">{f.path}</div>
+              {#if f.local}<div class="faint">From this PC: <span class="mono">{f.local}</span></div>{/if}
+              {#if f.direction === "download"}<div class="faint">The agent gets the text with secrets masked.</div>{/if}
+            </div>
+          </div>
+          <div class="row actions">
+            <button class="btn primary" onclick={() => approve(a)}>Approve</button>
+            <span class="grow"></span>
+            <input class="note" placeholder="Note for the agent" value={notes[a.id] ?? ""} oninput={(e) => (notes[a.id] = e.currentTarget.value)} />
+            <button class="btn danger" onclick={() => reject(a)}>Reject</button>
+          </div>
+        {:else}
         <textarea
           class="mono cmd"
           rows={Math.min(8, cmd(a).split("\n").length + 1)}
@@ -78,6 +99,7 @@
           <input class="note" placeholder="Note for the agent" value={notes[a.id] ?? ""} oninput={(e) => (notes[a.id] = e.currentTarget.value)} />
           <button class="btn danger" onclick={() => reject(a)}>Reject</button>
         </div>
+        {/if}
       </div>
     {/each}
   </div>
@@ -110,6 +132,33 @@
   }
   .cmd {
     min-height: 44px;
+  }
+  .file {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--panel-2);
+    border: var(--border) solid var(--line);
+    color: var(--text);
+  }
+  .file :global(svg) {
+    flex: none;
+    margin-top: 1px;
+    color: var(--accent);
+  }
+  .what {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+  .path {
+    word-break: break-all;
+  }
+  .replace {
+    color: var(--warn);
   }
   .actions {
     flex-wrap: wrap;

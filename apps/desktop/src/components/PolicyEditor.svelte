@@ -1,10 +1,12 @@
 <script lang="ts">
-  // Editor de reglas de un host o grupo.
+  // Editor de reglas de un host o grupo, incluido si el agente puede pasar archivos por
+  // SFTP (`files`, apagado por defecto; no aparece en una consola serial).
   import { MODE_LABEL, type Mode, type Policy } from "../lib/api";
   import { app } from "../lib/state.svelte";
   import Seg from "./Seg.svelte";
   import Switch from "./Switch.svelte";
   import { ask } from "../lib/confirm.svelte";
+  import { pop } from "../lib/motion";
 
   // `serial`: el host es una consola serial, asi que la lista base de solo lectura es la de
   // equipos de red (show, display, get...) y no la de shell.
@@ -17,6 +19,15 @@
     guarded: "Anything that is not forbidden runs, without asking. For test machines.",
     unrestricted: "Anything runs, forbidden commands included. Output is still masked and logged. Only for throwaway machines.",
     off: "The agent cannot see or use this host.",
+  };
+
+  // Que puede hacer el agente con archivos en cada modo (ver `transfer.rs`).
+  const filesHelp: Record<Mode, string> = {
+    read_only: "The agent can download text files, with secrets masked. It cannot upload.",
+    approval: "Every download and upload waits until you approve it, with the file, direction and size.",
+    guarded: "Downloads and uploads run without asking, except forbidden paths (like .ssh).",
+    unrestricted: "Downloads and uploads run without asking, forbidden paths included. Downloads are still masked.",
+    off: "",
   };
 
   // Free saca todas las reglas: se confirma antes de elegirlo.
@@ -74,10 +85,28 @@
       <label class="field">Commands / min<input type="number" min="1" bind:value={policy.max_per_minute} /></label>
     </div>
     <Switch bind:checked={policy.allow_sudo}>Allow sudo (Ethereon types the password)</Switch>
+    {#if !serial}
+      <Switch bind:checked={policy.files}>Allow file transfer (SFTP)</Switch>
+      {#if policy.files}
+        <div class="files" transition:pop={{ start: 0.98 }}>
+          <div class="faint">
+            {filesHelp[policy.mode]} SSH hosts only. Binary files are never downloaded, and nothing that contains a secret
+            from the vault is uploaded.
+          </div>
+          <label class="field">Max file size (KB)<input type="number" min="1" bind:value={policy.max_file_kb} /></label>
+        </div>
+      {/if}
+    {/if}
   {/if}
 </div>
 
 <style>
+  .files {
+    display: grid;
+    grid-template-columns: 1fr 150px;
+    gap: 12px;
+    align-items: end;
+  }
   .grid3 {
     display: grid;
     grid-template-columns: repeat(3, 1fr);

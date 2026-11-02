@@ -13,6 +13,10 @@ export interface Policy {
   max_output_kb: number;
   max_per_minute: number;
   allow_sudo: boolean;
+  /** El agente puede pasar archivos por SFTP (`download` / `upload`). Solo hosts SSH. */
+  files: boolean;
+  /** Tamaño máximo de un archivo que pasa el agente, en KB. */
+  max_file_kb: number;
 }
 
 export type Transport = "ssh" | "serial";
@@ -141,6 +145,19 @@ export interface Approval {
   device: string;
   warnings: string[];
   created: string;
+  /** Un pedido de archivo: qué archivo, en qué dirección y de qué tamaño. */
+  file?: FileRequest;
+}
+
+export interface FileRequest {
+  direction: "download" | "upload";
+  /** La ruta en el host, como la pidió el agente. */
+  path: string;
+  size: number;
+  /** Subir un archivo de esta PC: cuál. */
+  local?: string;
+  /** Reemplaza un archivo que ya existe. */
+  replaces?: boolean;
 }
 
 export type SshError =
@@ -171,6 +188,8 @@ export interface AuditEntry {
   output_sha256: string;
   output: string | null;
   masked: number;
+  /** Tamaño del archivo en una transferencia del agente (su hash va en output_sha256). */
+  bytes?: number;
 }
 
 export type Decision =
@@ -314,7 +333,7 @@ export const api = {
 };
 
 export function defaultPolicy(): Policy {
-  return { mode: "approval", allow: [], deny: [], timeout_secs: 60, max_output_kb: 256, max_per_minute: 30, allow_sudo: true };
+  return { mode: "approval", allow: [], deny: [], timeout_secs: 60, max_output_kb: 256, max_per_minute: 30, allow_sudo: true, files: false, max_file_kb: 1024 };
 }
 
 export function newHost(): Host {
