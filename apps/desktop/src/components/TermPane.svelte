@@ -98,6 +98,13 @@
       return false;
     }
     const c = comboOf(e);
+    if (c === "Shift+Enter" && prefs.term.shiftEnterNewline) {
+      // xterm manda \r igual que Enter; Esc Enter es lo que Claude Code entiende como
+      // salto de linea (lo mismo que configura su /terminal-setup).
+      e.preventDefault();
+      term.input("\x1b\r");
+      return false;
+    }
     if (c === "Ctrl+C" && prefs.term.ctrlCCopy && term.hasSelection()) {
       e.preventDefault();
       copySelection();

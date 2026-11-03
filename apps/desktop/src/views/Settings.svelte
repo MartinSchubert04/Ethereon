@@ -321,6 +321,7 @@
         <Switch bind:checked={prefs.term.copyOnSelect}>Copy as soon as text is selected</Switch>
         <Switch bind:checked={prefs.term.sixelLikeWt}>Show Sixel images at the size Windows Terminal uses (10×20 pixels per cell)</Switch>
         <Switch bind:checked={prefs.term.ctrlWToShell}>Inside a terminal, Ctrl W goes to the shell (close the tab with Ctrl Shift W)</Switch>
+        <Switch bind:checked={prefs.term.shiftEnterNewline}>Shift Enter adds a new line in Claude Code (sends Esc Enter)</Switch>
       </div>
       <div class="grid2">
         <div class="field">Font

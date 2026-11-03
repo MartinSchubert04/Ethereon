@@ -64,6 +64,9 @@ const defaults = () => ({
     ctrlVPaste: true,
     /** Ctrl W dentro de una terminal va a la shell (borra la palabra anterior). */
     ctrlWToShell: true,
+    /** Shift Enter manda Esc Enter: Claude Code (y otros) lo toman como salto de linea sin
+     *  mandar el mensaje. Apagado, Shift Enter es un Enter comun. */
+    shiftEnterNewline: true,
     /** 0 = lo que diga el tema. */
     fontSize: 0,
     /** Vacio = la del tema. Si no, una o varias familias separadas por coma. */
