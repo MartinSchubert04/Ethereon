@@ -82,7 +82,35 @@
   async function paste() {
     const text = await readText().catch(() => "");
     if (text) term.paste(text); // respeta el "bracketed paste" de la shell
+    else if (!me().local) await pasteImage();
     term.focus();
+  }
+
+  // Sin texto puede haber una imagen. Por SSH, Claude Code no ve el portapapeles de esta PC:
+  // la imagen se sube al servidor y se pega su ruta, que Claude Code adjunta como imagen.
+  let uploading = false;
+  async function pasteImage() {
+    if (uploading) return;
+    uploading = true;
+    try {
+      const path = await api.termPasteImage(me().host);
+      if (path) term.paste(/\s/.test(path) ? `"${path}"` : path);
+    } catch (e) {
+      toast(`Couldn't paste the image: ${errText(e)}`, true);
+    } finally {
+      uploading = false;
+    }
+  }
+
+  // OSC 52: un programa de la terminal pide copiar ("52;c;<base64>"). Asi copian Claude
+  // Code, tmux o vim cuando corren en un servidor. Leer el portapapeles ("?") no se permite.
+  function onOsc52(data: string): boolean {
+    const b64 = data.slice(data.indexOf(";") + 1);
+    if (!prefs.term.osc52Copy || !data.includes(";") || !b64 || b64 === "?") return true;
+    try {
+      writeText(new TextDecoder().decode(decode(b64))).catch(() => {});
+    } catch {}
+    return true;
   }
 
   function onTermKey(e: KeyboardEvent): boolean {
@@ -354,6 +382,7 @@
     t.loadAddon(new ImageAddon({ sixelSupport: true, iipSupport: true, storageLimit: 64 }));
     const live: Live = { term: t, fit: f, id: 0, replaying: false, handle, me, keys: () => true, selection: () => {}, parked: false };
     watchCwd(t, () => live.me());
+    t.parser.registerOscHandler(52, onOsc52);
     // Lo que la terminal genera va a la sesion, la muestre el panel que la muestre.
     t.attachCustomKeyEventHandler((e) => live.keys(e));
     t.onSelectionChange(() => live.selection());

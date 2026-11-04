@@ -8,6 +8,7 @@
 //! direcciones: subir, bajar, de un servidor a otro y dentro de esta PC.
 
 use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::{FileAttributes, OpenFlags};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -30,6 +31,11 @@ pub struct FileEntry {
 }
 
 const CHUNK: usize = 128 * 1024;
+
+/// Donde quedan las imagenes pegadas en la terminal, relativo al home (ver `paste_image`).
+const PASTE_DIR: &str = ".cache/ethereon/paste";
+/// Segundos que vive una imagen pegada.
+const PASTE_TTL: u64 = 24 * 3600;
 
 fn sftp_err(e: impl std::fmt::Display) -> Error {
     let s = e.to_string();
@@ -181,6 +187,37 @@ impl Sftp {
             }
         }
         Ok(total)
+    }
+
+    /// Deja en el servidor una imagen pegada en la terminal (PNG) y devuelve su ruta, para
+    /// escribirla en la shell: Claude Code (y otros) adjuntan la imagen de una ruta pegada,
+    /// porque por SSH no ven el portapapeles de esta PC. Va en `~/.cache/ethereon/paste`,
+    /// solo para el dueño (carpeta 0700, archivo 0600); las de mas de un dia se borran aca.
+    pub async fn paste_image(&self, png: &[u8]) -> Result<String> {
+        self.conn.touch();
+        let mut dir = self.home().await?;
+        for part in PASTE_DIR.split('/') {
+            dir = rjoin(&dir, part);
+            if !self.s.try_exists(&dir).await.unwrap_or(false) {
+                // Si falla, lo dice la escritura de abajo.
+                let _ = self.s.create_dir(&dir).await;
+            }
+        }
+        let owner_only = |mode| FileAttributes { permissions: Some(mode), ..Default::default() };
+        let _ = self.s.set_metadata(&dir, owner_only(0o700)).await;
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+        for e in self.list(&dir).await.unwrap_or_default() {
+            let old = e.mtime.is_some_and(|m| now.as_secs().saturating_sub(m) > PASTE_TTL);
+            if !e.dir && e.name.starts_with("paste-") && old {
+                let _ = self.s.remove_file(rjoin(&dir, &e.name)).await;
+            }
+        }
+        let path = rjoin(&dir, &format!("paste-{}.png", now.as_millis()));
+        let flags = OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE;
+        let mut f = self.s.open_with_flags_and_attributes(&path, flags, owner_only(0o600)).await.map_err(sftp_err)?;
+        f.write_all(png).await.map_err(sftp_err)?;
+        f.shutdown().await.map_err(sftp_err)?;
+        Ok(path)
     }
 
     /// Sube un archivo o carpeta local adentro de la carpeta remota `into`.

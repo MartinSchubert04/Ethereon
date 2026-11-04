@@ -62,6 +62,9 @@ const defaults = () => ({
     ctrlCCopy: true,
     /** Ctrl V pega. Apagado, la shell recibe Ctrl V. */
     ctrlVPaste: true,
+    /** Los programas de la terminal pueden copiar al portapapeles (OSC 52): asi copia
+     *  Claude Code, tmux o vim dentro de un servidor. Leerlo nunca. */
+    osc52Copy: true,
     /** Ctrl W dentro de una terminal va a la shell (borra la palabra anterior). */
     ctrlWToShell: true,
     /** Shift Enter manda Esc Enter: Claude Code (y otros) lo toman como salto de linea sin

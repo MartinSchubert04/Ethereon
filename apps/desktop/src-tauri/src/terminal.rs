@@ -528,3 +528,42 @@ pub async fn term_close(s: State<'_, AppState>, id: u32) -> Result<(), Error> {
     }
     Ok(())
 }
+
+/// Pegar una imagen en una terminal SSH: el programa del servidor (Claude Code) no ve el
+/// portapapeles de esta PC, asi que la imagen se sube por SFTP y se devuelve su ruta para
+/// pegarla como texto. `None` si en el portapapeles no hay una imagen.
+#[tauri::command]
+pub async fn term_paste_image(app: tauri::AppHandle, s: State<'_, AppState>, host: String) -> Result<Option<String>, Error> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    let Ok(img) = app.clipboard().read_image() else { return Ok(None) };
+    let png = encode_png(img.width(), img.height(), img.rgba())?;
+    let b = s.broker.clone();
+    b.touch_ui();
+    let h = b.read(|d| d.hosts.iter().find(|x| x.name == host).cloned())?.ok_or(Error::NotFound(host.clone()))?;
+    if h.is_serial() {
+        return Err(Error::Invalid("a serial console can't receive images".into()));
+    }
+    let sftp = ethereon_core::files::Sftp::open(b.connection(&h).await?).await?;
+    let r = sftp.paste_image(&png).await;
+    b.audit_log(Entry {
+        device: "ui".into(),
+        host,
+        command: format!("[sftp] paste image ({} KB){}", png.len() / 1024, r.as_ref().map(|p| format!(": {p}")).unwrap_or_default()),
+        decision: if r.is_ok() { "allowed" } else { "error" }.into(),
+        detail: r.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
+        ..Default::default()
+    });
+    r.map(Some)
+}
+
+fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, Error> {
+    let bad = |e: png::EncodingError| Error::Invalid(format!("couldn't encode the image: {e}"));
+    let mut out = Vec::new();
+    let mut enc = png::Encoder::new(&mut out, w, h);
+    enc.set_color(png::ColorType::Rgba);
+    enc.set_depth(png::BitDepth::Eight);
+    let mut w = enc.write_header().map_err(bad)?;
+    w.write_image_data(rgba).map_err(bad)?;
+    w.finish().map_err(bad)?;
+    Ok(out)
+}

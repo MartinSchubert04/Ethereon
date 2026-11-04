@@ -297,6 +297,8 @@ export const api = {
   termWrite: (id: number, data: string) => invoke<void>("term_write", { id, data }),
   termResize: (id: number, cols: number, rows: number) => invoke<void>("term_resize", { id, cols, rows }),
   termClose: (id: number) => invoke<void>("term_close", { id }),
+  /** Sube la imagen del portapapeles al host y devuelve su ruta (null si no hay imagen). */
+  termPasteImage: (host: string) => invoke<string | null>("term_paste_image", { host }),
   /** Suelta la sesion para que otra ventana la tome. */
   termDetach: (id: number) => invoke<void>("term_detach", { id }),
   /** Toma una sesion que solto otra ventana (recibe primero lo ultimo que se vio). */

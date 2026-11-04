@@ -421,3 +421,40 @@ async fn mcp_over_http() {
     let bad = post(serde_json::json!({"jsonrpc":"2.0","id":4,"method":"tools/list"}), "eth_wrong").await;
     assert!(bad.starts_with("HTTP/1.1 401"));
 }
+
+/// Pegar una imagen en una terminal SSH: queda en ~/.cache/ethereon/paste, solo para el
+/// dueño, y cada pegado es un archivo nuevo.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "necesita los contenedores de tests/ssh-fixture"]
+async fn paste_image() {
+    let key = std::fs::read_to_string(std::env::var("ETHEREON_TEST_KEY").expect("ETHEREON_TEST_KEY")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let b = Broker::new(dir.path().to_path_buf(), Arc::new(Quiet));
+    b.create("master-password-1").unwrap();
+    let host = Host {
+        name: "bastion".into(),
+        hostname: "127.0.0.1".into(),
+        port: 2222,
+        user: "tester".into(),
+        credential: "k".into(),
+        ..Default::default()
+    };
+    b.write(|d| {
+        d.credentials.push(cred("k", CredentialKind::PrivateKey, &key));
+        d.hosts.push(host.clone());
+        Ok(())
+    })
+    .unwrap();
+    trust_all(&b, "bastion").await;
+    let sftp = ethereon_core::files::Sftp::open(b.connection(&host).await.unwrap()).await.unwrap();
+    let png = b"\x89PNG\r\n\x1a\nnot really";
+    let path = sftp.paste_image(png).await.unwrap();
+    println!("{path}");
+    assert!(path.starts_with("/home/tester/.cache/ethereon/paste/paste-") && path.ends_with(".png"), "{path}");
+    let s = sftp.session();
+    assert_eq!(s.read(path.as_str()).await.unwrap(), png);
+    assert_eq!(s.metadata(path.as_str()).await.unwrap().permissions.unwrap() & 0o777, 0o600);
+    assert_eq!(s.metadata("/home/tester/.cache/ethereon/paste").await.unwrap().permissions.unwrap() & 0o777, 0o700);
+    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    assert_ne!(sftp.paste_image(png).await.unwrap(), path);
+}

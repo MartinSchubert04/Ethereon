@@ -301,6 +301,7 @@ pub fn run() {
             terminal::term_close,
             terminal::term_detach,
             terminal::term_attach,
+            terminal::term_paste_image,
             window::term_window_open,
             window::term_window_take,
             window::term_windows,
