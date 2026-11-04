@@ -458,3 +458,29 @@ async fn paste_image() {
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     assert_ne!(sftp.paste_image(png).await.unwrap(), path);
 }
+
+/// Un servidor que solo acepta los intercambios de claves de un F5 (ECDH NIST y los de
+/// SHA-1, en el puerto 2223 del fixture): se conecta con ecdh-sha2-nistp256.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "necesita los contenedores de tests/ssh-fixture"]
+async fn legacy_kex() {
+    let key = std::fs::read_to_string(std::env::var("ETHEREON_TEST_KEY").expect("ETHEREON_TEST_KEY")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let b = Broker::new(dir.path().to_path_buf(), Arc::new(Quiet));
+    b.create("master-password-1").unwrap();
+    b.write(|d| {
+        d.credentials.push(cred("k", CredentialKind::PrivateKey, &key));
+        d.hosts.push(Host {
+            name: "f5".into(),
+            hostname: "127.0.0.1".into(),
+            port: 2223,
+            user: "tester".into(),
+            credential: "k".into(),
+            ..Default::default()
+        });
+        Ok(())
+    })
+    .unwrap();
+    trust_all(&b, "f5").await;
+    assert!(b.test_host("f5").await.unwrap().is_none());
+}

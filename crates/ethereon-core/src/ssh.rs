@@ -119,8 +119,22 @@ fn config() -> Arc<client::Config> {
         keepalive_interval: Some(Duration::from_secs(30)),
         keepalive_max: 3,
         nodelay: true,
+        preferred: russh::Preferred { kex: kex_order().into(), ..russh::Preferred::DEFAULT },
         ..Default::default()
     })
+}
+
+/// Los intercambios de claves de russh mas ECDH con curvas NIST (`ecdh-sha2-nistp*`), que
+/// russh no ofrece pero OpenSSH si, en el mismo lugar que OpenSSH: despues de curve25519.
+/// Hay equipos (los F5, por ejemplo) que no aceptan otra cosa fuera de los de SHA-1, y esos
+/// siguen afuera. El cliente elige por su orden, asi que un servidor moderno sigue usando
+/// mlkem o curve25519.
+fn kex_order() -> Vec<russh::kex::Name> {
+    use russh::kex;
+    let mut order = russh::Preferred::DEFAULT.kex.to_vec();
+    let at = order.iter().position(|k| *k == kex::DH_GEX_SHA256).unwrap_or(order.len());
+    order.splice(at..at, [kex::ECDH_SHA2_NISTP256, kex::ECDH_SHA2_NISTP384, kex::ECDH_SHA2_NISTP521]);
+    order
 }
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -385,6 +399,16 @@ pub fn parse_os(out: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn kex_offers_nist_ecdh_after_curve25519_and_no_sha1() {
+        use russh::kex;
+        let o = kex_order();
+        let at = |n| o.iter().position(|k| *k == n).unwrap();
+        assert!(at(kex::CURVE25519) < at(kex::ECDH_SHA2_NISTP256));
+        assert!(at(kex::ECDH_SHA2_NISTP521) < at(kex::DH_GEX_SHA256));
+        assert!(!o.contains(&kex::DH_G14_SHA1) && !o.contains(&kex::DH_GEX_SHA1) && !o.contains(&kex::DH_G1_SHA1));
+    }
 
     #[test]
     fn os_from_probe() {
