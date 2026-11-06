@@ -25,6 +25,7 @@
   h.transport ??= "ssh";
   h.serial ??= defaultSerial();
   let tags = $state(h.tags.join(", "));
+  let alts = $state((h.alt_addrs ?? []).join(", "));
   let jump = $state<string[]>([...h.jump]);
   let ownRules = $state(h.policy !== null);
   let policy = $state(h.policy ?? defaultPolicy());
@@ -144,6 +145,7 @@
       port: Number(h.port) || 22,
       serial: { ...h.serial, baud: Number(h.serial.baud) || 9600, timeout_secs: Number(h.serial.timeout_secs) || 20, prompt: h.serial.prompt.trim() || DEFAULT_PROMPT },
       tags: split(tags),
+      alt_addrs: serial ? [] : split(alts),
       jump: serial ? [] : [...jump],
       group: h.group || null,
       sudo_credential: serial ? null : h.sudo_credential || null,
@@ -201,6 +203,10 @@
       <label class="field">Hostname or IP<input bind:value={h.hostname} placeholder="10.0.0.5" /></label>
       <label class="field">Port<input type="number" bind:value={h.port} /></label>
     </div>
+    <label class="field" transition:pop={{ start: 0.98 }}>Other addresses
+      <input bind:value={alts} placeholder="100.64.0.5, nas.tail1234.ts.net:2222" />
+      <span class="hint">The same machine elsewhere (LAN, Tailscale). Ethereon tries them all at once and uses the first that answers. Comma separated</span>
+    </label>
   {/if}
 
   <div class="grid2">

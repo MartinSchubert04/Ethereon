@@ -29,7 +29,7 @@
   const hosts = $derived(
     (app.snap?.hosts ?? []).filter((h) => {
       const q = query.toLowerCase();
-      return !q || [h.name, h.hostname, h.serial?.port ?? "", h.description, ...h.tags].some((x) => x.toLowerCase().includes(q));
+      return !q || [h.name, h.hostname, ...(h.alt_addrs ?? []), h.serial?.port ?? "", h.description, ...h.tags].some((x) => x.toLowerCase().includes(q));
     }),
   );
   const groups = $derived.by(() => {

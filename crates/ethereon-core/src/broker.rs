@@ -22,7 +22,7 @@ use crate::mask::Masker;
 use crate::model::*;
 use crate::policy::{self, Verdict};
 use crate::serial;
-use crate::ssh::{self, Conn, Hop, SshError};
+use crate::ssh::{self, Conn, Hop, SshError, Target};
 use crate::transfer::{self, Direction, DownloadResult, FileRequest, UploadResult};
 use crate::{files, vault, Error, Result};
 
@@ -693,13 +693,23 @@ impl Broker {
                         .find(|c| c.id == x.credential)
                         .cloned()
                         .ok_or(Error::NotFound(format!("credential `{}` of host `{}`", x.credential, x.name)))?;
-                    let addr = format!("{}:{}", x.hostname, x.port);
-                    let expected = d.known_hosts.iter().find(|k| k.addr == addr).map(|k| k.fingerprint.clone());
+                    // Cada direccion usa su propia huella si tiene una confirmada; si no, la de
+                    // la direccion principal (es la misma maquina).
+                    let known = |host: &str, port: u16| {
+                        let addr = addr_key(host, port);
+                        d.known_hosts.iter().find(|k| k.addr == addr).map(|k| k.fingerprint.clone())
+                    };
+                    let main = known(&x.hostname, x.port);
+                    let targets = x
+                        .addrs()
+                        .into_iter()
+                        .map(|(hostname, port)| Target { expected: known(&hostname, port).or_else(|| main.clone()), hostname, port })
+                        .collect();
                     let user = d.user_of(x);
                     if user.is_empty() {
                         return Err(Error::Invalid(format!("host `{}` has no user, and its credential has none either", x.name)));
                     }
-                    Ok(Hop { name: x.name.clone(), hostname: x.hostname.clone(), port: x.port, user, cred, expected })
+                    Ok(Hop { name: x.name.clone(), targets, user, cred })
                 })
                 .collect()
         })?

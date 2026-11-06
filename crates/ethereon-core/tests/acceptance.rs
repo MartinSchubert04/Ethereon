@@ -484,3 +484,88 @@ async fn legacy_kex() {
     trust_all(&b, "f5").await;
     assert!(b.test_host("f5").await.unwrap().is_none());
 }
+
+/// Varias direcciones por host: gana la primera que contesta con la huella confirmada. Una
+/// direccion muerta no hace esperar, y una que muestra otra huella (otra maquina con la
+/// misma IP en otra red) pierde contra la buena.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "necesita los contenedores de tests/ssh-fixture"]
+async fn alt_addrs() {
+    use std::time::{Duration, Instant};
+    let key = std::fs::read_to_string(std::env::var("ETHEREON_TEST_KEY").expect("ETHEREON_TEST_KEY")).unwrap();
+    let dir = tempfile::tempdir().unwrap();
+    let b = Broker::new(dir.path().to_path_buf(), Arc::new(Quiet));
+    b.create("master-password-1").unwrap();
+    // 192.0.2.1 es de documentacion: no contesta nadie (como la IP de la LAN fuera de casa).
+    let dead = "192.0.2.1";
+    b.write(|d| {
+        d.credentials.push(cred("k", CredentialKind::PrivateKey, &key));
+        d.credentials.push(cred("pw", CredentialKind::Password, PW));
+        d.hosts.push(Host {
+            name: "nas".into(),
+            hostname: dead.into(),
+            port: 22,
+            alt_addrs: vec!["127.0.0.1:2222".into()],
+            user: "tester".into(),
+            credential: "k".into(),
+            policy: Some(Policy { mode: Mode::Guarded, ..Default::default() }),
+            ..Default::default()
+        });
+        d.hosts.push(Host { name: "bastion".into(), hostname: "127.0.0.1".into(), port: 2222, user: "tester".into(), credential: "k".into(), ..Default::default() });
+        // Detras del bastion: la principal no existe, la alternativa si.
+        d.hosts.push(Host {
+            name: "app".into(),
+            hostname: "nowhere.invalid".into(),
+            port: 22,
+            alt_addrs: vec!["target".into()],
+            user: "tester".into(),
+            credential: "pw".into(),
+            jump: vec!["bastion".into()],
+            policy: Some(Policy { mode: Mode::Guarded, ..Default::default() }),
+            ..Default::default()
+        });
+        Ok(())
+    })
+    .unwrap();
+
+    // La huella se pide sin esperar a la direccion muerta, y queda en la principal.
+    let t = Instant::now();
+    trust_all(&b, "nas").await;
+    assert!(t.elapsed() < Duration::from_secs(10), "waited {:?}", t.elapsed());
+    assert!(b.read(|d| d.known_hosts.iter().any(|k| k.addr == format!("{dead}:22"))).unwrap());
+    b.drop_connections().await;
+    let t = Instant::now();
+    assert!(b.test_host("nas").await.unwrap().is_none());
+    assert!(t.elapsed() < Duration::from_secs(10), "waited {:?}", t.elapsed());
+    let (_, token) = b.create_device("test-pc", Some(1), vec![]).unwrap();
+    let ctx = b.authenticate(&token, "127.0.0.1", "s1").unwrap();
+    assert_eq!(b.agent_run(&ctx, "nas", "echo hi", false, "check").await.unwrap().stdout.trim(), "hi");
+
+    // Otra maquina en una de las direcciones (aca, una huella confirmada que no es la suya):
+    // pierde contra la buena...
+    b.write(|d| {
+        d.known_hosts.push(KnownHost { addr: "127.0.0.1:2223".into(), fingerprint: "SHA256:another-machine".into(), algorithm: "ssh-ed25519".into() });
+        d.hosts.iter_mut().find(|h| h.name == "nas").unwrap().alt_addrs = vec!["127.0.0.1:2223".into(), "127.0.0.1:2222".into()];
+        Ok(())
+    })
+    .unwrap();
+    b.drop_connections().await;
+    assert!(b.test_host("nas").await.unwrap().is_none());
+    // ...y si es la unica que contesta, se bloquea y se avisa con esa direccion.
+    b.write(|d| {
+        d.hosts.iter_mut().find(|h| h.name == "nas").unwrap().alt_addrs = vec!["127.0.0.1:2223".into()];
+        Ok(())
+    })
+    .unwrap();
+    b.drop_connections().await;
+    match b.test_host("nas").await.unwrap() {
+        Some(SshError::HostKeyChanged { addr, .. }) => assert_eq!(addr, "127.0.0.1:2223"),
+        other => panic!("{other:?}"),
+    }
+
+    // A traves de un bastion tambien se prueban todas.
+    trust_all(&b, "bastion").await;
+    trust_all(&b, "app").await;
+    assert!(b.test_host("app").await.unwrap().is_none());
+    assert_eq!(b.agent_run(&ctx, "app", "hostname", false, "check").await.unwrap().exit_code, Some(0));
+}

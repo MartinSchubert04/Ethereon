@@ -190,6 +190,11 @@ pub struct Host {
     pub hostname: String,
     #[serde(default = "default_port")]
     pub port: u16,
+    /// Otras direcciones de la misma maquina (la IP de la LAN y la de Tailscale, por ejemplo):
+    /// `host` o `host:puerto`, sin puerto usa `port`. Al conectar se prueban todas a la vez
+    /// junto con `hostname` y se queda la primera que contesta (ver `ssh::connect`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alt_addrs: Vec<String>,
     /// Usuario de login. En un host serial puede quedar vacio si la consola no pide login.
     #[serde(default)]
     pub user: String,
@@ -230,6 +235,49 @@ impl Host {
     pub fn is_serial(&self) -> bool {
         self.transport == Transport::Serial
     }
+
+    /// Todas las direcciones por las que se llega: primero `hostname:port`, despues las de
+    /// `alt_addrs` (sin repetir; las que no se entienden quedan afuera).
+    pub fn addrs(&self) -> Vec<(String, u16)> {
+        let mut out = vec![(self.hostname.clone(), self.port)];
+        for a in &self.alt_addrs {
+            if let Some(x) = parse_addr(a, self.port) {
+                if !out.contains(&x) {
+                    out.push(x);
+                }
+            }
+        }
+        out
+    }
+}
+
+/// `host`, `host:puerto`, `[ipv6]:puerto` o una IPv6 sola (`fd7a:115c::1`). Sin puerto usa
+/// `port`. None si esta vacia o el puerto no es un numero.
+pub fn parse_addr(s: &str, port: u16) -> Option<(String, u16)> {
+    let s = s.trim();
+    let (host, p) = if let Some(rest) = s.strip_prefix('[') {
+        let (h, after) = rest.split_once(']')?;
+        match after {
+            "" => (h, None),
+            _ => (h, Some(after.strip_prefix(':')?)),
+        }
+    } else {
+        match s.split_once(':') {
+            // Mas de un ':' sin corchetes es una IPv6 sin puerto.
+            Some((h, p)) if !p.contains(':') => (h, Some(p)),
+            _ => (s, None),
+        }
+    };
+    let port = match p {
+        Some(p) => p.parse().ok().filter(|&n: &u16| n != 0)?,
+        None => port,
+    };
+    (!host.is_empty() && !host.contains(char::is_whitespace)).then(|| (host.to_string(), port))
+}
+
+/// `host:puerto` como se guarda en `known_hosts`.
+pub fn addr_key(host: &str, port: u16) -> String {
+    format!("{host}:{port}")
 }
 
 impl VaultData {
@@ -374,4 +422,34 @@ pub struct AgentHostView {
     /// la respuesta de un host sin archivos queda igual que antes.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub files: bool,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_addresses() {
+        let p = |s| parse_addr(s, 22);
+        assert_eq!(p("100.64.0.5"), Some(("100.64.0.5".into(), 22)));
+        assert_eq!(p(" nas.tail1234.ts.net:2222 "), Some(("nas.tail1234.ts.net".into(), 2222)));
+        assert_eq!(p("fd7a:115c:a1eb::5"), Some(("fd7a:115c:a1eb::5".into(), 22)));
+        assert_eq!(p("[fd7a:115c:a1eb::5]:2200"), Some(("fd7a:115c:a1eb::5".into(), 2200)));
+        assert_eq!(p("[::1]"), Some(("::1".into(), 22)));
+        for bad in ["", "host:", "host:abc", "host:0", "host:70000", "[::1", "[::1]x", "a b"] {
+            assert_eq!(p(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn addrs_puts_the_main_one_first_without_repeats() {
+        let h = Host {
+            hostname: "192.168.1.10".into(),
+            port: 22,
+            alt_addrs: vec!["100.64.0.5".into(), "192.168.1.10:22".into(), "bad:port".into(), "100.64.0.5:2222".into()],
+            ..Default::default()
+        };
+        let a: Vec<String> = h.addrs().iter().map(|(h, p)| addr_key(h, *p)).collect();
+        assert_eq!(a, ["192.168.1.10:22", "100.64.0.5:22", "100.64.0.5:2222"]);
+    }
 }

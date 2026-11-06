@@ -28,7 +28,7 @@
     return [
       ...shells.filter((sh) => has(sh.label, sh.id, "local")).map((shell) => ({ kind: "local" as const, shell })),
       ...(app.snap?.hosts ?? [])
-        .filter((h) => has(h.name, h.hostname, h.serial?.port ?? "", h.group ?? "", h.description, ...h.tags))
+        .filter((h) => has(h.name, h.hostname, ...(h.alt_addrs ?? []), h.serial?.port ?? "", h.group ?? "", h.description, ...h.tags))
         .map((host) => ({ kind: "host" as const, host })),
     ];
   });

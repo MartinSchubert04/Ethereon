@@ -194,6 +194,7 @@ pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<Stri
         ethereon_core::serial::validate(&host.serial).map_err(invalid)?;
         // Una consola no tiene direccion, saltos ni sudo.
         host.hostname.clear();
+        host.alt_addrs.clear();
         host.jump.clear();
         host.sudo_credential = None;
     } else {
@@ -201,6 +202,16 @@ pub async fn host_save(s: State<'_, AppState>, host: Host, original: Option<Stri
         if host.hostname.is_empty() {
             return Err(invalid("hostname is required"));
         }
+        let mut alts = Vec::new();
+        for a in host.alt_addrs.iter().map(|a| a.trim()).filter(|a| !a.is_empty()) {
+            if ethereon_core::model::parse_addr(a, host.port).is_none() {
+                return Err(invalid(format!("`{a}` is not an address: use host or host:port")));
+            }
+            if !alts.iter().any(|x| x == a) {
+                alts.push(a.to_string());
+            }
+        }
+        host.alt_addrs = alts;
     }
     let orig = original.unwrap_or_else(|| host.name.clone());
     // El puerto serie de la version anterior ya no sirve si cambio algo de la consola.

@@ -78,6 +78,11 @@ pub fn ssh_config_in(text: &str, dir: Option<&Path>) -> Imported {
     };
     for raw in text.lines() {
         let line = raw.trim();
+        // Las direcciones alternativas que anota la exportacion OpenSSH de Ethereon.
+        if let (Some(h), Some(alts)) = (cur.as_mut(), line.strip_prefix("# Also at:")) {
+            h.alt_addrs = alts.split_whitespace().map(String::from).collect();
+            continue;
+        }
         if line.is_empty() || line.starts_with('#') {
             continue;
         }
@@ -204,6 +209,16 @@ mod tests {
         let gw = r.hosts.iter().find(|h| h.name == "jump-gw.example.com").unwrap();
         assert_eq!((gw.user.as_str(), gw.port), ("admin", 2200));
         assert!(!r.hosts.iter().any(|h| h.name == "*"));
+    }
+
+    #[test]
+    fn openssh_export_keeps_alt_addrs() {
+        let mut d = VaultData::default();
+        d.hosts.push(Host { name: "nas".into(), hostname: "192.168.1.10".into(), port: 22, user: "u".into(), alt_addrs: vec!["100.64.0.5".into()], ..Default::default() });
+        let dir = std::env::temp_dir().join(format!("eth-alts-{}", std::process::id()));
+        crate::export::write(&d, crate::export::Format::OpenSsh, &dir).unwrap();
+        let r = ssh_config(&std::fs::read_to_string(dir.join("config")).unwrap());
+        assert_eq!(r.hosts[0].alt_addrs, ["100.64.0.5"]);
     }
 
     /// Lo que genera `termius export-ssh-config` (CLI 1.2.15): claves en minuscula, sin claves privadas.
@@ -383,6 +398,8 @@ pub fn csv(text: &str) -> Result<Imported, String> {
             tags: f[7].split_whitespace().map(String::from).collect(),
             jump: f[8].split(',').map(str::trim).filter(|s| !s.is_empty()).map(String::from).collect(),
             description: f[9].clone(),
+            // Los CSV de antes de la 2.11 no tienen esta columna.
+            alt_addrs: f.get(10).map(|a| a.split_whitespace().map(String::from).collect()).unwrap_or_default(),
             ..Default::default()
         });
     }
@@ -447,6 +464,7 @@ mod detect_tests {
             tags: vec!["x".into(), "y".into()],
             jump: vec!["bastion".into()],
             env: crate::model::Env::Prod,
+            alt_addrs: vec!["100.64.0.5".into(), "web.lan:22".into()],
             ..Default::default()
         });
         let p = std::env::temp_dir().join(format!("eth-csv-{}.csv", std::process::id()));
@@ -455,6 +473,10 @@ mod detect_tests {
         let h = &imp.hosts[0];
         assert_eq!((h.name.as_str(), h.port, h.user.as_str(), h.description.as_str()), ("web", 2222, "deploy", r#"a, "quoted" one"#));
         assert_eq!((h.tags.len(), h.jump[0].as_str(), h.env), (2, "bastion", crate::model::Env::Prod));
+        assert_eq!(h.alt_addrs, ["100.64.0.5", "web.lan:22"]);
+        // Un CSV sin la columna nueva se sigue leyendo.
+        let old = csv("name,hostname,port,user,credential,group,env,tags,jump,description\nweb,10.0.0.5,22,u,k,,,,,\n").unwrap();
+        assert!(old.hosts[0].alt_addrs.is_empty());
     }
 
     #[test]

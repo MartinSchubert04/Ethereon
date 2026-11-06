@@ -1,31 +1,49 @@
-//! Conexiones SSH: saltos por bastion, verificacion de la clave del host, login y
+//! Conexiones SSH: saltos por bastion, varias direcciones por host (gana la primera que
+//! contesta con la huella confirmada), verificacion de la clave del host, login y
 //! ejecucion de comandos con limites de tiempo y de tamano. Cada paso de la conexion (y lo
 //! que diga el servidor al loguear) va a un registro que solo ve la persona.
 
 use russh::client::{self, Handle, KeyboardInteractiveAuthResponse};
 use russh::keys::{decode_secret_key, Certificate, HashAlg, PrivateKeyWithHashAlg, PublicKey, PublicKeyOrCertificate};
 use russh::ChannelMsg;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::Poll;
 use std::time::{Duration, Instant};
 use zeroize::Zeroizing;
 
-use crate::model::{Credential, CredentialKind};
+use crate::model::{addr_key, Credential, CredentialKind};
 
 /// Un salto de la cadena (el ultimo es el host de destino).
 #[derive(Clone)]
 pub struct Hop {
     pub name: String,
-    pub hostname: String,
-    pub port: u16,
+    /// Por donde se llega: la direccion principal primero, despues las alternativas.
+    pub targets: Vec<Target>,
     pub user: String,
     pub cred: Credential,
+}
+
+/// Una direccion de un salto, con la huella que tiene que mostrar.
+#[derive(Clone)]
+pub struct Target {
+    pub hostname: String,
+    pub port: u16,
     /// Huella confirmada; None = todavia no la confirmo nadie.
     pub expected: Option<String>,
 }
 
-impl Hop {
+impl Target {
     pub fn addr(&self) -> String {
-        format!("{}:{}", self.hostname, self.port)
+        addr_key(&self.hostname, self.port)
+    }
+}
+
+impl Hop {
+    /// La direccion principal: ahi se guarda la huella que vale para todas.
+    pub fn addr(&self) -> String {
+        self.targets[0].addr()
     }
 }
 
@@ -58,6 +76,8 @@ pub struct Client {
     expected: Option<String>,
     seen: Seen,
     log: Log,
+    /// "direccion: " delante de cada linea del registro cuando se prueban varias a la vez.
+    tag: String,
 }
 
 pub fn fingerprint(key: &PublicKey) -> String {
@@ -74,10 +94,11 @@ impl client::Handler for Client {
         };
         let fp = fingerprint(&key);
         let ok = self.expected.as_deref() == Some(fp.as_str());
+        let tag = &self.tag;
         (self.log)(match &self.expected {
-            _ if ok => format!("Host key {fp} matches"),
-            None => format!("Host key {fp} is not confirmed yet"),
-            Some(exp) => format!("Host key changed: expected {exp}, got {fp}"),
+            _ if ok => format!("{tag}Host key {fp} matches"),
+            None => format!("{tag}Host key {fp} is not confirmed yet"),
+            Some(exp) => format!("{tag}Host key changed: expected {exp}, got {fp}"),
         });
         *self.seen.lock().unwrap() = Some((fp, key.algorithm().to_string()));
         Ok(ok)
@@ -147,44 +168,12 @@ const AUTH_SLOW: Duration = Duration::from_secs(4);
 pub async fn connect(hops: &[Hop], log: &Log) -> Result<Conn, SshError> {
     let mut handles: Vec<Handle<Client>> = Vec::new();
     for (i, hop) in hops.iter().enumerate() {
-        let seen: Seen = Arc::new(Mutex::new(None));
-        let handler = Client { expected: hop.expected.clone(), seen: seen.clone(), log: log.clone() };
-        let conn_err = |d: String| SshError::Connect { host: hop.name.clone(), detail: d };
+        let at = hop.targets.iter().map(Target::addr).collect::<Vec<_>>().join(", ");
         log(match i {
-            0 => format!("Connecting to {} at {}", hop.name, hop.addr()),
-            _ => format!("Connecting to {} at {} through {}", hop.name, hop.addr(), hops[i - 1].name),
+            0 => format!("Connecting to {} at {at}", hop.name),
+            _ => format!("Connecting to {} at {at} through {}", hop.name, hops[i - 1].name),
         });
-        let fut = async {
-            match handles.last() {
-                None => client::connect(config(), (hop.hostname.as_str(), hop.port), handler).await,
-                Some(prev) => {
-                    let ch = prev
-                        .channel_open_direct_tcpip(hop.hostname.clone(), hop.port as u32, "127.0.0.1", 0)
-                        .await?;
-                    client::connect_stream(config(), ch.into_stream(), handler).await
-                }
-            }
-        };
-        let res = tokio::time::timeout(CONNECT_TIMEOUT, fut).await.map_err(|_| conn_err("timed out".into()))?;
-        let mut h = match res {
-            Ok(h) => h,
-            Err(e) => {
-                // Si fallo por la huella, se dice cual.
-                if let Some((fp, alg)) = seen.lock().unwrap().clone() {
-                    return Err(match &hop.expected {
-                        None => SshError::HostKeyUnknown { host: hop.name.clone(), addr: hop.addr(), fingerprint: fp, algorithm: alg },
-                        Some(exp) if *exp != fp => SshError::HostKeyChanged {
-                            host: hop.name.clone(),
-                            addr: hop.addr(),
-                            expected: exp.clone(),
-                            got: fp,
-                        },
-                        _ => conn_err(e.to_string()),
-                    });
-                }
-                return Err(conn_err(e.to_string()));
-            }
-        };
+        let mut h = reach(hop, handles.last(), log).await?;
         log(format!("Logging in as {}", hop.user));
         {
             let login = auth(&mut h, hop, log);
@@ -211,6 +200,119 @@ pub async fn connect(hops: &[Hop], log: &Log) -> Result<Conn, SshError> {
         handles.push(h);
     }
     Ok(Conn { handles, last_used: Mutex::new(Instant::now()) })
+}
+
+/// Por que no se pudo llegar por una direccion.
+enum Fail {
+    /// Contesto con una huella que no es la confirmada (o no hay ninguna confirmada).
+    Key { fp: String, alg: String },
+    Other(String),
+}
+
+/// Llega a un salto probando todas sus direcciones a la vez (la de la LAN y la de Tailscale,
+/// por ejemplo) y se queda con la primera que muestra la huella confirmada: en la practica,
+/// la mas rapida de las que andan. Una que no responde no hace esperar a las demas, y una
+/// maquina que no es (otra red con la misma IP de LAN) no gana, porque su huella no coincide.
+async fn reach(hop: &Hop, prev: Option<&Handle<Client>>, log: &Log) -> Result<Handle<Client>, SshError> {
+    let many = hop.targets.len() > 1;
+    let tries = hop.targets.iter().enumerate().map(|(i, t)| Box::pin(async move { (i, attempt(t, prev, many, log).await) })).collect();
+    // Sin ninguna huella confirmada no puede ganar nadie: con la primera que llega ya se
+    // puede pedir que la confirmen.
+    let none_known = hop.targets.iter().all(|t| t.expected.is_none());
+    let done = |r: &(usize, Result<Handle<Client>, Fail>)| match &r.1 {
+        Ok(_) => true,
+        Err(Fail::Key { .. }) => none_known,
+        Err(Fail::Other(_)) => false,
+    };
+    let mut fails = match race(tries, done).await {
+        Ok((i, Ok(h))) => {
+            if many {
+                log(format!("Reached {} at {}", hop.name, hop.targets[i].addr()));
+            }
+            return Ok(h);
+        }
+        Ok(other) => vec![other],
+        Err(all) => all,
+    };
+    // Si alguna contesto con otra huella, eso es lo que hay que mostrar.
+    if let Some(pos) = fails.iter().position(|f| matches!(f.1, Err(Fail::Key { .. }))) {
+        let (i, r) = fails.swap_remove(pos);
+        let Err(Fail::Key { fp, alg }) = r else { unreachable!() };
+        let t = &hop.targets[i];
+        return Err(match &t.expected {
+            // Se confirma en la direccion principal, y vale para todas.
+            None => SshError::HostKeyUnknown { host: hop.name.clone(), addr: hop.addr(), fingerprint: fp, algorithm: alg },
+            // Confirmarla la guarda solo para esta direccion.
+            Some(exp) => SshError::HostKeyChanged { host: hop.name.clone(), addr: t.addr(), expected: exp.clone(), got: fp },
+        });
+    }
+    fails.sort_by_key(|f| f.0);
+    let why = |r: &Result<Handle<Client>, Fail>| match r {
+        Err(Fail::Other(d)) => d.clone(),
+        _ => String::new(),
+    };
+    let detail = match &fails[..] {
+        [(_, r)] => why(r),
+        _ => fails.iter().map(|(i, r)| format!("{}: {}", hop.targets[*i].addr(), why(r))).collect::<Vec<_>>().join("; "),
+    };
+    Err(SshError::Connect { host: hop.name.clone(), detail })
+}
+
+/// Una sola direccion: conexion y huella, sin login.
+async fn attempt(t: &Target, prev: Option<&Handle<Client>>, many: bool, log: &Log) -> Result<Handle<Client>, Fail> {
+    let seen: Seen = Arc::new(Mutex::new(None));
+    let tag = if many { format!("{}: ", t.addr()) } else { String::new() };
+    let handler = Client { expected: t.expected.clone(), seen: seen.clone(), log: log.clone(), tag: tag.clone() };
+    let fut = async {
+        match prev {
+            None => client::connect(config(), (t.hostname.as_str(), t.port), handler).await,
+            Some(prev) => {
+                let ch = prev.channel_open_direct_tcpip(t.hostname.clone(), t.port as u32, "127.0.0.1", 0).await?;
+                client::connect_stream(config(), ch.into_stream(), handler).await
+            }
+        }
+    };
+    let fail = match tokio::time::timeout(CONNECT_TIMEOUT, fut).await {
+        Ok(Ok(h)) => return Ok(h),
+        Err(_) => Fail::Other("timed out".into()),
+        // Si fallo por la huella, se dice cual.
+        Ok(Err(e)) => match seen.lock().unwrap().clone() {
+            Some((fp, alg)) if t.expected.as_deref() != Some(fp.as_str()) => Fail::Key { fp, alg },
+            _ => Fail::Other(e.to_string()),
+        },
+    };
+    if let (true, Fail::Other(d)) = (many, &fail) {
+        log(format!("{tag}{d}"));
+    }
+    Err(fail)
+}
+
+/// Corre todos a la vez. Devuelve el primero que termina y cumple `done`, o, si ninguno,
+/// todos los resultados en el orden en que terminaron. Los que siguen corriendo se sueltan.
+async fn race<F: Future + Unpin>(mut futs: Vec<F>, done: impl Fn(&F::Output) -> bool) -> Result<F::Output, Vec<F::Output>> {
+    let mut rest = Vec::new();
+    let found = std::future::poll_fn(|cx| {
+        let mut i = 0;
+        while i < futs.len() {
+            match Pin::new(&mut futs[i]).poll(cx) {
+                Poll::Ready(v) => {
+                    futs.remove(i);
+                    if done(&v) {
+                        return Poll::Ready(Some(v));
+                    }
+                    rest.push(v);
+                }
+                Poll::Pending => i += 1,
+            }
+        }
+        if futs.is_empty() {
+            Poll::Ready(None)
+        } else {
+            Poll::Pending
+        }
+    })
+    .await;
+    found.ok_or(rest)
 }
 
 /// Solo la huella del primer salto que todavia no esta confirmado (para mostrarla).
@@ -399,6 +501,21 @@ pub fn parse_os(out: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn race_takes_the_first_that_qualifies() {
+        let after = |ms: u64, v: i32| Box::pin(async move {
+            tokio::time::sleep(Duration::from_millis(ms)).await;
+            v
+        });
+        // El lento que sirve le gana al rapido que no sirve, sin esperar al que no termina.
+        let t = Instant::now();
+        let r = race(vec![after(5, -1), after(40, 2), after(10_000, 3)], |v| *v > 0).await;
+        assert_eq!(r, Ok(2));
+        assert!(t.elapsed() < Duration::from_secs(5));
+        // Si ninguno sirve, vuelven todos en el orden en que terminaron.
+        assert_eq!(race(vec![after(30, -1), after(5, -2)], |v| *v > 0).await, Err(vec![-2, -1]));
+    }
 
     #[test]
     fn kex_offers_nist_ecdh_after_curve25519_and_no_sha1() {

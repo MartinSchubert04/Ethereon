@@ -39,12 +39,12 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
         }
         Format::Csv => {
             let q = |s: &str| format!("\"{}\"", s.replace('"', "\"\""));
-            let mut s = String::from("name,hostname,port,user,credential,group,env,tags,jump,description\n");
+            let mut s = String::from("name,hostname,port,user,credential,group,env,tags,jump,description,alt_addrs\n");
             // Los hosts por consola serial no tienen direccion: solo van en el JSON de Ethereon.
             let ssh: Vec<&crate::model::Host> = d.hosts.iter().filter(|h| !h.is_serial()).collect();
             for h in &ssh {
                 s += &format!(
-                    "{},{},{},{},{},{},{},{},{},{}\n",
+                    "{},{},{},{},{},{},{},{},{},{},{}\n",
                     q(&h.name),
                     q(&h.hostname),
                     h.port,
@@ -54,7 +54,8 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                     h.env.as_str(),
                     q(&h.tags.join(" ")),
                     q(&h.jump.join(",")),
-                    q(&h.description)
+                    q(&h.description),
+                    q(&h.alt_addrs.join(" "))
                 );
             }
             std::fs::write(to, s)?;
@@ -68,7 +69,8 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
                     .hosts
                     .iter()
                     .filter(|h| !h.is_serial() && (h.credential == c.id || h.sudo_credential.as_deref() == Some(&c.id)))
-                    .map(|h| json!({ "match": null, "uri": format!("ssh://{}:{}", h.hostname, h.port) }))
+                    .flat_map(|h| h.addrs())
+                    .map(|(host, port)| json!({ "match": null, "uri": format!("ssh://{host}:{port}") }))
                     .collect();
                 let item = match c.kind {
                     CredentialKind::PrivateKey | CredentialKind::Certificate => json!({
@@ -101,6 +103,10 @@ pub fn write(d: &VaultData, f: Format, to: &Path) -> std::io::Result<String> {
             let ssh: Vec<&crate::model::Host> = d.hosts.iter().filter(|h| !h.is_serial()).collect();
             for h in &ssh {
                 cfg += &format!("\nHost {}\n  HostName {}\n  Port {}\n  User {}\n", h.name, h.hostname, h.port, d.user_of(h));
+                // OpenSSH no tiene varias direcciones por host: quedan anotadas.
+                if !h.alt_addrs.is_empty() {
+                    cfg += &format!("  # Also at: {}\n", h.alt_addrs.join(" "));
+                }
                 let is_key = d.credentials.iter().any(|c| c.id == h.credential && matches!(c.kind, CredentialKind::PrivateKey | CredentialKind::Certificate));
                 if is_key {
                     cfg += &format!("  IdentityFile ~/.ssh/{}\n", h.credential);

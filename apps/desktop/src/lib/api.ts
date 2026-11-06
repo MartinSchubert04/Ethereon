@@ -55,6 +55,8 @@ export interface Host {
   /** Direccion del host SSH (vacia en una consola serial). */
   hostname: string;
   port: number;
+  /** Otras direcciones de la misma maquina (LAN, Tailscale): gana la primera que contesta. */
+  alt_addrs?: string[];
   user: string;
   credential: string;
   sudo_credential: string | null;
