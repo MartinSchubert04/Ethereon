@@ -82,3 +82,11 @@ apps/desktop/src/         interfaz: views/ (una por sección), components/, lib/
 - **Temas solo con variables.** Los colores viven en `src/styles/themes.css`; los componentes no
   tienen colores fijos. Un tema nuevo = un bloque ahí + una línea en `src/lib/themes.ts`.
 - Docs y comentarios en español; textos de la interfaz en inglés, literales (ver `DESIGN.md`).
+- **Espacio en disco de Rust.** En noviembre de 2026 `target/` llegó a ~110 GB (más ~12 GB en los
+  worktrees) y llenó el C:. Para que no vuelva a pasar:
+  - `--release` solo para publicar o probar el instalador; después, `cargo clean --release`.
+  - En un worktree (`.claude/worktrees/`) compilar con `CARGO_TARGET_DIR` apuntando al `target/`
+    del repo principal (`$env:CARGO_TARGET_DIR="<repo>\target"`), no crear uno nuevo. Al terminar
+    la tarea, `git worktree remove` del worktree.
+  - Al terminar una tarea que compiló, mirar el tamaño de `target/`: si pasa de 20 GB,
+    `cargo clean` y avisar.
