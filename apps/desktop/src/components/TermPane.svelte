@@ -266,7 +266,7 @@
   }
 
   function handle(m: TermEvent) {
-    if (m.kind === "data") term.write(decode(m.b64));
+    if (m instanceof ArrayBuffer) term.write(new Uint8Array(m));
     // Cuando xterm termino de procesar todo lo repetido, vuelve a escuchar.
     // Ahi recien se ajusta al panel: xterm reacomoda las lineas y la shell se entera.
     else if (m.kind === "replayed")

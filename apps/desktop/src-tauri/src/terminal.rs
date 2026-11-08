@@ -1,7 +1,7 @@
 //! Terminal interactiva para la persona (no para el agente: no pasa por las reglas).
 //! Puede ser una shell en un host por SSH, una consola serial (los bytes del puerto tal
 //! cual, sin login automatico) o una shell local de esta PC (ConPTY).
-//! La salida va al WebView por un canal IPC en base64; si la ventana se cierra, el
+//! La salida va al WebView por un canal IPC en bytes crudos (juntada, ver `GAP`); si la ventana se cierra, el
 //! canal falla y la sesion se corta sola. Una terminal se puede pasar a otra ventana sin
 //! cortarse: la vieja suelta el canal (`term_detach`) y la nueva lo toma (`term_attach`).
 
@@ -15,7 +15,8 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::ipc::Channel;
+use std::time::{Duration, Instant};
+use tauri::ipc::{Channel, InvokeResponseBody};
 use tauri::State;
 use ethereon_core::audit::Entry;
 use ethereon_core::Error;
@@ -42,41 +43,76 @@ enum Session {
 /// Cuanto de la salida reciente se guarda para la ventana que toma la terminal.
 const BACKLOG: usize = 512 * 1024;
 
+/// Como mucho un mensaje de salida al WebView cada tanto. Cada mensaje es un `eval` en el
+/// WebView, y la ConPTY entrega de a una linea: un `type` de 32 MB eran 440.000 mensajes y
+/// tardaba minutos. Lo que llega despues de un rato sin salida (el eco de una tecla) sale
+/// en el momento; durante una rafaga se junta y sale una vez por intervalo.
+const GAP: Duration = Duration::from_millis(8);
+/// Si se junta esto antes del intervalo, sale igual (para no armar mensajes enormes).
+const MAX_BATCH: usize = 1024 * 1024;
+
 /// A donde va la salida de una sesion. Entre que una ventana la suelta y otra la toma,
 /// la salida se sigue guardando; la ventana nueva arranca con eso y la pantalla queda igual.
 struct Sink {
-    ch: Option<Channel<TermEvent>>,
+    ch: Option<Events>,
     backlog: VecDeque<u8>,
     /// Soltada a proposito, esperando otra ventana.
     held: bool,
+    /// Salida que todavia no se mando (tambien esta en `backlog`).
+    pending: Vec<u8>,
+    /// Hay un envio de `pending` programado.
+    scheduled: bool,
+    /// Cuando salio el ultimo mensaje.
+    last: Instant,
 }
 
 impl Sink {
-    fn new(ch: Channel<TermEvent>) -> Arc<Mutex<Sink>> {
-        Arc::new(Mutex::new(Sink { ch: Some(ch), backlog: VecDeque::new(), held: false }))
+    fn new(ch: Events) -> Arc<Mutex<Sink>> {
+        let last = Instant::now().checked_sub(GAP).unwrap_or_else(Instant::now);
+        Arc::new(Mutex::new(Sink { ch: Some(ch), backlog: VecDeque::new(), held: false, pending: Vec::new(), scheduled: false, last }))
     }
 
     /// Devuelve false si la ventana se cerro (y nadie la esta esperando): hay que cortar.
-    fn push(&mut self, data: &[u8]) -> bool {
-        self.backlog.extend(data);
-        let extra = self.backlog.len().saturating_sub(BACKLOG);
-        self.backlog.drain(..extra);
-        match &self.ch {
-            Some(ch) => {
-                if ch.send(TermEvent::Data { b64: B64.encode(data) }).is_ok() {
-                    true
-                } else {
-                    self.ch = None;
-                    self.held
-                }
+    fn push(sink: &Arc<Mutex<Sink>>, data: &[u8]) -> bool {
+        let mut k = sink.lock().unwrap();
+        k.backlog.extend(data);
+        let extra = k.backlog.len().saturating_sub(BACKLOG);
+        k.backlog.drain(..extra);
+        k.pending.extend_from_slice(data);
+        let wait = GAP.saturating_sub(k.last.elapsed());
+        if wait.is_zero() || k.pending.len() >= MAX_BATCH {
+            k.flush();
+        } else if !k.scheduled {
+            k.scheduled = true;
+            let sink = sink.clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(wait).await;
+                let mut k = sink.lock().unwrap();
+                k.scheduled = false;
+                k.flush();
+            });
+        }
+        k.ch.is_some() || k.held
+    }
+
+    /// Manda lo pendiente. Sin ventana se descarta: ya esta en `backlog` para la proxima.
+    fn flush(&mut self) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let bytes = std::mem::take(&mut self.pending);
+        self.last = Instant::now();
+        if let Some(ch) = &self.ch {
+            if ch.send(data(bytes)).is_err() {
+                self.ch = None;
             }
-            None => self.held,
         }
     }
 
     fn exit(&mut self, code: Option<u32>) {
+        self.flush();
         if let Some(ch) = &self.ch {
-            let _ = ch.send(TermEvent::Exit { code });
+            let _ = ch.send(event(TermEvent::Exit { code }));
         }
     }
 }
@@ -100,18 +136,29 @@ impl Terms {
     }
 }
 
+/// El canal de una terminal. La salida va en bytes crudos (llega como `ArrayBuffer`, sin
+/// pasar por base64 ni JSON); el resto de los avisos, como JSON (`TermEvent`).
+type Events = Channel<InvokeResponseBody>;
+
 #[derive(Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum TermEvent {
-    Data { b64: String },
+enum TermEvent {
     Exit { code: Option<u32> },
     /// Termino de llegar lo que ya se habia visto (term_attach). Hasta aca, lo que la
     /// terminal conteste a esas secuencias viejas no tiene que llegar a la shell.
     Replayed,
 }
 
+fn data(bytes: Vec<u8>) -> InvokeResponseBody {
+    InvokeResponseBody::Raw(bytes)
+}
+
+fn event(e: TermEvent) -> InvokeResponseBody {
+    InvokeResponseBody::Json(serde_json::to_string(&e).unwrap_or_default())
+}
+
 #[tauri::command]
-pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u32, on_event: Channel<TermEvent>) -> Result<u32, Error> {
+pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u32, on_event: Events) -> Result<u32, Error> {
     let b = s.broker.clone();
     b.touch_ui();
     let h = b.read(|d| d.hosts.iter().find(|x| x.name == host).cloned())?.ok_or(Error::NotFound(host.clone()))?;
@@ -153,7 +200,7 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
                 ChannelMsg::Close | ChannelMsg::Eof => break,
                 _ => continue,
             };
-            if !sink.lock().unwrap().push(&data[..]) {
+            if !Sink::push(&sink, &data[..]) {
                 break; // la ventana ya no esta
             }
         }
@@ -168,7 +215,7 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
 /// La consola en crudo: lo que llega del puerto va al xterm y lo que se teclea va al puerto.
 /// Si el agente corre un comando mientras tanto, se ve pasar aca. Un Enter despierta al
 /// equipo; el login lo hace la persona.
-fn open_serial(s: &State<'_, AppState>, h: &ethereon_core::model::Host, on_event: Channel<TermEvent>) -> Result<u32, Error> {
+fn open_serial(s: &State<'_, AppState>, h: &ethereon_core::model::Host, on_event: Events) -> Result<u32, Error> {
     use std::sync::atomic::AtomicBool;
     let b = s.broker.clone();
     let conn = b.serial_connection(h)?;
@@ -190,7 +237,7 @@ fn open_serial(s: &State<'_, AppState>, h: &ethereon_core::model::Host, on_event
             match tap.recv(std::time::Duration::from_millis(500)) {
                 Ok(Some(data)) => {
                     conn.touch();
-                    if !sink.lock().unwrap().push(&data) {
+                    if !Sink::push(&sink, &data) {
                         break; // la ventana ya no esta
                     }
                 }
@@ -256,7 +303,7 @@ pub fn term_open_local(
     cols: u32,
     rows: u32,
     cwd: Option<String>,
-    on_event: Channel<TermEvent>,
+    on_event: Events,
 ) -> Result<u32, Error> {
     let shell_id = shell.clone();
     let (_, path, args) = shells().into_iter().find(|(x, ..)| x.id == shell).ok_or(Error::NotFound(shell))?;
@@ -319,7 +366,7 @@ pub fn term_open_local(
             match reader.read(&mut buf) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    if !sink.lock().unwrap().push(&buf[..n]) {
+                    if !Sink::push(&sink, &buf[..n]) {
                         let _ = local.lock().unwrap().child.kill();
                         break;
                     }
@@ -481,14 +528,16 @@ pub fn term_detach(s: State<'_, AppState>, id: u32) -> Result<(), Error> {
 
 /// Otra ventana toma la terminal: primero recibe lo ultimo que paso y despues sigue en vivo.
 #[tauri::command]
-pub fn term_attach(s: State<'_, AppState>, id: u32, on_event: Channel<TermEvent>) -> Result<(), Error> {
+pub fn term_attach(s: State<'_, AppState>, id: u32, on_event: Events) -> Result<(), Error> {
     let sink = s.terms.map.lock().unwrap().get(&id).map(|e| e.sink.clone()).ok_or(Error::NotFound("terminal session".into()))?;
     let mut k = sink.lock().unwrap();
+    // Lo que faltaba mandar ya esta en el historial que se repite.
+    k.pending.clear();
     let back: Vec<u8> = k.backlog.iter().copied().collect();
     for chunk in back.chunks(64 * 1024) {
-        let _ = on_event.send(TermEvent::Data { b64: B64.encode(chunk) });
+        let _ = on_event.send(data(chunk.to_vec()));
     }
-    let _ = on_event.send(TermEvent::Replayed);
+    let _ = on_event.send(event(TermEvent::Replayed));
     k.ch = Some(on_event);
     k.held = false;
     Ok(())
