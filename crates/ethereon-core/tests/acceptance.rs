@@ -457,6 +457,15 @@ async fn paste_image() {
     assert_eq!(s.metadata("/home/tester/.cache/ethereon/paste").await.unwrap().permissions.unwrap() & 0o777, 0o700);
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     assert_ne!(sftp.paste_image(png).await.unwrap(), path);
+
+    // Un archivo soltado sobre la terminal: mismo lugar, nombre sin espacios ni rarezas.
+    let local = dir.path().join("mi captura (1).png");
+    std::fs::write(&local, png).unwrap();
+    let up = sftp.paste_file(&local).await.unwrap();
+    assert!(up.starts_with("/home/tester/.cache/ethereon/paste/paste-") && up.ends_with("-mi_captura__1_.png"), "{up}");
+    assert_eq!(s.read(up.as_str()).await.unwrap(), png);
+    assert_eq!(s.metadata(up.as_str()).await.unwrap().permissions.unwrap() & 0o777, 0o600);
+    assert!(sftp.paste_file(dir.path()).await.is_err(), "una carpeta no se sube");
 }
 
 /// Un servidor que solo acepta los intercambios de claves de un F5 (ECDH NIST y los de

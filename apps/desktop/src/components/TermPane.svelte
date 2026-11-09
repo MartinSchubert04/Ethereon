@@ -6,6 +6,7 @@
   import { WebglAddon } from "@xterm/addon-webgl";
   import { ImageAddon } from "@xterm/addon-image";
   import { Channel } from "@tauri-apps/api/core";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { api, errText, type TermEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
   import { app, leaving, toast, type TermTab } from "../lib/state.svelte";
@@ -101,6 +102,66 @@
       uploading = false;
     }
   }
+
+  // ---- archivos soltados desde el Explorador (Tauri se queda con el arrastre: el evento
+  // `drop` del navegador no llega, y sin esto no pasaba nada)
+
+  // Como lo hace Windows Terminal: la ruta escrita para la shell, entre comillas si hace
+  // falta. Las shells tipo bash la ven en su formato (/mnt/c en WSL, /c en Git Bash).
+  const posix = (x: string) => (/^[\w@%+=:,./-]+$/.test(x) ? x : `'${x.replace(/'/g, "'\\''")}'`);
+  function localPath(p: string, shell: string): string {
+    const unix = (root: string) => p.replace(/^([A-Za-z]):\\/, (_, d) => `${root}${d.toLowerCase()}/`).replace(/\\/g, "/");
+    if (shell === "wsl") return posix(unix("/mnt/"));
+    if (shell === "gitbash") return posix(unix("/"));
+    if (shell === "shell") return posix(p);
+    return /[\s&()^;,'`$]/.test(p) ? `"${p}"` : p;
+  }
+
+  // Por SSH la ruta de esta PC no le sirve al servidor: se suben los archivos (como una
+  // imagen pegada) y se escribe donde quedaron.
+  let dropping = false;
+  async function dropFiles(paths: string[]) {
+    const t = me();
+    if (!L.id || !paths.length) return;
+    let out: string[];
+    if (t.local) out = paths.map((p) => localPath(p, t.local!));
+    else {
+      if (dropping) return;
+      dropping = true;
+      toast(paths.length === 1 ? "Uploading the file..." : `Uploading ${paths.length} files...`);
+      try {
+        out = (await api.termPasteFiles(t.host, paths)).map(posix);
+      } catch (e) {
+        toast(`Couldn't send the file: ${errText(e)}`, true);
+        return;
+      } finally {
+        dropping = false;
+      }
+    }
+    term.paste(out.join(" "));
+    term.focus();
+  }
+
+  let dropOver = $state(false);
+  let unlistenDrop: (() => void) | undefined;
+  let gone = false;
+  getCurrentWebview()
+    .onDragDropEvent((ev) => {
+      const p = ev.payload;
+      const inside = (pos: { x: number; y: number }) => {
+        if (!shown || !el) return false;
+        const r = devicePixelRatio || 1;
+        const hit = document.elementFromPoint(pos.x / r, pos.y / r);
+        return !!hit && el.parentElement!.contains(hit);
+      };
+      if (p.type === "enter" || p.type === "over") dropOver = inside(p.position);
+      else if (p.type === "drop") {
+        const hit = inside(p.position);
+        dropOver = false;
+        if (hit) dropFiles(p.paths);
+      } else dropOver = false;
+    })
+    .then((u) => (gone ? u() : (unlistenDrop = u)));
 
   // OSC 52: un programa de la terminal pide copiar ("52;c;<base64>"). Asi copian Claude
   // Code, tmux o vim cuando corren en un servidor. Leer el portapapeles ("?") no se permite.
@@ -461,7 +522,10 @@
   onDestroy(() => {
     window.removeEventListener("themechange", onTheme);
     document.fonts.removeEventListener("loadingdone", refont);
-    window.removeEventListener("ethereon:refresh", onRefresh);    if (!L) return;
+    window.removeEventListener("ethereon:refresh", onRefresh);
+    gone = true;
+    unlistenDrop?.();
+    if (!L) return;
     dbg("panel desmontado", { key, parked: L.parked });
     // Estacionada: otro panel de esta ventana la toma, sigue viva.
     if (L.parked) return;
@@ -480,7 +544,7 @@
   <!-- El relleno va en .term y la terminal en .host, sin relleno: FitAddon mide la altura
        del contenedor directo y, con border-box, contaria el relleno como espacio libre
        (sobraba una fila y lo de abajo quedaba cortado). -->
-  <div class="term card"><div class="host" bind:this={el}></div></div>
+  <div class="term card" class:drop-over={dropOver}><div class="host" bind:this={el}></div></div>
 </div>
 
 <style>
@@ -493,10 +557,21 @@
     padding: 10px 4px 4px 12px;
     background: var(--term-bg);
     overflow: hidden;
+    position: relative;
   }
   .host {
     height: 100%;
     overflow: hidden;
+  }
+  /* Encima de los canvas de xterm: una sombra interna quedaria debajo. */
+  .term.drop-over::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    border-radius: inherit;
+    box-shadow: 0 0 0 2px var(--accent) inset;
+    pointer-events: none;
   }
   .bare {
     padding: 0;

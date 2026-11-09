@@ -605,6 +605,33 @@ pub async fn term_paste_image(app: tauri::AppHandle, s: State<'_, AppState>, hos
     r.map(Some)
 }
 
+/// Archivos de esta PC soltados sobre una terminal SSH: se suben por SFTP (como una imagen
+/// pegada) y se devuelven sus rutas en el servidor, en el mismo orden.
+#[tauri::command]
+pub async fn term_paste_files(s: State<'_, AppState>, host: String, paths: Vec<String>) -> Result<Vec<String>, Error> {
+    let b = s.broker.clone();
+    b.touch_ui();
+    let h = b.read(|d| d.hosts.iter().find(|x| x.name == host).cloned())?.ok_or(Error::NotFound(host.clone()))?;
+    if h.is_serial() {
+        return Err(Error::Invalid("a serial console can't receive files".into()));
+    }
+    let sftp = ethereon_core::files::Sftp::open(b.connection(&h).await?).await?;
+    let mut out = Vec::new();
+    for p in paths {
+        let r = sftp.paste_file(std::path::Path::new(&p)).await;
+        b.audit_log(Entry {
+            device: "ui".into(),
+            host: host.clone(),
+            command: format!("[sftp] drop file {p}{}", r.as_ref().map(|r| format!(" → {r}")).unwrap_or_default()),
+            decision: if r.is_ok() { "allowed" } else { "error" }.into(),
+            detail: r.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
+            ..Default::default()
+        });
+        out.push(r?);
+    }
+    Ok(out)
+}
+
 fn encode_png(w: u32, h: u32, rgba: &[u8]) -> Result<Vec<u8>, Error> {
     let bad = |e: png::EncodingError| Error::Invalid(format!("couldn't encode the image: {e}"));
     let mut out = Vec::new();

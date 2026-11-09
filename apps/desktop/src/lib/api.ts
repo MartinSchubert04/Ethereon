@@ -302,6 +302,8 @@ export const api = {
   termClose: (id: number) => invoke<void>("term_close", { id }),
   /** Sube la imagen del portapapeles al host y devuelve su ruta (null si no hay imagen). */
   termPasteImage: (host: string) => invoke<string | null>("term_paste_image", { host }),
+  /** Sube archivos de esta PC al host y devuelve sus rutas alli. */
+  termPasteFiles: (host: string, paths: string[]) => invoke<string[]>("term_paste_files", { host, paths }),
   /** Suelta la sesion para que otra ventana la tome. */
   termDetach: (id: number) => invoke<void>("term_detach", { id }),
   /** Toma una sesion que solto otra ventana (recibe primero lo ultimo que se vio). */

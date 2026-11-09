@@ -36,6 +36,12 @@ const CHUNK: usize = 128 * 1024;
 const PASTE_DIR: &str = ".cache/ethereon/paste";
 /// Segundos que vive una imagen pegada.
 const PASTE_TTL: u64 = 24 * 3600;
+/// Tope de un archivo soltado sobre una terminal SSH (ver `paste_file`).
+const PASTE_MAX: u64 = 100 << 20;
+
+fn millis() -> u128 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis()
+}
 
 fn sftp_err(e: impl std::fmt::Display) -> Error {
     let s = e.to_string();
@@ -194,17 +200,48 @@ impl Sftp {
     /// porque por SSH no ven el portapapeles de esta PC. Va en `~/.cache/ethereon/paste`,
     /// solo para el dueño (carpeta 0700, archivo 0600); las de mas de un dia se borran aca.
     pub async fn paste_image(&self, png: &[u8]) -> Result<String> {
+        let path = rjoin(&self.paste_dir().await?, &format!("paste-{}.png", millis()));
+        self.paste_write(&path, png).await?;
+        Ok(path)
+    }
+
+    /// Lo mismo para un archivo de esta PC soltado sobre la terminal: se sube a la misma
+    /// carpeta y se devuelve su ruta remota. El nombre conserva el original (Claude Code mira
+    /// la extension) pero solo con letras, numeros y `._-`, para pegarlo sin comillas.
+    /// Solo archivos, hasta `PASTE_MAX`: una carpeta o algo grande va por el panel de archivos.
+    pub async fn paste_file(&self, local: &Path) -> Result<String> {
+        let meta = std::fs::metadata(local).map_err(io_err)?;
+        if !meta.is_file() {
+            return Err(Error::Invalid("only files can be dropped on an SSH terminal; use Files for folders".into()));
+        }
+        if meta.len() > PASTE_MAX {
+            return Err(Error::Invalid(format!("it's over {} MB; use Files for big files", PASTE_MAX >> 20)));
+        }
+        let name: String = local
+            .file_name()
+            .map(|n| n.to_string_lossy())
+            .unwrap_or_default()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || "._-".contains(c) { c } else { '_' })
+            .collect();
+        let data = std::fs::read(local).map_err(io_err)?;
+        let path = rjoin(&self.paste_dir().await?, &format!("paste-{}-{name}", millis()));
+        self.paste_write(&path, &data).await?;
+        Ok(path)
+    }
+
+    /// Crea (0700) la carpeta de lo pegado y borra lo de mas de un dia.
+    async fn paste_dir(&self) -> Result<String> {
         self.conn.touch();
         let mut dir = self.home().await?;
         for part in PASTE_DIR.split('/') {
             dir = rjoin(&dir, part);
             if !self.s.try_exists(&dir).await.unwrap_or(false) {
-                // Si falla, lo dice la escritura de abajo.
+                // Si falla, lo dice la escritura (`paste_write`).
                 let _ = self.s.create_dir(&dir).await;
             }
         }
-        let owner_only = |mode| FileAttributes { permissions: Some(mode), ..Default::default() };
-        let _ = self.s.set_metadata(&dir, owner_only(0o700)).await;
+        let _ = self.s.set_metadata(&dir, FileAttributes { permissions: Some(0o700), ..Default::default() }).await;
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
         for e in self.list(&dir).await.unwrap_or_default() {
             let old = e.mtime.is_some_and(|m| now.as_secs().saturating_sub(m) > PASTE_TTL);
@@ -212,12 +249,16 @@ impl Sftp {
                 let _ = self.s.remove_file(rjoin(&dir, &e.name)).await;
             }
         }
-        let path = rjoin(&dir, &format!("paste-{}.png", now.as_millis()));
+        Ok(dir)
+    }
+
+    /// Escribe un archivo nuevo solo para el dueño (0600); si ya existe, falla.
+    async fn paste_write(&self, path: &str, data: &[u8]) -> Result<()> {
+        let attrs = FileAttributes { permissions: Some(0o600), ..Default::default() };
         let flags = OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE;
-        let mut f = self.s.open_with_flags_and_attributes(&path, flags, owner_only(0o600)).await.map_err(sftp_err)?;
-        f.write_all(png).await.map_err(sftp_err)?;
-        f.shutdown().await.map_err(sftp_err)?;
-        Ok(path)
+        let mut f = self.s.open_with_flags_and_attributes(path, flags, attrs).await.map_err(sftp_err)?;
+        f.write_all(data).await.map_err(sftp_err)?;
+        f.shutdown().await.map_err(sftp_err)
     }
 
     /// Sube un archivo o carpeta local adentro de la carpeta remota `into`.
