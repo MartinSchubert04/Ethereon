@@ -14,6 +14,7 @@
   } from "@lucide/svelte";
   import { api } from "./lib/api";
   import { app, attempt, start, type View } from "./lib/state.svelte";
+  import { dragApprovals } from "./lib/tiles.svelte";
   import { installShortcuts } from "./lib/shortcuts";
   import { confirmKey, prompt } from "./lib/hostkey.svelte";
   import HostKeyPrompt from "./components/HostKeyPrompt.svelte";
@@ -104,7 +105,14 @@
     <aside class="sidebar">
       <nav>
         {#each nav as n}
-          <button class="nav" class:on={app.view === n.id} onclick={() => go(n.id)} title={n.label}>
+          <!-- Approvals tambien se arrastra a una pestaña: queda en mosaico al lado de la terminal. -->
+          <button
+            class="nav"
+            class:on={app.view === n.id}
+            onclick={() => go(n.id)}
+            onpointerdown={n.id === "approvals" ? dragApprovals : undefined}
+            title={n.id === "approvals" ? "Approvals · drag it onto a tab to put it beside a terminal" : n.label}
+          >
             <n.icon size={16} />
             <span class="grow label">{n.label}</span>
             {#if n.id === "approvals" && app.approvals.length}

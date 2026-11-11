@@ -5,6 +5,7 @@
   import { app } from "../lib/state.svelte";
   import Seg from "./Seg.svelte";
   import Switch from "./Switch.svelte";
+  import SizeInput from "./SizeInput.svelte";
   import { ask } from "../lib/confirm.svelte";
   import { pop } from "../lib/motion";
 
@@ -93,7 +94,7 @@
             {filesHelp[policy.mode]} SSH hosts only. Binary files are never downloaded, and nothing that contains a secret
             from the vault is uploaded.
           </div>
-          <label class="field">Max file size (KB)<input type="number" min="1" bind:value={policy.max_file_kb} /></label>
+          <SizeInput label="Max file size" bind:kb={policy.max_file_kb} />
         </div>
       {/if}
     {/if}
@@ -103,7 +104,7 @@
 <style>
   .files {
     display: grid;
-    grid-template-columns: 1fr 150px;
+    grid-template-columns: 1fr 210px;
     gap: 12px;
     align-items: end;
   }

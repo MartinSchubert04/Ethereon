@@ -10,7 +10,7 @@
   import { fadeQuick, pop } from "../lib/motion";
   import { addrOf } from "../lib/api";
   import { app, type TermTab } from "../lib/state.svelte";
-  import { barTabAt, closeLeaf, drop, geometry, moveLeaf, moveLeafTo, popOut, splittable, tileAt, type Split, type Rect } from "../lib/tiles.svelte";
+  import { closeLeaf, dragToTabs, drop, geometry, moveLeaf, moveLeafTo, popOut, type Split, type Rect } from "../lib/tiles.svelte";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
 
@@ -64,75 +64,21 @@
   // esa (y si se queda un momento, la muestra para soltarlo en el panel que se quiera); en
   // otro lado vuelve a ser una pestaña sola. Soltado en ningun lado, vuelve lo que se veia.
 
-  let ghost = $state<{ x: number; y: number; text: string } | null>(null);
-  /** Cuanto hay que quedarse encima de una pestaña para que se muestre (como al arrastrar
-   *  pestañas, en Titlebar). */
-  const HOVER_SHOW = 450;
-
   function pillDown(e: PointerEvent, m: TermTab) {
-    if (e.button !== 0) return;
-    const pill = e.currentTarget as HTMLElement;
-    pill.setPointerCapture(e.pointerId);
-    const sx = e.clientX;
-    const sy = e.clientY;
-    const orig = { view: app.view, active: app.activeTerm };
-    let started = false;
-    let bar = false;
-    /** La pestaña de la barra bajo el puntero, y si se le puede sumar el panel. */
-    let over: number | null = null;
-    let joins = false;
-    let timer = 0;
-    const hover = (key: number | null) => {
-      if (key === over) return;
-      over = key;
-      const dst = key != null && key !== tab.key ? app.terms.find((t) => t.key === key) : undefined;
-      joins = !!dst && splittable(dst);
-      drop.tabOver = joins ? key : null;
-      clearTimeout(timer);
-      if (key == null) return;
-      timer = window.setTimeout(() => {
-        if (over !== key || !app.terms.some((t) => t.key === key)) return;
-        app.activeTerm = key;
-        app.view = "terminal";
-      }, HOVER_SHOW);
-    };
-    // En la ventana y no en la pastilla: si se muestra otra pestaña, esta queda oculta.
-    const move = (ev: PointerEvent) => {
-      if (!started && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
-      started = true;
-      const barEl = document.querySelector(".bar");
-      bar = !!barEl && ev.clientY <= barEl.getBoundingClientRect().bottom;
-      hover(bar ? barTabAt(ev.clientX) : null);
-      const t = bar ? null : tileAt(ev.clientX, ev.clientY);
-      drop.hint = t && !(t.tab === tab.key && t.leaf === m.key) ? t : null;
-      const name = joins ? app.terms.find((x) => x.key === over)?.title : undefined;
-      const text = !bar ? m.title : name ? `Release to add "${m.title}" to ${name}` : `Release to make "${m.title}" a tab`;
-      ghost = { x: ev.clientX, y: ev.clientY, text };
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-      clearTimeout(timer);
-      drop.tabOver = null;
-      const h = drop.hint;
-      drop.hint = null;
-      ghost = null;
-      if (!started) return;
-      if (bar && joins && over != null) moveLeafTo(tab, m.key, over);
-      else if (bar) popOut(tab, m.key);
-      else if (h && h.tab === tab.key) {
-        moveLeaf(tab, m.key, h.leaf, h.side);
-        app.activeTerm = tab.key;
-      } else if (h) moveLeafTo(tab, m.key, h.tab, h.leaf, h.side);
-      else {
-        if (app.terms.some((t) => t.key === orig.active)) app.activeTerm = orig.active;
-        app.view = orig.view;
-      }
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    dragToTabs(e, {
+      label: m.title,
+      self: tab.key,
+      skip: (h) => h.tab === tab.key && h.leaf === m.key,
+      barText: `Release to make "${m.title}" a tab`,
+      onDrop: (to) => {
+        if (to === "bar") popOut(tab, m.key);
+        else if (to.tab !== tab.key) moveLeafTo(tab, m.key, to.tab, to.leaf, to.side);
+        else if (to.leaf != null) {
+          moveLeaf(tab, m.key, to.leaf, to.side);
+          app.activeTerm = tab.key;
+        }
+      },
+    });
   }
 </script>
 
@@ -201,9 +147,6 @@
   {/if}
 </div>
 
-{#if ghost}
-  <div class="ghost" style="left:{ghost.x + 14}px;top:{ghost.y + 10}px">{ghost.text}</div>
-{/if}
 
 <style>
   .tiles {
@@ -420,31 +363,9 @@
   .drop.edge.bottom {
     inset: calc(100% - var(--share)) 0 0 0;
   }
-  .ghost {
-    position: fixed;
-    z-index: 50;
-    padding: 4px 10px;
-    border: 1px solid var(--line-strong);
-    border-radius: 999px;
-    background: var(--panel-2);
-    color: var(--text);
-    font: 600 11.5px var(--mono);
-    pointer-events: none;
-    box-shadow: var(--pop-shadow);
-    animation: lift 0.14s ease-out;
-    /* Sigue a la vista aunque esta pestaña se oculte (al mostrar otra para soltarlo ahi). */
-    visibility: visible;
-  }
-  @keyframes lift {
-    from {
-      opacity: 0;
-      transform: scale(0.92);
-    }
-  }
   @media (prefers-reduced-motion: reduce) {
     .tiled .slot,
-    .drop,
-    .ghost {
+    .drop {
       transition: none;
       animation: none;
     }

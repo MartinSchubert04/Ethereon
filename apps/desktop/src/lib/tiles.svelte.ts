@@ -7,7 +7,7 @@
 // que ya estaba en la pestaña conserva su clave, asi no se vuelve a montar.
 import { api } from "./api";
 import { park } from "./live";
-import { app, closeTerminal, leaving, lockedWarn, newKey, toast, type TermTab } from "./state.svelte";
+import { app, closeTerminal, leaving, lockedWarn, newKey, openApprovals, toast, type TermTab } from "./state.svelte";
 
 export type Side = "left" | "right" | "top" | "bottom";
 export type Split = { dir: "row" | "col"; ratio: number; a: Tile; b: Tile };
@@ -24,6 +24,8 @@ export const drop = $state({
   swap: null as null | { tab: number; leaf: number },
   /** Mover con el teclado: un borde de todo el mosaico (ocupa ese lado entero). */
   edge: null as null | { tab: number; side: Side },
+  /** El rotulo que sigue al mouse mientras se arrastra (lo dibuja Titlebar, que siempre se ve). */
+  ghost: null as null | { x: number; y: number; text: string },
 });
 
 export function leaves(t: Tile): number[] {
@@ -159,8 +161,19 @@ async function lift(t: TermTab): Promise<{ members: TermTab[]; layout: Tile }> {
   return { members, layout: remap(t.layout ?? { leaf: t.key }, (k) => keys.get(k) ?? k) };
 }
 
-/** Lleva la pestaña `from` (con todos sus paneles) al costado de un panel de otra pestaña. */
-export async function mergeInto(from: number, to: number, leaf: number, side: Side) {
+/** Pone `sub` (ya sumado a `members`) al costado `side` del panel `leaf`, o sin `leaf` a la
+ *  derecha de todo el mosaico, con la parte que le toca segun cuantos paneles trae. */
+function place(dst: TermTab, sub: Tile, leaf: number | undefined, side: Side) {
+  if (leaf != null) dst.layout = insert(dst.layout!, leaf, sub, side);
+  else {
+    const share = leaves(sub).length / dst.members!.length;
+    dst.layout = { dir: "row", ratio: 1 - share, a: dst.layout!, b: sub };
+  }
+}
+
+/** Lleva la pestaña `from` (con todos sus paneles) al costado de un panel de otra pestaña (sin
+ *  `leaf`: a la derecha de todo). */
+export async function mergeInto(from: number, to: number, leaf: number | undefined, side: Side) {
   const src = app.terms.find((t) => t.key === from);
   const dst = app.terms.find((t) => t.key === to);
   if (!src || !dst || src === dst) return;
@@ -168,7 +181,7 @@ export async function mergeInto(from: number, to: number, leaf: number, side: Si
   const got = await lift(src);
   tile(dst);
   dst.members!.push(...got.members);
-  dst.layout = insert(dst.layout!, leaf, got.layout, side);
+  place(dst, got.layout, leaf, side);
   dst.focus = got.members[0].key;
   closeTerminal(from);
   app.activeTerm = dst.key;
@@ -255,11 +268,7 @@ export async function moveLeafTo(t: TermTab, key: number, to: number, leaf?: num
   forget(t, key);
   tile(dst);
   dst.members!.push(nt);
-  if (leaf != null) dst.layout = insert(dst.layout!, leaf, { leaf: nt.key }, side);
-  else {
-    const n = dst.members!.length;
-    dst.layout = { dir: "row", ratio: 1 - 1 / n, a: dst.layout!, b: { leaf: nt.key } };
-  }
+  place(dst, { leaf: nt.key }, leaf, side);
   dst.focus = nt.key;
   app.activeTerm = dst.key;
   app.view = "terminal";
@@ -283,4 +292,146 @@ export async function popOut(t: TermTab, key: number) {
   forget(t, key);
   app.terms.splice(app.terms.indexOf(t) + 1, 0, nt);
   app.activeTerm = nt.key;
+}
+
+/** Las aprobaciones al costado de un panel de la pestaña `to` (sin `leaf`: a la derecha de
+ *  todo). Si ya hay una pestaña o un panel de aprobaciones, se muda ese: no se abren dos. */
+export async function dropApprovals(to: number, leaf?: number, side: Side = "right") {
+  const dst = app.terms.find((t) => t.key === to);
+  if (!dst) return;
+  if (!splittable(dst)) return toast("Only terminals and approvals can share a tab", true);
+  const show = () => {
+    app.activeTerm = dst.key;
+    app.view = "terminal";
+  };
+  for (const t of app.terms) {
+    // Pestaña de aprobaciones sola. En mosaico `approvals` sigue en la pestaña, pero el panel
+    // es uno de los miembros.
+    if (t.approvals && !t.layout) return t === dst ? show() : mergeInto(t.key, to, leaf, side);
+    const m = t.layout ? t.members?.find((x) => x.approvals) : undefined;
+    if (!m) continue;
+    if (t !== dst) return moveLeafTo(t, m.key, to, leaf, side);
+    if (leaf == null) moveToEdge(t, m.key, "right");
+    else if (leaf !== m.key) moveLeaf(t, m.key, leaf, side);
+    t.focus = m.key;
+    return show();
+  }
+  tile(dst);
+  const m: TermTab = { key: newKey(), host: "Approvals", approvals: true, title: "Approvals", alive: true };
+  dst.members!.push(m);
+  place(dst, { leaf: m.key }, leaf, side);
+  dst.focus = m.key;
+  show();
+}
+
+/** Ese panel es el de las aprobaciones. */
+export function isApprovals(h: { tab: number; leaf: number }) {
+  const t = app.terms.find((x) => x.key === h.tab);
+  const m = t?.layout ? t.members?.find((x) => x.key === h.leaf) : t;
+  return !!m?.approvals;
+}
+
+/** Cuanto hay que quedarse encima de una pestaña de la barra para que se muestre. */
+export const HOVER_SHOW = 450;
+
+export type Target = { tab: number; leaf?: number; side: Side } | "bar";
+
+/** Arrastrar algo (un panel del mosaico, las aprobaciones de la barra lateral) hacia las
+ *  pestañas. Sobre un panel de la que se ve: a ese costado. Sobre una pestaña de la barra: se
+ *  suma a esa, y si el mouse se queda un momento se muestra, para bajar y elegir el costado.
+ *  En otro lugar de la barra: "bar". Soltado en ningun lado, vuelve lo que se veia. Se sigue
+ *  en la ventana y no en el origen: al mostrar otra pestaña, el origen puede quedar oculto. */
+export function dragToTabs(
+  e: PointerEvent,
+  o: {
+    /** El nombre de lo que se arrastra, para el rotulo. */
+    label: string;
+    /** La pestaña de donde sale (soltarlo sobre ella en la barra no lo suma). */
+    self?: number;
+    /** Paneles sobre los que no se suelta (el mismo que se arrastra). */
+    skip?: (h: { tab: number; leaf: number }) => boolean;
+    /** Pestañas a las que no se suma. */
+    refuse?: (t: TermTab) => boolean;
+    /** El rotulo en un lugar de la barra que no suma. */
+    barText: string;
+    onStart?: () => void;
+    onDrop: (to: Target) => void;
+  },
+) {
+  if (e.button !== 0) return;
+  (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  const sx = e.clientX;
+  const sy = e.clientY;
+  const orig = { view: app.view, active: app.activeTerm };
+  let started = false;
+  let bar = false;
+  /** La pestaña de la barra bajo el puntero, y si se le puede sumar. */
+  let over: number | null = null;
+  let joins = false;
+  let timer = 0;
+  const hover = (key: number | null) => {
+    if (key === over) return;
+    over = key;
+    const dst = key != null && key !== o.self ? app.terms.find((t) => t.key === key) : undefined;
+    joins = !!dst && splittable(dst) && !o.refuse?.(dst);
+    drop.tabOver = joins ? key : null;
+    clearTimeout(timer);
+    if (key == null) return;
+    timer = window.setTimeout(() => {
+      if (over !== key || !app.terms.some((t) => t.key === key)) return;
+      app.activeTerm = key;
+      app.view = "terminal";
+    }, HOVER_SHOW);
+  };
+  const move = (ev: PointerEvent) => {
+    if (!started && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
+    if (!started) o.onStart?.();
+    started = true;
+    const barEl = document.querySelector(".bar");
+    bar = !!barEl && ev.clientY <= barEl.getBoundingClientRect().bottom;
+    hover(bar ? barTabAt(ev.clientX) : null);
+    const t = bar ? null : tileAt(ev.clientX, ev.clientY);
+    drop.hint = t && !o.skip?.(t) ? t : null;
+    const name = joins ? app.terms.find((x) => x.key === over)?.title : undefined;
+    const text = !bar ? o.label : name ? `Release to add "${o.label}" to ${name}` : o.barText;
+    drop.ghost = { x: ev.clientX, y: ev.clientY, text };
+  };
+  // Con la captura, el WebView manda el clic del soltar al origen: no cuenta como clic.
+  const eat = (ev: MouseEvent) => ev.stopPropagation();
+  const up = () => {
+    window.removeEventListener("pointermove", move);
+    window.removeEventListener("pointerup", up);
+    window.removeEventListener("pointercancel", up);
+    clearTimeout(timer);
+    drop.tabOver = null;
+    const h = drop.hint;
+    drop.hint = null;
+    drop.ghost = null;
+    if (!started) return;
+    window.addEventListener("click", eat, true);
+    setTimeout(() => window.removeEventListener("click", eat, true), 0);
+    if (bar && joins && over != null) o.onDrop({ tab: over, side: "right" });
+    else if (bar) o.onDrop("bar");
+    else if (h) o.onDrop(h);
+    else {
+      if (app.terms.some((t) => t.key === orig.active)) app.activeTerm = orig.active;
+      app.view = orig.view;
+    }
+  };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+  window.addEventListener("pointercancel", up);
+}
+
+/** Arrastrar las aprobaciones desde la barra lateral a una pestaña (ver dragToTabs). */
+export function dragApprovals(e: PointerEvent) {
+  dragToTabs(e, {
+    label: "Approvals",
+    skip: isApprovals,
+    refuse: (t) => !!t.approvals && !t.layout,
+    barText: "Release to open Approvals",
+    // Con la barra lateral flotando sobre las terminales: se cierra para ver donde cae.
+    onStart: () => (app.sidebarOverlay = false),
+    onDrop: (to) => (to === "bar" ? openApprovals() : dropApprovals(to.tab, to.leaf, to.side)),
+  });
 }

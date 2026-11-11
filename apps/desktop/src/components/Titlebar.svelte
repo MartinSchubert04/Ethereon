@@ -63,7 +63,6 @@
   /** El mouse salio de la barra (hacia las terminales o fuera de la ventana): la pestaña
    *  vuelve a su lugar y la sigue un rotulo. */
   let away = $state(false);
-  let ghost = $state<{ x: number; y: number; title: string } | null>(null);
   let lastX = 0;
 
   /** Pone la que se arrastra bajo el mouse, sin salirse de la fila de pestañas. Cuenta con
@@ -119,7 +118,7 @@
     const barBottom = tabsEl.closest(".bar")?.getBoundingClientRect().bottom ?? 46;
     lastX = e.clientX;
     away = !inside || e.clientY > barBottom + 8;
-    ghost = away && inside ? { x: e.clientX, y: e.clientY, title: app.terms.find((t) => t.key === td!.key)?.title ?? "" } : null;
+    drop.ghost = away && inside ? { x: e.clientX, y: e.clientY, text: app.terms.find((t) => t.key === td!.key)?.title ?? "" } : null;
     if (away) dx = 0;
     else follow(e.clientX);
     const dragged = app.terms.find((t) => t.key === td!.key);
@@ -221,7 +220,7 @@
     dropOn = null;
     dx = 0;
     away = false;
-    ghost = null;
+    drop.ghost = null;
     const hint = drop.hint;
     drop.hint = null;
     dbg("pestaña: soltar", { key: d?.key, started: d?.started, out: d?.out, hint, orig: d?.orig, view: app.view, active: app.activeTerm }, true);
@@ -348,8 +347,8 @@
 
   <div class="drag" data-tauri-drag-region></div>
 
-  {#if ghost}
-    <div class="ghost" style="left:{ghost.x + 14}px;top:{ghost.y + 10}px">{ghost.title}</div>
+  {#if drop.ghost}
+    <div class="ghost" style="left:{drop.ghost.x + 14}px;top:{drop.ghost.y + 10}px">{drop.ghost.text}</div>
   {/if}
 
   {#if menu}
@@ -477,7 +476,7 @@
   .ghost {
     position: fixed;
     z-index: 50;
-    max-width: 260px;
+    max-width: 420px;
     padding: 4px 10px;
     border: 1px solid var(--line-strong);
     border-radius: 999px;
