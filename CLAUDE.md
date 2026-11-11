@@ -84,9 +84,10 @@ apps/desktop/src/         interfaz: views/ (una por sección), components/, lib/
 - Docs y comentarios en español; textos de la interfaz en inglés, literales (ver `DESIGN.md`).
 - **Espacio en disco de Rust.** En noviembre de 2026 `target/` llegó a ~110 GB (más ~12 GB en los
   worktrees) y llenó el C:. Para que no vuelva a pasar:
-  - `--release` solo para publicar o probar el instalador; después, `cargo clean --release`.
+  - `--release` solo para publicar o probar el instalador.
   - En un worktree (`.claude/worktrees/`) compilar con `CARGO_TARGET_DIR` apuntando al `target/`
     del repo principal (`$env:CARGO_TARGET_DIR="<repo>\target"`), no crear uno nuevo. Al terminar
     la tarea, `git worktree remove` del worktree.
-  - Al terminar una tarea que compiló, mirar el tamaño de `target/`: si pasa de 20 GB,
-    `cargo clean` y avisar.
+  - Al terminar las pruebas de una tarea que compiló (antes del push que la publica), `cargo clean`
+    en `target/`: queda en 0. Volver a compilar tarda unos minutos, pero el disco no se llena.
+    Antes, cerrar la instancia de prueba que corre desde ahí (Windows no deja borrar su .exe).
