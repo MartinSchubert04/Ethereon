@@ -13,8 +13,10 @@
   import Scramble from "./Scramble.svelte";
   import { onMount } from "svelte";
   import { app, closeTab, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
-  import { pop } from "../lib/motion";
-  import { drop, mergeInto, splittable, tileAt } from "../lib/tiles.svelte";
+  import { flipMs, pop } from "../lib/motion";
+  import { flip } from "svelte/animate";
+  import { tick } from "svelte";
+  import { barTabAt, drop, mergeInto, splittable, tileAt } from "../lib/tiles.svelte";
   import { dbg, sw } from "../lib/debug.svelte";
 
   let { locked = false }: { locked?: boolean } = $props();
@@ -50,7 +52,31 @@
     /** La pestaña bajo el mouse y desde cuando (para mostrarla si se queda ahi). */
     hover?: number;
     hoverTimer?: number;
+    /** La pestaña en la barra, y de donde se la agarro (para que vaya bajo el mouse). */
+    el: HTMLElement;
+    grab: number;
+    pointer: number;
   } | null = null;
+  let tabsEl = $state<HTMLDivElement>()!;
+  /** Cuanto se corre la que se arrastra de su lugar en la fila: va bajo el mouse. */
+  let dx = $state(0);
+  /** El mouse salio de la barra (hacia las terminales o fuera de la ventana): la pestaña
+   *  vuelve a su lugar y la sigue un rotulo. */
+  let away = $state(false);
+  let ghost = $state<{ x: number; y: number; title: string } | null>(null);
+  let lastX = 0;
+
+  /** Pone la que se arrastra bajo el mouse, sin salirse de la fila de pestañas. Cuenta con
+   *  offsetLeft (la posicion en la fila, sin el corrimiento ni las animaciones). */
+  function follow(x: number) {
+    if (!td?.started || !td.el.isConnected) return;
+    const row = [...tabsEl.querySelectorAll<HTMLElement>(".tab[data-key]")];
+    if (!row.length) return;
+    const base = tabsEl.getBoundingClientRect().left - tabsEl.scrollLeft;
+    const last = row[row.length - 1];
+    const want = Math.min(last.offsetLeft + last.offsetWidth - td.el.offsetWidth, Math.max(row[0].offsetLeft, x - base - td.grab));
+    dx = want - td.el.offsetLeft;
+  }
   /** Cuanto hay que quedarse encima de una pestaña para que se muestre. */
   const HOVER_SHOW = 450;
   /** La otra ventana a la que se le esta mandando donde esta el cursor (para que muestre su
@@ -70,12 +96,14 @@
 
   function tabDown(e: PointerEvent, key: number) {
     if (e.button !== 0 || (e.target as HTMLElement).closest(".x")) return;
-    td = { key, sx: e.clientX, sy: e.clientY, started: false, out: false, orig: { view: app.view, active: app.activeTerm } };
+    const el = e.currentTarget as HTMLElement;
+    const grab = e.clientX - el.getBoundingClientRect().left;
+    td = { key, sx: e.clientX, sy: e.clientY, started: false, out: false, orig: { view: app.view, active: app.activeTerm }, el, grab, pointer: e.pointerId };
     dbg("pestaña: apretar", { key, view: app.view, active: app.activeTerm, foco: document.activeElement?.className }, true);
     // Que la pestaña no le saque el foco a la terminal.
     if (!sw.focus) e.preventDefault();
     // Con captura siguen llegando los movimientos aunque el mouse salga de la ventana.
-    if (sw.capture) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    if (sw.capture) el.setPointerCapture(e.pointerId);
   }
 
   function tabMove(e: PointerEvent) {
@@ -83,12 +111,17 @@
     if (!td.started && Math.hypot(e.clientX - td.sx, e.clientY - td.sy) > 6) {
       td.started = true;
       dragKey = td.key;
-      if (!sw.capture) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      if (!sw.capture) td.el.setPointerCapture(e.pointerId);
       dbg("pestaña: empieza arrastre", { key: td.key }, true);
     }
     if (!td.started) return;
     const inside = e.clientY >= -16 && e.clientX >= -16 && e.clientX <= innerWidth + 16 && e.clientY <= innerHeight + 16;
-    const barBottom = (e.currentTarget as HTMLElement).closest(".bar")?.getBoundingClientRect().bottom ?? 46;
+    const barBottom = tabsEl.closest(".bar")?.getBoundingClientRect().bottom ?? 46;
+    lastX = e.clientX;
+    away = !inside || e.clientY > barBottom + 8;
+    ghost = away && inside ? { x: e.clientX, y: e.clientY, title: app.terms.find((t) => t.key === td!.key)?.title ?? "" } : null;
+    if (away) dx = 0;
+    else follow(e.clientX);
     const dragged = app.terms.find((t) => t.key === td!.key);
     if (inside && e.clientY > barBottom + 8 && dragged && splittable(dragged) && app.terms.length > 1) {
       hoverTab(null);
@@ -123,23 +156,35 @@
     dropOn = null;
     hoverWindow(null);
     if (e.clientY > barBottom + 8) return;
-    const over = document
-      .elementsFromPoint(e.clientX, 23)
-      .find((el) => el instanceof HTMLElement && el.classList.contains("tab") && el.dataset.key) as HTMLElement | undefined;
-    const overKey = over ? Number(over.dataset.key) : null;
+    // Por la posicion de cada una en la fila: la que se arrastra va corrida bajo el mouse y
+    // las otras pueden estar deslizandose.
+    const overKey = barTabAt(e.clientX);
     hoverTab(overKey !== td.key ? overKey : null);
-    if (!over) return;
+    if (overKey == null) return;
     const from = app.terms.findIndex((t) => t.key === td!.key);
     const to = app.terms.findIndex((t) => t.key === overKey);
     if (from < 0 || to < 0 || from === to) return;
     // Se cambian de lugar recien en el ultimo cuarto de la otra (del lado hacia donde se
     // va). El medio queda para quedarse encima y verla antes de soltar. Pasado ese punto el
-    // mouse queda sobre la que se arrastra, asi que no se vuelven a cambiar solas aunque
-    // tengan distinto ancho.
-    const r = over.getBoundingClientRect();
-    if ((from < to && e.clientX < r.left + r.width * 0.75) || (from > to && e.clientX > r.left + r.width * 0.25)) return;
+    // mouse queda sobre el lugar de la que se arrastra, asi que no se vuelven a cambiar solas
+    // aunque tengan distinto ancho.
+    const over = tabsEl.querySelector<HTMLElement>(`.tab[data-key="${overKey}"]`);
+    if (!over) return;
+    const left = tabsEl.getBoundingClientRect().left - tabsEl.scrollLeft + over.offsetLeft;
+    const w = over.offsetWidth;
+    if ((from < to && e.clientX < left + w * 0.75) || (from > to && e.clientX > left + w * 0.25)) return;
     const [t] = app.terms.splice(from, 1);
     app.terms.splice(to, 0, t);
+    // Cambio su lugar en la fila: recalcular el corrimiento para que no salte. Al moverla en
+    // el DOM el WebView le saca la captura del mouse: se la vuelve a dar, si no lo que pasa
+    // fuera de la ventana se pierde.
+    tick().then(() => {
+      if (!td?.started) return;
+      try {
+        td.el.setPointerCapture(td.pointer);
+      } catch {}
+      follow(lastX);
+    });
   }
 
   /** El mouse esta sobre otra pestaña mientras se arrastra: si se queda, se muestra esa. */
@@ -159,6 +204,9 @@
   }
 
   async function tabUp(e: PointerEvent) {
+    // Escucha en toda la ventana: un clic en cualquier lado no tiene que tocar `drop` (lo usan
+    // tambien el arrastre de paneles y mover con el teclado).
+    if (!td) return;
     const d = td;
     clearTimeout(d?.hoverTimer);
     drop.tabOver = null;
@@ -171,6 +219,9 @@
     dragKey = null;
     dragOut = false;
     dropOn = null;
+    dx = 0;
+    away = false;
+    ghost = null;
     const hint = drop.hint;
     drop.hint = null;
     dbg("pestaña: soltar", { key: d?.key, started: d?.started, out: d?.out, hint, orig: d?.orig, view: app.view, active: app.activeTerm }, true);
@@ -213,7 +264,12 @@
   }
 </script>
 
+<!-- El arrastre de pestañas se sigue en la ventana: la pestaña puede perder la captura del
+     mouse al cambiar de lugar, y el soltar no se tiene que perder. -->
 <svelte:window
+  onpointermove={tabMove}
+  onpointerup={tabUp}
+  onpointercancel={tabUp}
   onpointerdown={(e) => menu && !(e.target as HTMLElement).closest(".tabmenu") && (menu = null)}
   onkeydown={(e) => menu && e.key === "Escape" && (menu = null)}
 />
@@ -231,7 +287,7 @@
       <button class="ham" title="Sidebar (Ctrl B)" onclick={toggleSidebar}><Menu size={17} /></button>
     {/if}
 
-    <div class="tabs" data-tauri-drag-region>
+    <div class="tabs" data-tauri-drag-region bind:this={tabsEl}>
       {#if !detached}
         <button class="tab vault" class:on={!onTerm} title="Vault (Ctrl 1)" onclick={() => goToTab(0)}>
           <img src="/icon.svg" alt="" width="16" height="16" />
@@ -241,9 +297,12 @@
       {#each app.terms as t, i (t.key)}
         <div
           in:pop={{ start: 0.85 }}
+          animate:flip={{ duration: dragKey === t.key ? 0 : flipMs() }}
           class="tab"
+          style:transform={dragKey === t.key && dx ? `translateX(${dx}px)` : undefined}
           class:on={onTerm && app.activeTerm === t.key}
           class:dragging={dragKey === t.key}
+          class:away={dragKey === t.key && away}
           class:out={dragKey === t.key && dragOut}
           class:collapsed={t.collapsed}
           class:dropover={drop.tabOver === t.key}
@@ -253,8 +312,6 @@
           aria-label={t.title}
           title={`${t.title} · Ctrl ${detached ? i + 1 : i + 2}`}
           onpointerdown={(e) => tabDown(e, t.key)}
-          onpointermove={tabMove}
-          onpointerup={tabUp}
           oncontextmenu={(e) => tabMenu(e, t.key)}
           onclick={() => (dbg("pestaña: clic", { key: t.key, ignorado: suppressClick }, true), !suppressClick && goToTab(i + 1))}
           onkeydown={(e) => e.key === "Enter" && goToTab(i + 1)}
@@ -290,6 +347,10 @@
   {/if}
 
   <div class="drag" data-tauri-drag-region></div>
+
+  {#if ghost}
+    <div class="ghost" style="left:{ghost.x + 14}px;top:{ghost.y + 10}px">{ghost.title}</div>
+  {/if}
 
   {#if menu}
     <div class="tabmenu card" style="left: {menu.x}px" role="menu">
@@ -367,6 +428,10 @@
     gap: 6px;
     min-width: 0;
     overflow: hidden;
+    /* Para medir las pestañas en la fila (offsetLeft) y que no se corte la sombra de la que
+       se arrastra. */
+    position: relative;
+    padding: 6px 0;
   }
   .tab {
     display: flex;
@@ -384,11 +449,60 @@
     cursor: pointer;
     min-width: 0;
     max-width: 240px;
-    transition: background 0.12s, color 0.12s;
+    transition:
+      background 0.12s,
+      color 0.12s,
+      opacity 0.15s,
+      transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
+  /* La que se arrastra va levantada, sobre las otras, y pegada al mouse (sin transicion). */
   .tab.dragging {
-    opacity: 0.75;
+    z-index: 3;
     cursor: grabbing;
+    background: var(--panel-2);
+    color: var(--text);
+    border-color: var(--line-strong);
+    box-shadow: var(--pop-shadow);
+  }
+  .tab.dragging:not(.away) {
+    transition:
+      background 0.12s,
+      color 0.12s;
+  }
+  /* El mouse se fue de la barra: vuelve a su lugar, tenue, y la sigue el rotulo. */
+  .tab.away {
+    opacity: 0.45;
+    box-shadow: none;
+  }
+  .ghost {
+    position: fixed;
+    z-index: 50;
+    max-width: 260px;
+    padding: 4px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--text);
+    font: 600 11.5px var(--mono);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+    box-shadow: var(--pop-shadow);
+    animation: lift 0.14s ease-out;
+  }
+  @keyframes lift {
+    from {
+      opacity: 0;
+      transform: scale(0.92);
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tab,
+    .ghost {
+      transition: none;
+      animation: none;
+    }
   }
   .tab.out {
     opacity: 0.35;

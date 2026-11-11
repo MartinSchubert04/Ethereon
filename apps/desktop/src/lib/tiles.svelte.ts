@@ -244,6 +244,37 @@ export function closeLeaf(t: TermTab, key: number) {
   forget(t, key);
 }
 
+/** Lleva un panel de un mosaico a otra pestaña, sin cortar la sesion: al costado `side` de
+ *  su panel `leaf`, o (sin `leaf`) a la derecha de todo su mosaico. */
+export async function moveLeafTo(t: TermTab, key: number, to: number, leaf?: number, side: Side = "right") {
+  const m = t.members?.find((x) => x.key === key);
+  const dst = app.terms.find((x) => x.key === to);
+  if (!m || !dst || dst === t || (t.members?.length ?? 0) < 2) return;
+  if (!splittable(dst)) return toast("Only terminals and approvals can share a tab", true);
+  const nt = await successor(m);
+  forget(t, key);
+  tile(dst);
+  dst.members!.push(nt);
+  if (leaf != null) dst.layout = insert(dst.layout!, leaf, { leaf: nt.key }, side);
+  else {
+    const n = dst.members!.length;
+    dst.layout = { dir: "row", ratio: 1 - 1 / n, a: dst.layout!, b: { leaf: nt.key } };
+  }
+  dst.focus = nt.key;
+  app.activeTerm = dst.key;
+  app.view = "terminal";
+}
+
+/** La pestaña de la barra que esta bajo el puntero (solo cuenta x: la barra entera es la
+ *  fila de pestañas). Usa la posicion de cada una en la fila, sin las animaciones. */
+export function barTabAt(x: number): number | null {
+  const row = document.querySelector<HTMLElement>(".bar .tabs");
+  if (!row) return null;
+  const cx = x - row.getBoundingClientRect().left + row.scrollLeft;
+  const el = [...row.querySelectorAll<HTMLElement>(".tab[data-key]")].find((e) => cx >= e.offsetLeft && cx < e.offsetLeft + e.offsetWidth);
+  return el ? Number(el.dataset.key) : null;
+}
+
 /** Saca un panel a una pestaña propia, sin cortar la sesion. */
 export async function popOut(t: TermTab, key: number) {
   const m = t.members?.find((x) => x.key === key);

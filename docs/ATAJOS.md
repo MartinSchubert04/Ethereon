@@ -38,7 +38,8 @@ navegador.
 
 ## Pestañas y ventanas
 
-- **Reordenar:** arrastrar una pestaña sobre otra.
+- **Reordenar:** arrastrar una pestaña sobre otra. La pestaña va bajo el mouse y las otras se
+  corren para hacerle lugar.
 - **Sacarla a su propia ventana:** arrastrarla fuera de la barra (hacia abajo o fuera de la
   ventana) y soltarla; la ventana nueva aparece donde se suelta. También con clic derecho →
   **Move to new window**.
@@ -56,7 +57,12 @@ navegador.
   terminales se suma entera.
 - **Ancho y alto:** arrastrar la separación entre dos terminales.
 - **Reacomodar:** arrastrar una terminal por su nombre (arriba a la izquierda, sobre el borde) a
-  otro costado de otra. **Volverla una pestaña sola:** soltarla sobre la barra de pestañas.
+  otro costado de otra. **Volverla una pestaña sola:** soltarla sobre un hueco de la barra de
+  pestañas.
+- **Pasarla a otra pestaña:** arrastrarla por su nombre hasta esa pestaña de la barra. Soltarla
+  ahí la suma a la derecha de todo; quedarse medio segundo encima muestra esa pestaña, y ahí se
+  baja y se suelta sobre el borde que se quiera. Si la otra no era un mosaico, pasa a serlo. La
+  sesión no se corta.
 - **Reacomodar con el teclado:** con `Ctrl Shift` apretados, las flechas mueven un cursor por el
   mosaico y una marca muestra a dónde iría la terminal con el foco. Se mueve recién al soltar
   `Ctrl Shift`; `Esc` cancela.

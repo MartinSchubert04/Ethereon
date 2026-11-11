@@ -10,7 +10,7 @@
   import { fadeQuick, pop } from "../lib/motion";
   import { addrOf } from "../lib/api";
   import { app, type TermTab } from "../lib/state.svelte";
-  import { closeLeaf, drop, geometry, moveLeaf, popOut, tileAt, type Split, type Rect } from "../lib/tiles.svelte";
+  import { barTabAt, closeLeaf, drop, geometry, moveLeaf, moveLeafTo, popOut, splittable, tileAt, type Split, type Rect } from "../lib/tiles.svelte";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
 
@@ -59,10 +59,15 @@
     handle.addEventListener("pointerup", up);
   }
 
-  // ---- arrastrar un panel por su nombre: a otro panel (lo reacomoda) o a la barra de
-  // pestañas (vuelve a ser una pestaña sola)
+  // ---- arrastrar un panel por su nombre: a otro panel de esta pestaña o de otra (lo
+  // reacomoda o lo muda), o a la barra de pestañas. En la barra: sobre otra pestaña la suma a
+  // esa (y si se queda un momento, la muestra para soltarlo en el panel que se quiera); en
+  // otro lado vuelve a ser una pestaña sola. Soltado en ningun lado, vuelve lo que se veia.
 
-  let ghost = $state<{ x: number; y: number; title: string; bar: boolean } | null>(null);
+  let ghost = $state<{ x: number; y: number; text: string } | null>(null);
+  /** Cuanto hay que quedarse encima de una pestaña para que se muestre (como al arrastrar
+   *  pestañas, en Titlebar). */
+  const HOVER_SHOW = 450;
 
   function pillDown(e: PointerEvent, m: TermTab) {
     if (e.button !== 0) return;
@@ -70,29 +75,64 @@
     pill.setPointerCapture(e.pointerId);
     const sx = e.clientX;
     const sy = e.clientY;
+    const orig = { view: app.view, active: app.activeTerm };
     let started = false;
     let bar = false;
+    /** La pestaña de la barra bajo el puntero, y si se le puede sumar el panel. */
+    let over: number | null = null;
+    let joins = false;
+    let timer = 0;
+    const hover = (key: number | null) => {
+      if (key === over) return;
+      over = key;
+      const dst = key != null && key !== tab.key ? app.terms.find((t) => t.key === key) : undefined;
+      joins = !!dst && splittable(dst);
+      drop.tabOver = joins ? key : null;
+      clearTimeout(timer);
+      if (key == null) return;
+      timer = window.setTimeout(() => {
+        if (over !== key || !app.terms.some((t) => t.key === key)) return;
+        app.activeTerm = key;
+        app.view = "terminal";
+      }, HOVER_SHOW);
+    };
+    // En la ventana y no en la pastilla: si se muestra otra pestaña, esta queda oculta.
     const move = (ev: PointerEvent) => {
       if (!started && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 6) return;
       started = true;
       const barEl = document.querySelector(".bar");
       bar = !!barEl && ev.clientY <= barEl.getBoundingClientRect().bottom;
+      hover(bar ? barTabAt(ev.clientX) : null);
       const t = bar ? null : tileAt(ev.clientX, ev.clientY);
-      drop.hint = t && t.tab === tab.key && t.leaf !== m.key ? t : null;
-      ghost = { x: ev.clientX, y: ev.clientY, title: m.title, bar };
+      drop.hint = t && !(t.tab === tab.key && t.leaf === m.key) ? t : null;
+      const name = joins ? app.terms.find((x) => x.key === over)?.title : undefined;
+      const text = !bar ? m.title : name ? `Release to add "${m.title}" to ${name}` : `Release to make "${m.title}" a tab`;
+      ghost = { x: ev.clientX, y: ev.clientY, text };
     };
     const up = () => {
-      pill.removeEventListener("pointermove", move);
-      pill.removeEventListener("pointerup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      clearTimeout(timer);
+      drop.tabOver = null;
       const h = drop.hint;
       drop.hint = null;
       ghost = null;
       if (!started) return;
-      if (bar) popOut(tab, m.key);
-      else if (h) moveLeaf(tab, m.key, h.leaf, h.side);
+      if (bar && joins && over != null) moveLeafTo(tab, m.key, over);
+      else if (bar) popOut(tab, m.key);
+      else if (h && h.tab === tab.key) {
+        moveLeaf(tab, m.key, h.leaf, h.side);
+        app.activeTerm = tab.key;
+      } else if (h) moveLeafTo(tab, m.key, h.tab, h.leaf, h.side);
+      else {
+        if (app.terms.some((t) => t.key === orig.active)) app.activeTerm = orig.active;
+        app.view = orig.view;
+      }
     };
-    pill.addEventListener("pointermove", move);
-    pill.addEventListener("pointerup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
 </script>
 
@@ -108,7 +148,7 @@
       >
         {#if tiled}
           <div class="legend">
-            <button class="pill" title="Drag to move it. Drop it on the tab bar to make it a tab." onpointerdown={(e) => pillDown(e, m)}>
+            <button class="pill" title="Drag to move it, here or into another tab (hold it over the tab to open it). Drop it on an empty part of the tab bar to make it a tab." onpointerdown={(e) => pillDown(e, m)}>
               <span class="dot" class:dead={!m.alive && !m.connecting}></span>
               <span class="ellipsis"><Scramble text={m.title} /></span>
             </button>
@@ -162,9 +202,7 @@
 </div>
 
 {#if ghost}
-  <div class="ghost" style="left:{ghost.x + 14}px;top:{ghost.y + 10}px">
-    {ghost.bar ? `Release to make "${ghost.title}" a tab` : ghost.title}
-  </div>
+  <div class="ghost" style="left:{ghost.x + 14}px;top:{ghost.y + 10}px">{ghost.text}</div>
 {/if}
 
 <style>
@@ -394,6 +432,8 @@
     pointer-events: none;
     box-shadow: var(--pop-shadow);
     animation: lift 0.14s ease-out;
+    /* Sigue a la vista aunque esta pestaña se oculte (al mostrar otra para soltarlo ahi). */
+    visibility: visible;
   }
   @keyframes lift {
     from {
