@@ -8,6 +8,7 @@
 // heredan los componentes. Asi ningun tema ni paleta tiene que saber de la opacidad.
 import { api } from "./api";
 import { PALETTES } from "./palettes.gen";
+import { SCHEMES } from "./termschemes";
 
 export const THEMES = [
   { id: "default", name: "Default" },
@@ -34,6 +35,9 @@ const SURFACES = ["--bg", "--sidebar", "--panel", "--panel-2", "--term-bg"];
 const KEY = "ethereon.theme";
 const PKEY = (t: ThemeId) => `ethereon.palette.${t}`;
 const OKEY = (t: ThemeId) => `ethereon.opacity.${t}`;
+/** Los colores de la terminal (Settings → Terminal → Colors). Vacio = los del tema. Uno solo
+ *  para todos los temas, como en Termius. */
+const SKEY = "ethereon.termscheme";
 
 function read(k: string): string | null {
   try {
@@ -60,19 +64,46 @@ export function currentPalette(t: ThemeId): string {
   return p && list.some((x) => x.id === p) ? p : list[0]?.id ?? "";
 }
 
+/** El esquema de colores de la terminal elegido ("" = los del tema). */
+export function currentScheme(): string {
+  const s = read(SKEY);
+  return s && SCHEMES.some((x) => x.id === s) ? s : "";
+}
+
+/** Las variables de la terminal que pisa un esquema. */
+const TERM_VARS = ["--term-bg", "--term-fg", "--term-cursor", "--term-selection", "--term-selection-fg", "--term-ansi"];
+
+/** Pone los colores del esquema en <html>, encima de los del tema y la paleta (un estilo en
+ *  el elemento gana a sus reglas). Asi los ve todo lo que usa --term-*: xterm, el marco de
+ *  los paneles en mosaico y la opacidad, que los vuelve translucidos como los del tema. */
+function applyScheme(id: string) {
+  const st = document.documentElement.style;
+  for (const v of TERM_VARS) st.removeProperty(v);
+  const s = SCHEMES.find((x) => x.id === id);
+  if (!s) return;
+  st.setProperty("--term-bg", s.bg);
+  st.setProperty("--term-fg", s.fg);
+  st.setProperty("--term-cursor", s.cursor);
+  st.setProperty("--term-selection", s.selection);
+  if (s.selectionFg) st.setProperty("--term-selection-fg", s.selectionFg);
+  st.setProperty("--term-ansi", s.ansi.join(" "));
+}
+
 /** La opacidad elegida para un tema, en % (cada tema recuerda la suya). */
 export function currentOpacity(t: ThemeId): number {
   const n = Number(read(OKEY(t)));
   return Number.isFinite(n) && n >= OPACITY_MIN && n <= OPACITY_MAX ? Math.round(n) : OPACITY_MAX;
 }
 
-export function applyTheme(t: ThemeId, palette = currentPalette(t), opacity = currentOpacity(t)) {
+export function applyTheme(t: ThemeId, palette = currentPalette(t), opacity = currentOpacity(t), scheme = currentScheme()) {
   const el = document.documentElement;
   el.dataset.theme = t;
   el.dataset.palette = palette;
+  applyScheme(scheme);
   write(KEY, t);
   write(PKEY(t), palette);
   write(OKEY(t), String(opacity));
+  write(SKEY, scheme);
   applyOpacity(opacity);
   window.dispatchEvent(new CustomEvent("themechange"));
 }

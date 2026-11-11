@@ -66,6 +66,8 @@
       cursor: cssVar("--term-cursor"),
       cursorAccent: bg,
       selectionBackground: cssVar("--term-selection"),
+      // Solo algunos esquemas de colores (Settings → Terminal → Colors) lo cambian.
+      selectionForeground: cssVar("--term-selection-fg") || undefined,
     };
   }
 

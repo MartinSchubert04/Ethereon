@@ -26,9 +26,9 @@ import { installTooltips } from "./lib/tooltip";
 import { installDebug } from "./lib/debug.svelte";
 
 applyTheme(currentTheme());
-// Tema, paleta u opacidad cambiados desde otra ventana (Settings esta en la principal).
+// Tema, paleta, opacidad o colores de la terminal cambiados desde otra ventana (Settings esta en la principal).
 window.addEventListener("storage", (e) => {
-  if (e.key?.startsWith("ethereon.theme") || e.key?.startsWith("ethereon.palette.") || e.key?.startsWith("ethereon.opacity.")) {
+  if (e.key?.startsWith("ethereon.theme") || e.key?.startsWith("ethereon.palette.") || e.key?.startsWith("ethereon.opacity.") || e.key === "ethereon.termscheme") {
     applyTheme(currentTheme());
   }
 });

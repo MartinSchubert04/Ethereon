@@ -22,10 +22,12 @@
     applyTheme,
     currentOpacity,
     currentPalette,
+    currentScheme,
     currentTheme,
     palettesOf,
     type ThemeId,
   } from "../lib/themes";
+  import { SCHEMES, type Scheme } from "../lib/termschemes";
 
   let theme = $state<ThemeId>(currentTheme());
   let palette = $state(currentPalette(currentTheme()));
@@ -34,6 +36,8 @@
   const swatchOf = (t: ThemeId) => palettesOf(t).find((p) => p.id === currentPalette(t))?.swatch ?? ["#000", "#000", "#000"];
   const themeName = $derived(THEMES.find((t) => t.id === theme)?.name ?? "");
   const paletteName = $derived(palettesOf(theme).find((p) => p.id === palette)?.name ?? "");
+  let scheme = $state(currentScheme());
+  const schemeName = $derived(SCHEMES.find((x) => x.id === scheme)?.name ?? "Theme colors");
   let s = $state<Settings>(structuredClone($state.snapshot(app.snap!.settings)));
   let autostart = $state(false);
   // Las shells de esta PC, para elegir el icono de cada una.
@@ -83,6 +87,18 @@
   function pickPalette(p: string) {
     palette = p;
     applyTheme(theme, p, opacity);
+  }
+
+  function pickScheme(id: string) {
+    scheme = id;
+    applyTheme(theme, palette, opacity, id);
+  }
+
+  /** Lo que usa la miniatura de un esquema. "Theme colors" la arma con la muestra de la paleta. */
+  function preview(x: Scheme | null) {
+    if (x) return `--p-bg:${x.bg};--p-fg:${x.fg};--p-a:${x.ansi[2]};--p-b:${x.ansi[4]};--p-c:${x.ansi[3]};--p-cur:${x.cursor}`;
+    const sw = palettesOf(theme).find((p) => p.id === palette)?.swatch ?? swatchOf(theme);
+    return `--p-bg:${sw[0]};--p-fg:${sw[2]};--p-a:${sw[2]};--p-b:${sw[1]};--p-c:${sw[2]};--p-cur:${sw[2]}`;
   }
 
   // Se aplica mientras se arrastra la barra: es solo CSS, y el vidrio de Windows se prende
@@ -313,7 +329,27 @@
       </div>
     </Section>
 
-    <Section id="terminal" title="Terminal" icon={SquareTerminal} summary="Copy, paste, font, tab names and icons">
+    <Section id="terminal" title="Terminal" icon={SquareTerminal} summary="{schemeName} · copy, paste, font, tab names and icons">
+      <div class="sub">Colors</div>
+      <div class="schemes" role="radiogroup" aria-label="Terminal colors">
+        {#each [null, ...SCHEMES] as x (x?.id ?? "")}
+          <button
+            class="scheme"
+            class:on={scheme === (x?.id ?? "")}
+            role="radio"
+            aria-checked={scheme === (x?.id ?? "")}
+            title={x ? x.name : "The colors of the theme and palette in Appearance"}
+            onclick={() => pickScheme(x?.id ?? "")}
+          >
+            <span class="prev" style={preview(x)}>
+              <i class="w"></i>
+              <span><i class="a"></i><i class="f"></i></span>
+              <span><i class="b"></i><i class="c"></i><i class="cur"></i></span>
+            </span>
+            <span class="ellipsis">{x ? x.name : "Theme colors"}</span>
+          </button>
+        {/each}
+      </div>
       <div class="term-opts">
         <Switch bind:checked={prefs.term.ctrlCCopy}>Ctrl C copies when there is a selection (otherwise it stops the command)</Switch>
         <Switch bind:checked={prefs.term.ctrlVPaste}>Ctrl V pastes</Switch>
@@ -597,6 +633,89 @@
   }
   .dots {
     display: inline-flex;
+  }
+  /* Colores de la terminal: una miniatura de cada esquema, como en Termius. */
+  .schemes {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 6px;
+    max-height: 340px;
+    overflow-y: auto;
+    padding: 2px;
+  }
+  .scheme {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    padding: 6px 10px 6px 6px;
+    border-radius: var(--radius-sm);
+    border: var(--border) solid transparent;
+    font-weight: 550;
+    text-align: left;
+    color: var(--text-2);
+    transition:
+      border-color 0.15s,
+      background 0.15s;
+  }
+  .scheme:hover {
+    background: var(--hover);
+    color: var(--text);
+  }
+  .scheme.on {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+    color: var(--text);
+  }
+  .prev {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    width: 58px;
+    height: 38px;
+    padding: 0 7px;
+    border-radius: 6px;
+    background: var(--p-bg);
+    border: 1px solid rgba(127, 127, 127, 0.3);
+  }
+  .prev > span {
+    display: flex;
+    gap: 3px;
+  }
+  .prev i {
+    display: block;
+    height: 4px;
+    border-radius: 2px;
+  }
+  .prev .w {
+    background: var(--p-fg);
+    opacity: 0.85;
+  }
+  .prev .a {
+    width: 40%;
+    background: var(--p-a);
+  }
+  .prev .f {
+    flex: 1;
+    background: var(--p-fg);
+    opacity: 0.5;
+  }
+  .prev .b {
+    width: 30%;
+    background: var(--p-b);
+  }
+  .prev .c {
+    width: 30%;
+    background: var(--p-c);
+  }
+  .prev .cur {
+    width: 4px;
+    height: 7px;
+    margin-top: -1.5px;
+    border-radius: 1px;
+    background: var(--p-cur);
   }
   .dots span {
     width: 16px;

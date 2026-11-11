@@ -34,6 +34,12 @@ translúcidas. Lo resuelve `lib/themes.ts` sobre `<body>`; los temas no saben de
 | `--env-prod`, `--env-test`, `--env-dev` | Entorno del host (insignia y chip) |
 | `--term-*` | Fondo, texto, cursor y selección de la terminal |
 
+Los colores de la terminal pueden ir aparte del tema (Settings → Terminal → Colors, como en
+Termius): un esquema pisa `--term-bg`, `--term-fg`, `--term-cursor`, `--term-selection`,
+`--term-selection-fg` y `--term-ansi` con un estilo en `<html>`. Están en
+`apps/desktop/scripts/termschemes.json` (cada uno con su fuente), que genera `lib/termschemes.ts`.
+"Theme colors" (vacío) deja los del tema.
+
 Cada tema tiene paletas (Settings → Palette). Se definen en `apps/desktop/scripts/palettes.py`, que
 genera `styles/palettes.css` y `lib/palettes.gen.ts`; cada tema recuerda la suya.
 
