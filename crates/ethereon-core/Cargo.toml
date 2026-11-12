@@ -1,6 +1,6 @@
 [package]
 name = "ethereon-core"
-version = "2.15.0"
+version = "2.15.1"
 edition = "2021"
 description = "Broker de Ethereon: vault, SSH, reglas, enmascarado, auditoria y servidor MCP. Sin interfaz."
 
@@ -9,6 +9,8 @@ description = "Broker de Ethereon: vault, SSH, reglas, enmascarado, auditoria y 
 russh = { version = "0.65", default-features = false, features = ["ring", "rsa", "flate2"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt-multi-thread", "fs"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
+# Para responder tools/call como SSE (ver mcp.rs); ya venia con axum.
+futures-util = { version = "0.3", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes-gcm = "0.10"

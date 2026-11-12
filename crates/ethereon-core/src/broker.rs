@@ -100,6 +100,20 @@ struct Pending {
     tx: oneshot::Sender<Decision>,
 }
 
+/// Saca una aprobacion de la lista al soltarse, termine como termine la espera.
+struct Withdraw<'a> {
+    b: &'a Broker,
+    id: u64,
+}
+
+impl Drop for Withdraw<'_> {
+    fn drop(&mut self) {
+        if self.b.approvals.lock().unwrap().remove(&self.id).is_some() {
+            self.b.emit_approvals();
+        }
+    }
+}
+
 struct Open {
     vault: vault::Unlocked,
     data: VaultData,
@@ -649,11 +663,10 @@ impl Broker {
         self.notifier.notify(&title, &body);
         self.notifier.sound("approval", settings.sound_volume);
         self.emit_approvals();
-        let out = tokio::time::timeout(Duration::from_secs(timeout_secs.max(10)), rx).await.ok().and_then(|r| r.ok());
-        if self.approvals.lock().unwrap().remove(&id).is_some() {
-            self.emit_approvals();
-        }
-        out
+        // Si el agente se va antes (corta la conexion y este future se suelta), la
+        // aprobacion se retira igual: si no, queda en la lista para siempre.
+        let _withdraw = Withdraw { b: self, id };
+        tokio::time::timeout(Duration::from_secs(timeout_secs.max(10)), rx).await.ok().and_then(|r| r.ok())
     }
 
     fn emit_approvals(&self) {

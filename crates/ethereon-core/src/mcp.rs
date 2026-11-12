@@ -1,4 +1,11 @@
-//! Servidor MCP (transporte "Streamable HTTP", respuestas JSON sin SSE).
+//! Servidor MCP (transporte "Streamable HTTP").
+//!
+//! Casi todo se contesta con JSON. `tools/call` se contesta como SSE cuando el cliente lo
+//! acepta: Claude Code corta un POST cuyas cabeceras no llegan en 60 s, y una aprobacion
+//! puede esperar minutos. Con SSE las cabeceras salen enseguida, cada `PROGRESS_EVERY`
+//! va un `notifications/progress` (Claude Code reinicia con eso su limite de inactividad,
+//! 5 min) y al final la respuesta. Si el agente corta, se suelta la llamada y la
+//! aprobacion pendiente se retira (ver `Broker::wait_approval`).
 //!
 //! Claude Code se conecta con:
 //!   claude mcp add --transport http ethereon http://127.0.0.1:47321/mcp \
@@ -14,12 +21,20 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{json, Value};
+use futures_util::StreamExt;
+use std::convert::Infallible;
+use std::future::Future;
 use std::net::SocketAddr;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::audit::Entry;
 use crate::broker::{AgentCtx, Broker};
 use crate::Error;
+
+/// Cada cuanto avisa que una llamada larga sigue viva.
+const PROGRESS_EVERY: Duration = Duration::from_secs(15);
 
 const PROTOCOLS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
 
@@ -167,6 +182,11 @@ async fn handle(
         Err(e) => return (StatusCode::UNAUTHORIZED, e.to_string()).into_response(),
     };
 
+    let sse = headers.get("accept").and_then(|v| v.to_str().ok()).is_some_and(|a| a.contains("text/event-stream"));
+    if sse && body.get("method").and_then(|m| m.as_str()) == Some("tools/call") && body.get("id").is_some() {
+        return stream_call(b, ctx, session, client, body);
+    }
+
     let mut new_session = None;
     let reply = if let Value::Array(items) = body {
         let mut out = Vec::new();
@@ -186,6 +206,49 @@ async fn handle(
     if let Some(s) = new_session {
         resp.headers_mut().insert("mcp-session-id", HeaderValue::from_str(&s).unwrap());
     }
+    resp
+}
+
+/// Contesta un `tools/call` como SSE: progreso cada `PROGRESS_EVERY` y despues la respuesta.
+fn stream_call(b: Arc<Broker>, ctx: Option<AgentCtx>, session: String, client: String, msg: Value) -> Response {
+    let token = msg.pointer("/params/_meta/progressToken").cloned();
+    let work: Pin<Box<dyn Future<Output = Option<Value>> + Send>> = Box::pin(async move {
+        one(&b, ctx.as_ref(), &session, &client, msg, &mut None).await
+    });
+    let tick = tokio::time::interval_at(tokio::time::Instant::now() + PROGRESS_EVERY, PROGRESS_EVERY);
+    let events = futures_util::stream::unfold(Some((work, tick, 0u64)), move |state| {
+        let token = token.clone();
+        async move {
+            let (mut work, mut tick, n) = state?;
+            tokio::select! {
+                reply = &mut work => reply.map(|v| (format!("event: message
+data: {v}
+
+"), None)),
+                _ = tick.tick() => {
+                    let n = n + 1;
+                    let ev = match token {
+                        Some(t) => {
+                            let p = json!({ "jsonrpc": "2.0", "method": "notifications/progress", "params": { "progressToken": t, "progress": n } });
+                            format!("event: message
+data: {p}
+
+")
+                        }
+                        // Sin token no hay progreso que mandar; un comentario mantiene viva la conexion.
+                        None => ": waiting
+
+".to_string(),
+                    };
+                    Some((ev, Some((work, tick, n))))
+                }
+            }
+        }
+    });
+    let mut resp = axum::body::Body::from_stream(events.map(Ok::<_, Infallible>)).into_response();
+    let h = resp.headers_mut();
+    h.insert("content-type", HeaderValue::from_static("text/event-stream"));
+    h.insert("cache-control", HeaderValue::from_static("no-cache"));
     resp
 }
 
