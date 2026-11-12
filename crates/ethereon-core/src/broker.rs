@@ -261,6 +261,20 @@ impl Broker {
         Ok(())
     }
 
+    /// Desbloquea con la clave que paso la version anterior al actualizarse.
+    pub fn unlock_with_key(&self, key: vault::Key) -> Result<()> {
+        let (v, data) = vault::open_with_key(&self.vault_path(), key)?;
+        self.set_open(v, data);
+        Ok(())
+    }
+
+    /// La clave del vault abierto, para pasarsela a la version nueva al actualizar sin pedir
+    /// la contrasena otra vez. Solo la usa el actualizador de la app: nada del agente
+    /// (`mcp.rs`, `agent_*`) llega aca.
+    pub fn handoff_key(&self) -> Option<vault::Key> {
+        self.open.lock().unwrap().as_ref().map(|o| o.vault.key())
+    }
+
     fn set_open(&self, vault: vault::Unlocked, data: VaultData) {
         let masker = Arc::new(Masker::from_vault(&data));
         *self.open.lock().unwrap() = Some(Open { vault, data, masker });

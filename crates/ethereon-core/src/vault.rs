@@ -81,6 +81,18 @@ pub fn open(path: &Path, password: &str) -> Result<(Unlocked, VaultData), Error>
     let raw = std::fs::read_to_string(path)?;
     let f: File = serde_json::from_str(&raw).map_err(|_| Error::Corrupt)?;
     let key = derive(password, &f.kdf)?;
+    decrypt(f, key)
+}
+
+/// Abre con la clave ya derivada: la que le pasa la version anterior a la nueva al
+/// actualizarse (ver `handoff.rs` de la app), sin volver a pedir la contrasena.
+pub fn open_with_key(path: &Path, key: Key) -> Result<(Unlocked, VaultData), Error> {
+    let raw = std::fs::read_to_string(path)?;
+    let f: File = serde_json::from_str(&raw).map_err(|_| Error::Corrupt)?;
+    decrypt(f, key)
+}
+
+fn decrypt(f: File, key: Key) -> Result<(Unlocked, VaultData), Error> {
     let nonce = B64.decode(&f.nonce).map_err(|_| Error::Corrupt)?;
     let ct = B64.decode(&f.data).map_err(|_| Error::Corrupt)?;
     if nonce.len() != 12 {
@@ -96,6 +108,11 @@ pub fn open(path: &Path, password: &str) -> Result<(Unlocked, VaultData), Error>
 }
 
 impl Unlocked {
+    /// La clave derivada. Solo para pasarsela a la version nueva al actualizar.
+    pub fn key(&self) -> Key {
+        self.key.clone()
+    }
+
     pub fn save(&self, path: &Path, data: &VaultData) -> Result<(), Error> {
         let pt = Zeroizing::new(serde_json::to_vec(data).unwrap());
         let nonce = random::<12>();
@@ -136,5 +153,22 @@ mod tests {
         // El archivo no contiene nada en claro.
         let raw = std::fs::read_to_string(&p).unwrap();
         assert!(!raw.contains("shutdown"));
+    }
+
+    /// La clave que pasa una version a la siguiente al actualizar abre el mismo vault, y una
+    /// cualquiera no.
+    #[test]
+    fn open_with_the_handed_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("vault.json");
+        let mut d = VaultData::default();
+        d.denylist.push("reboot".into());
+        let v = create(&p, "correct horse", d).unwrap();
+        let (again, back) = open_with_key(&p, v.key()).unwrap();
+        assert_eq!(back.denylist, vec!["reboot"]);
+        // Sigue pudiendo guardar con esa clave, y la contrasena sigue abriendo.
+        again.save(&p, &back).unwrap();
+        assert!(open(&p, "correct horse").is_ok());
+        assert!(matches!(open_with_key(&p, Zeroizing::new([7u8; 32])), Err(Error::WrongPassword)));
     }
 }

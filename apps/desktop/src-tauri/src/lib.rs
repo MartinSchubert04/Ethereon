@@ -3,6 +3,7 @@
 
 mod commands;
 mod files;
+pub mod handoff;
 mod fonts;
 mod hotkey;
 mod sound;
@@ -239,7 +240,21 @@ pub fn run() {
             updater::start(handle.clone());
             // Despues de una actualizacion vuelve como estaba; si no, respeta --hidden
             // (el arranque con Windows).
-            let show = match updater::take_relaunch(&handle) {
+            let relaunch = updater::take_relaunch(&handle);
+            // Se actualizo con el vault abierto: vuelve abierto (ver handoff.rs).
+            if let Some(pipe) = relaunch.as_ref().and_then(|r| r.handoff.as_deref()) {
+                match handoff::take(pipe).map(|k| handle.state::<AppState>().broker.unlock_with_key(k)) {
+                    Some(Ok(())) => log::info!("vault abierto despues de actualizar"),
+                    Some(Err(e)) => log::warn!("no se pudo abrir el vault con la clave de la version anterior: {e}"),
+                    None => log::warn!("la version anterior no paso la clave del vault"),
+                }
+            }
+            // Las copias que guardaron la clave ya terminaron (o terminan enseguida).
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                handoff::clean_copies();
+            });
+            let show = match relaunch {
                 Some(r) => r.show_main,
                 None => !std::env::args().any(|a| a == "--hidden"),
             };

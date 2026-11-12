@@ -3,14 +3,12 @@
 //! 1. Al minuto de arrancar y cada 6 horas mira `latest.json` del ultimo Release de GitHub.
 //! 2. Si hay una version nueva, la baja de fondo y verifica la firma.
 //! 3. Se instala sola solo si no se pierde nada: sin ventana abierta, con el vault
-//!    bloqueado y sin comandos del agente en curso. Actualizar reinicia la app, y al
-//!    reiniciar el vault queda bloqueado (la clave vive solo en memoria): si se
-//!    instalara con el vault abierto, el agente se quedaria sin acceso hasta que alguien
-//!    lo desbloquee.
+//!    bloqueado y sin comandos del agente en curso.
 //! 4. Si no, la barra de arriba muestra "Update" y la persona decide cuando.
 //! 5. Antes de instalar a pedido, cada ventana cuenta que tiene abierto (pestañas, mosaicos,
 //!    lo que se veia en cada terminal, donde estaba la ventana) y eso se guarda en el vault.
-//!    Al desbloquear despues de actualizar, la interfaz lo vuelve a abrir igual.
+//!    Con el vault abierto, la version nueva arranca abierta (la clave pasa de una a otra
+//!    por `handoff.rs`, sin tocar el disco) y la interfaz lo vuelve a abrir igual.
 
 use std::path::PathBuf;
 use std::time::Duration;
@@ -44,6 +42,9 @@ pub struct Pending {
 #[derive(Serialize, Deserialize, Default)]
 pub struct Relaunch {
     pub show_main: bool,
+    /// El tubo donde espera la clave del vault (ver handoff.rs), si estaba abierto.
+    #[serde(default)]
+    pub handoff: Option<String>,
 }
 
 fn relaunch_path(app: &AppHandle) -> Option<PathBuf> {
@@ -170,20 +171,25 @@ pub fn session_take(state: tauri::State<'_, AppState>) -> Result<Option<serde_js
 pub async fn apply(app: &AppHandle) {
     let state = app.state::<AppState>();
     let Some((update, bytes)) = state.update.lock().unwrap().ready.take() else { return };
-    let relaunch = Relaunch { show_main: app.get_webview_window("main").is_some() };
+    // Lo que hay que guardar en el vault se guarda antes de pasar la clave.
+    save_session(app).await;
+    let keeper = state.broker.handoff_key().and_then(crate::handoff::spawn);
+    let relaunch = Relaunch { show_main: app.get_webview_window("main").is_some(), handoff: keeper.as_ref().map(|k| k.0.clone()) };
     if let (Some(path), Ok(json)) = (relaunch_path(app), serde_json::to_vec(&relaunch)) {
         if let Some(dir) = path.parent() {
             let _ = std::fs::create_dir_all(dir);
         }
         let _ = std::fs::write(path, json);
     }
-    save_session(app).await;
     crate::save_config(app);
     state.broker.lock().await;
     spawn_relaunch_watchdog();
     if let Err(e) = update.install(&bytes) {
         if let Some(path) = relaunch_path(app) {
             let _ = std::fs::remove_file(path);
+        }
+        if let Some((_, mut child)) = keeper {
+            let _ = child.kill();
         }
         set_info(app, None);
         log::error!("no se pudo actualizar: {e}");
