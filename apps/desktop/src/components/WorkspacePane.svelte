@@ -5,6 +5,7 @@
   import TermPane from "./TermPane.svelte";
   import ConnState from "./ConnState.svelte";
   import { closeMember, type TermTab } from "../lib/state.svelte";
+  import { tabStyle } from "../lib/hostcolors.svelte";
 
   let { tab, active }: { tab: TermTab; active: boolean } = $props();
 
@@ -53,7 +54,7 @@
   </div>
   <div class="panes">
     {#each members as m (m.key)}
-      <div class="member" class:shown={m.key === tab.activeMember}>
+      <div class="member" class:shown={m.key === tab.activeMember} style={tabStyle(m)}>
         <TermPane tab={m} active={active && m.key === tab.activeMember} shown={active && m.key === tab.activeMember} />
         <div class="state">
           <ConnState {m} onretry={() => window.dispatchEvent(new CustomEvent("ethereon:refresh", { detail: m.key }))} />

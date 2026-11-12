@@ -9,6 +9,7 @@
   import ApprovalsPane from "./ApprovalsPane.svelte";
   import { fadeQuick, pop } from "../lib/motion";
   import { addrOf } from "../lib/api";
+  import { tabStyle } from "../lib/hostcolors.svelte";
   import { app, type TermTab } from "../lib/state.svelte";
   import { closeLeaf, dragToTabs, drop, geometry, moveLeaf, moveLeafTo, popOut, type Split, type Rect } from "../lib/tiles.svelte";
 
@@ -87,6 +88,7 @@
     <div class="slot" style={pct(geo.panes.get(m.key))} in:pop={{ start: 0.96 }}>
       <div
         class="frame"
+        style={tabStyle(m)}
         class:focus={tiled && tab.focus === m.key}
         data-tile-tab={tab.key}
         data-tile-leaf={m.key}

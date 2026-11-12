@@ -8,6 +8,8 @@
   import Switch from "./Switch.svelte";
   import Logo from "./Logo.svelte";
   import { ICONS, iconOptions, osIcon } from "../lib/icons";
+  import { SCHEMES } from "../lib/termschemes";
+  import { currentScheme } from "../lib/themes";
   import { RefreshCw, X } from "@lucide/svelte";
   import { flip } from "svelte/animate";
   import { flipMs, pop } from "../lib/motion";
@@ -42,6 +44,19 @@
     ...iconOptions().map((o) => ({ ...o, value: o.value as string | null })),
   ]);
   const autoIcon = $derived(serial ? "cable" : (detected ?? "server"));
+
+  // Colores de la terminal de este host; null = los de Settings → Terminal → Colors.
+  h.term_scheme ??= null;
+  const general = SCHEMES.find((x) => x.id === currentScheme())?.name ?? "Theme colors";
+  const schemeOpts = [
+    { value: null as string | null, label: "Same as Settings", hint: general },
+    ...SCHEMES.map((x) => ({ value: x.id as string | null, label: x.name, hint: x.light ? "light" : "" })),
+  ];
+  /** La miniatura de un esquema: el fondo, y el texto y dos colores encima. */
+  function swatch(id: string | null | undefined): string {
+    const x = SCHEMES.find((s) => s.id === id);
+    return x ? `--s-bg:${x.bg};--s-fg:${x.fg};--s-a:${x.ansi[2]};--s-b:${x.ansi[4]}` : "";
+  }
 
   const transports: { value: Transport; label: string }[] = [
     { value: "ssh", label: "SSH" },
@@ -231,10 +246,18 @@
     {/if}
     <div class="field">Environment<Seg bind:value={h.env} options={envs} /><span class="hint">Only a label: it colors the host and tells the agent it is production</span></div>
   </div>
-  <div class="field">Icon
-    <Select bind:value={h.icon} options={iconOpts}>
-      {#snippet icon(v)}<Logo id={v ?? autoIcon} size={14} />{/snippet}
-    </Select>
+  <div class="grid2">
+    <div class="field">Icon
+      <Select bind:value={h.icon} options={iconOpts}>
+        {#snippet icon(v)}<Logo id={v ?? autoIcon} size={14} />{/snippet}
+      </Select>
+    </div>
+    <div class="field">Terminal colors
+      <Select bind:value={h.term_scheme} options={schemeOpts}>
+        {#snippet icon(v)}<span class="swatch" class:general={!v} style={swatch(v)}><i class="f"></i><span><i class="a"></i><i class="b"></i></span></span>{/snippet}
+      </Select>
+      <span class="hint">Also inside a tiled tab</span>
+    </div>
   </div>
   {#if !serial}
     <div class="field">
@@ -284,6 +307,40 @@
 </Drawer>
 
 <style>
+  /* La miniatura de un esquema en la lista de colores (la general usa los del tema). */
+  .swatch {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    width: 18px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 3px;
+    background: var(--s-bg, var(--term-bg));
+    border: 1px solid rgba(127, 127, 127, 0.35);
+  }
+  .swatch span {
+    display: flex;
+    gap: 1px;
+  }
+  .swatch i {
+    display: block;
+    height: 2px;
+    border-radius: 1px;
+  }
+  .swatch .f {
+    background: var(--s-fg, var(--term-fg));
+  }
+  .swatch .a {
+    flex: 1;
+    background: var(--s-a, var(--accent));
+  }
+  .swatch .b {
+    flex: 1;
+    background: var(--s-b, var(--text-3));
+  }
   .jumps {
     display: flex;
     flex-wrap: wrap;

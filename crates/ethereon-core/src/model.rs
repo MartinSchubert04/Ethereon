@@ -229,6 +229,10 @@ pub struct Host {
     /// Icono elegido a mano; si es None se usa el del sistema detectado.
     #[serde(default)]
     pub icon: Option<String>,
+    /// Colores de la terminal de este host (id de un esquema de `lib/termschemes.ts`); si es
+    /// None usa los de Settings → Terminal → Colors. Solo la interfaz lo mira.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub term_scheme: Option<String>,
 }
 
 impl Host {

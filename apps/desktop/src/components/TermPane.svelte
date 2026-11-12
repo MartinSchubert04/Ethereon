@@ -13,6 +13,7 @@
   import { comboOf, matches, prefs, pretty } from "../lib/prefs.svelte";
   import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { cssVar } from "../lib/themes";
+  import { tabStyle } from "../lib/hostcolors.svelte";
   import { boldWeight, termFont } from "../lib/termfonts";
   import "../lib/sixel";
   import { adopt, drop, own, type Live } from "../lib/live";
@@ -47,7 +48,7 @@
   // azul magenta cian blanco, normales y despues brillantes). Si no, los de xterm.
   const ANSI = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"] as const;
   function ansi(): Partial<ITheme> {
-    const list = cssVar("--term-ansi").split(/\s+/).filter(Boolean);
+    const list = cssVar("--term-ansi", el).split(/\s+/).filter(Boolean);
     if (list.length !== 16) return {};
     const out: Record<string, string> = {};
     ANSI.forEach((n, i) => {
@@ -57,19 +58,29 @@
     return out;
   }
 
+  // Los colores se leen desde la terminal y no desde <body>: el host puede tener los suyos
+  // (ver lib/hostcolors), puestos como estilo en .pane.
   function theme(): ITheme {
-    const bg = cssVar("--term-bg");
+    const bg = cssVar("--term-bg", el);
     return {
       ...ansi(),
       background: bg.startsWith("rgba") ? "rgba(0,0,0,0)" : bg,
-      foreground: cssVar("--term-fg"),
-      cursor: cssVar("--term-cursor"),
+      foreground: cssVar("--term-fg", el),
+      cursor: cssVar("--term-cursor", el),
       cursorAccent: bg,
-      selectionBackground: cssVar("--term-selection"),
+      selectionBackground: cssVar("--term-selection", el),
       // Solo algunos esquemas de colores (Settings → Terminal → Colors) lo cambian.
-      selectionForeground: cssVar("--term-selection-fg") || undefined,
+      selectionForeground: cssVar("--term-selection-fg", el) || undefined,
     };
   }
+
+  // Los colores propios del host (cambian si se editan, o con la opacidad). Un efecto corre
+  // despues de actualizar el DOM: el estilo nuevo ya esta puesto cuando xterm lo lee.
+  const hostLook = $derived(tabStyle(me()));
+  $effect(() => {
+    void hostLook;
+    if (term) term.options.theme = untrack(theme);
+  });
 
   const fontSize = () => prefs.term.fontSize || parseInt(cssVar("--term-font-size")) || 13;
 
@@ -542,7 +553,7 @@
   });
 </script>
 
-<div class="pane" class:bare>
+<div class="pane" class:bare style={hostLook}>
   <!-- El relleno va en .term y la terminal en .host, sin relleno: FitAddon mide la altura
        del contenedor directo y, con border-box, contaria el relleno como espacio libre
        (sobraba una fila y lo de abajo quedaba cortado). -->

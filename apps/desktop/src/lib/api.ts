@@ -71,6 +71,8 @@ export interface Host {
   /** Icono elegido a mano (id de lib/icons.ts); si no, el del sistema. */
   icon?: string | null;
   os_rev?: number;
+  /** Colores de su terminal (id de lib/termschemes.ts); si no, los de Settings. */
+  term_scheme?: string | null;
 }
 
 export interface Group {

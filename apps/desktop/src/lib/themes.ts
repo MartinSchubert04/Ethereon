@@ -89,6 +89,27 @@ function applyScheme(id: string) {
   st.setProperty("--term-ansi", s.ansi.join(" "));
 }
 
+/** Los colores de un esquema como estilo de un elemento (las mismas variables --term-* que
+ *  pisa `applyScheme`), para la terminal de un host que tiene los suyos: lo que esta adentro
+ *  los hereda (xterm los lee con `cssVar(nombre, el)`). El fondo sale translucido con la
+ *  opacidad de la ventana, como el del tema. "" si no hay esquema: hereda el general. */
+export function schemeStyle(id: string | null | undefined): string {
+  const s = id ? SCHEMES.find((x) => x.id === id) : undefined;
+  if (!s) return "";
+  const a = Number(document.body.style.getPropertyValue("--opacity")) || 1;
+  const c = a < 1 ? resolve(s.bg) : null;
+  const bg = c ? `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${+(c[3] * a).toFixed(3)})` : s.bg;
+  return [
+    `--term-bg:${bg}`,
+    `--term-fg:${s.fg}`,
+    `--term-cursor:${s.cursor}`,
+    `--term-selection:${s.selection}`,
+    // Sin el suyo, que no herede el del esquema general.
+    `--term-selection-fg:${s.selectionFg ?? " "}`,
+    `--term-ansi:${s.ansi.join(" ")}`,
+  ].join(";");
+}
+
 /** La opacidad elegida para un tema, en % (cada tema recuerda la suya). */
 export function currentOpacity(t: ThemeId): number {
   const n = Number(read(OKEY(t)));
@@ -109,9 +130,10 @@ export function applyTheme(t: ThemeId, palette = currentPalette(t), opacity = cu
 }
 
 /** Lee una variable del tema actual (para la terminal, que no usa CSS). Desde <body>, que
- *  es donde estan los colores ya translucidos. */
-export function cssVar(name: string): string {
-  return getComputedStyle(document.body).getPropertyValue(name).trim();
+ *  es donde estan los colores ya translucidos, o desde `el` si puede tener los suyos (la
+ *  terminal de un host con su esquema, ver `schemeStyle`). */
+export function cssVar(name: string, el: Element = document.body): string {
+  return getComputedStyle(el).getPropertyValue(name).trim();
 }
 
 let glassOn: boolean | null = null;

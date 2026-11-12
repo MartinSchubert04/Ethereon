@@ -40,6 +40,10 @@ Termius): un esquema pisa `--term-bg`, `--term-fg`, `--term-cursor`, `--term-sel
 `apps/desktop/scripts/termschemes.json` (cada uno con su fuente), que genera `lib/termschemes.ts`.
 "Theme colors" (vacío) deja los del tema.
 
+Cada host puede tener los suyos (editar host → Terminal colors, `term_scheme` en el vault). Se
+ponen con las mismas variables como estilo del panel (`lib/hostcolors.svelte.ts`), no en `<html>`:
+en un mosaico cada terminal tiene los de su host, con su marco, y las demás heredan los generales.
+
 Cada tema tiene paletas (Settings → Palette). Se definen en `apps/desktop/scripts/palettes.py`, que
 genera `styles/palettes.css` y `lib/palettes.gen.ts`; cada tema recuerda la suya.
 
