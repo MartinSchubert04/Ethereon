@@ -79,7 +79,6 @@
         {:else}
         <textarea
           class="mono cmd"
-          rows={Math.min(8, cmd(a).split("\n").length + 1)}
           value={cmd(a)}
           oninput={(e) => (edits[a.id] = e.currentTarget.value)}
           spellcheck="false"
@@ -130,8 +129,13 @@
     color: var(--warn);
     font-size: 12.5px;
   }
+  /* Crece con el comando, contando las lineas que se cortan: uno corto queda chico y uno
+     largo se lee entero. Con tope (unas 14 lineas, menos en una ventana baja) para los que
+     traen base64 o similar: de ahi en mas, scroll. */
   .cmd {
+    field-sizing: content;
     min-height: 44px;
+    max-height: min(300px, 45vh);
   }
   .file {
     display: flex;

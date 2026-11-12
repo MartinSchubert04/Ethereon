@@ -87,6 +87,23 @@
     if (label) invoke("drag_hover", { label, leave: false }).catch(() => {});
   }
   let dragKey = $state<number | null>(null);
+  // Con muchas pestañas se achican y muestran menos (ver .slim y .tiny). Se decide con el lugar
+  // que le toca a cada una (lo que hay para pestañas / cuantas), igual para todas: con el
+  // ancho de cada una, la que se achicaba perdia contenido y no volvia a crecer.
+  let tabsW = $state(0);
+  let dragW = $state(0);
+  let vaultW = $state(0);
+  let newW = $state(0);
+  const fixedW = $derived(vaultW + newW);
+  const SLIM = 120;
+  const TINY = 64;
+  const share = $derived.by(() => {
+    const open = app.terms.filter((t) => !t.collapsed).length;
+    const folded = app.terms.length - open;
+    const room = tabsW + dragW - fixedW - folded * 42 - (app.terms.length + 2) * 6;
+    return open ? room / open : Infinity;
+  });
+  const crowd = $derived(share < TINY ? "tiny" : share < SLIM ? "slim" : "");
   let dragOut = $state(false);
   /** Otra ventana de Ethereon bajo el cursor: soltar ahi pasa la pestaña a esa ventana. */
   let dropOn = $state<{ label: string; name: string } | null>(null);
@@ -286,9 +303,9 @@
       <button class="ham" title="Sidebar (Ctrl B)" onclick={toggleSidebar}><Menu size={17} /></button>
     {/if}
 
-    <div class="tabs" data-tauri-drag-region bind:this={tabsEl}>
+    <div class="tabs" class:crowded={crowd !== ""} data-tauri-drag-region bind:this={tabsEl} bind:clientWidth={tabsW}>
       {#if !detached}
-        <button class="tab vault" class:on={!onTerm} title="Vault (Ctrl 1)" onclick={() => goToTab(0)}>
+        <button class="tab vault" bind:offsetWidth={vaultW} class:on={!onTerm} title="Vault (Ctrl 1)" onclick={() => goToTab(0)}>
           <img src="/icon.svg" alt="" width="16" height="16" />
           <span>Vault</span>
         </button>
@@ -304,6 +321,8 @@
           class:away={dragKey === t.key && away}
           class:out={dragKey === t.key && dragOut}
           class:collapsed={t.collapsed}
+          class:slim={!t.collapsed && crowd === "slim"}
+          class:tiny={!t.collapsed && crowd === "tiny"}
           class:dropover={drop.tabOver === t.key}
           data-key={t.key}
           role="button"
@@ -333,7 +352,7 @@
         </div>
       {/each}
       {#if !detached}
-        <button class="tab new" title="New tab (Ctrl T)" onclick={() => (app.quickOpen = true)}>
+        <button class="tab new" bind:offsetWidth={newW} title="New tab (Ctrl T)" onclick={() => (app.quickOpen = true)}>
           <Plus size={15} /><span>New tab</span>
         </button>
       {/if}
@@ -345,7 +364,7 @@
     {/if}
   {/if}
 
-  <div class="drag" data-tauri-drag-region></div>
+  <div class="drag" data-tauri-drag-region bind:clientWidth={dragW}></div>
 
   {#if drop.ghost}
     <div class="ghost" style="left:{drop.ghost.x + 14}px;top:{drop.ghost.y + 10}px">{drop.ghost.text}</div>
@@ -608,6 +627,59 @@
   .x:hover {
     opacity: 1;
     background: var(--hover);
+  }
+  /* Muchas pestañas. Angostas: la X sale del flujo y aparece encima del borde derecho solo en
+     la activa o bajo el mouse (si entrara y saliera del flujo, las pestañas saltarian al pasar
+     el mouse), y el nombre se queda con el lugar. Muy angostas: solo el icono, como una
+     colapsada; el nombre esta en el tooltip y se cierra con el boton del medio o Ctrl W. */
+  /* Todas del mismo ancho, que se achica parejo si no entran (el contenido no sirve de medida:
+     en .tiny es solo el icono). La fila toma todo el lugar libre: medida por su contenido
+     quedaba angosta y el resto se lo llevaba .drag. */
+  .tabs.crowded {
+    flex: 1 1 0;
+  }
+  /* Queda un margen para arrastrar la ventana (el resto de la fila tambien sirve). */
+  .tabs.crowded ~ .drag {
+    flex: 0 0 24px;
+  }
+  .tab.slim {
+    flex: 0 1 120px;
+  }
+  .tab.tiny {
+    flex: 0 1 40px;
+  }
+  .tab.slim {
+    position: relative;
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .tab.slim .x {
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    translate: 0 -50%;
+    background: inherit;
+    box-shadow: -6px 0 6px -2px var(--panel-2);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .tab.slim.on .x,
+  .tab.slim:hover .x {
+    opacity: 0.85;
+    pointer-events: auto;
+  }
+  .tab.slim .x:hover {
+    opacity: 1;
+  }
+  .tab.tiny {
+    justify-content: center;
+    gap: 0;
+    padding: 0;
+  }
+  .tab.tiny .label,
+  .tab.tiny .n,
+  .tab.tiny .x {
+    display: none;
   }
   /* Colapsada: solo el icono (y el candado chico en la esquina si esta bloqueada). */
   .tab.collapsed {

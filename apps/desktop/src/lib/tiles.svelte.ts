@@ -171,6 +171,19 @@ function place(dst: TermTab, sub: Tile, leaf: number | undefined, side: Side) {
   }
 }
 
+/** La clave del panel de aprobaciones de una pestaña (la de la pestaña si es solo eso). */
+function approvalsIn(t: TermTab): number | undefined {
+  return t.layout ? t.members?.find((x) => x.approvals)?.key : t.approvals ? t.key : undefined;
+}
+
+/** Una pestaña tiene a lo sumo un panel de aprobaciones: si llega otro, se muestra el que ya
+ *  estaba (todas muestran la misma lista). */
+function showApprovals(dst: TermTab, key: number) {
+  if (dst.layout) dst.focus = key;
+  app.activeTerm = dst.key;
+  app.view = "terminal";
+}
+
 /** Lleva la pestaña `from` (con todos sus paneles) al costado de un panel de otra pestaña (sin
  *  `leaf`: a la derecha de todo). */
 export async function mergeInto(from: number, to: number, leaf: number | undefined, side: Side) {
@@ -179,6 +192,17 @@ export async function mergeInto(from: number, to: number, leaf: number | undefin
   if (!src || !dst || src === dst) return;
   if (!splittable(src) || !splittable(dst)) return toast("Only terminals and approvals can share a tab", true);
   const got = await lift(src);
+  const had = approvalsIn(dst);
+  if (had != null) {
+    for (const m of got.members.filter((x) => x.approvals)) {
+      got.members.splice(got.members.indexOf(m), 1);
+      if (got.members.length) got.layout = remove(got.layout, m.key)!;
+    }
+    if (!got.members.length) {
+      closeTerminal(from);
+      return showApprovals(dst, had);
+    }
+  }
   tile(dst);
   dst.members!.push(...got.members);
   place(dst, got.layout, leaf, side);
@@ -264,6 +288,11 @@ export async function moveLeafTo(t: TermTab, key: number, to: number, leaf?: num
   const dst = app.terms.find((x) => x.key === to);
   if (!m || !dst || dst === t || (t.members?.length ?? 0) < 2) return;
   if (!splittable(dst)) return toast("Only terminals and approvals can share a tab", true);
+  const had = m.approvals ? approvalsIn(dst) : undefined;
+  if (had != null) {
+    forget(t, key);
+    return showApprovals(dst, had);
+  }
   const nt = await successor(m);
   forget(t, key);
   tile(dst);
@@ -295,7 +324,8 @@ export async function popOut(t: TermTab, key: number) {
 }
 
 /** Las aprobaciones al costado de un panel de la pestaña `to` (sin `leaf`: a la derecha de
- *  todo). Si ya hay una pestaña o un panel de aprobaciones, se muda ese: no se abren dos. */
+ *  todo). Cada mosaico puede tener las suyas: las de otras pestañas se quedan donde estan
+ *  (muestran la misma lista). Si esta ya las tiene, se mueve ese panel: dos juntas no sirven. */
 export async function dropApprovals(to: number, leaf?: number, side: Side = "right") {
   const dst = app.terms.find((t) => t.key === to);
   if (!dst) return;
@@ -304,16 +334,14 @@ export async function dropApprovals(to: number, leaf?: number, side: Side = "rig
     app.activeTerm = dst.key;
     app.view = "terminal";
   };
-  for (const t of app.terms) {
-    // Pestaña de aprobaciones sola. En mosaico `approvals` sigue en la pestaña, pero el panel
-    // es uno de los miembros.
-    if (t.approvals && !t.layout) return t === dst ? show() : mergeInto(t.key, to, leaf, side);
-    const m = t.layout ? t.members?.find((x) => x.approvals) : undefined;
-    if (!m) continue;
-    if (t !== dst) return moveLeafTo(t, m.key, to, leaf, side);
-    if (leaf == null) moveToEdge(t, m.key, "right");
-    else if (leaf !== m.key) moveLeaf(t, m.key, leaf, side);
-    t.focus = m.key;
+  // Pestaña de aprobaciones sola. En mosaico `approvals` sigue en la pestaña, pero el panel
+  // es uno de los miembros.
+  if (dst.approvals && !dst.layout) return show();
+  const mine = dst.layout ? dst.members?.find((x) => x.approvals) : undefined;
+  if (mine) {
+    if (leaf == null) moveToEdge(dst, mine.key, "right");
+    else if (leaf !== mine.key) moveLeaf(dst, mine.key, leaf, side);
+    dst.focus = mine.key;
     return show();
   }
   tile(dst);

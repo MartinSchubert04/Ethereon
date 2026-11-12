@@ -181,6 +181,21 @@ select option {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+/* Con la barra propia, Chromium dibuja la esquina y el agarre de un textarea en blanco: el
+   agarre son dos rayitas en el gris del tema. */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-resizer {
+  background: linear-gradient(
+    135deg,
+    transparent 0 52%,
+    var(--text-3) 52% 58%,
+    transparent 58% 70%,
+    var(--text-3) 70% 76%,
+    transparent 76%
+  );
+}
 
 .mono,
 code,

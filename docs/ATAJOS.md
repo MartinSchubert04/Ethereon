@@ -58,8 +58,9 @@ navegador.
 - **Aprobaciones al lado de una terminal:** arrastrar **Approvals** desde la barra lateral (la del
   vault o la que se abre con ☰) a una pestaña de la barra, o directo sobre un borde de la
   terminal que se ve. Igual que con un panel: soltarlo sobre la pestaña lo suma a la derecha, y
-  quedarse encima la muestra. Si ya hay aprobaciones abiertas en otro lado, se mudan esas (nunca
-  hay dos). Un clic en Approvals sigue abriendo su vista.
+  quedarse encima la muestra. Cada pestaña puede tener las suyas: las de otros mosaicos se quedan
+  donde están (todas muestran la misma lista). Si esa pestaña ya las tiene, se mueve ese panel
+  (dos en la misma no hay). Un clic en Approvals sigue abriendo su vista.
 - **Ancho y alto:** arrastrar la separación entre dos terminales.
 - **Reacomodar:** arrastrar una terminal por su nombre (arriba a la izquierda, sobre el borde) a
   otro costado de otra. **Volverla una pestaña sola:** soltarla sobre un hueco de la barra de
