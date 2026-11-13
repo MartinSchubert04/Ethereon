@@ -1,4 +1,5 @@
 // Estado global de la interfaz. El backend avisa con eventos y aca se vuelve a pedir.
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
 import { api, errText, type Alert, type Approval, type Snapshot, type Status, type UpdateInfo } from "./api";
@@ -177,6 +178,10 @@ export function start() {
     log.push({ ts, line });
     if (log.length > 200) log.splice(0, log.length - 200);
   });
+  if (!app.detached) {
+    listen("raise", () => takeRaise());
+    takeRaise();
+  }
   // El atajo global (Ctrl Shift Alt T) con una carpeta del Explorador activa.
   listen("open-here", () => takeOpenHere());
   takeOpenHere();
@@ -196,6 +201,39 @@ export function start() {
   window.addEventListener("pointerdown", touch);
   window.addEventListener("keydown", touch);
   refresh();
+}
+
+/** La app vino adelante sola por una notificacion (ver `raise` en window.rs). Muestra las
+ *  aprobaciones si no se veian, y suelta el foco: quien estaba escribiendo en otra app no
+ *  tiene que seguir haciendolo en una terminal de un servidor. Al activarse la ventana,
+ *  WebView2 le devuelve el foco a lo que lo tenia, por eso se suelta otra vez entonces. */
+async function takeRaise() {
+  const view = await invoke<string | null>("raise_take").catch(() => null);
+  if (view === null) return;
+  if (view === "approvals" && !approvalsShown()) {
+    const t = app.terms.find((x) => x.key === app.activeTerm);
+    const m = t?.layout ? t.members?.find((x) => x.approvals) : undefined;
+    if (app.view === "terminal" && t && m) t.focus = m.key;
+    else {
+      goToTab(0);
+      app.view = "approvals";
+    }
+  }
+  const blur = () => (document.activeElement as HTMLElement | null)?.blur?.();
+  blur();
+  window.addEventListener("focus", blur, { once: true });
+  setTimeout(() => window.removeEventListener("focus", blur), 1500);
+}
+
+/** Si esta ventana ya muestra las aprobaciones (la vista, su pestaña o un panel visible). */
+function approvalsShown() {
+  if (app.view === "approvals") return true;
+  if (app.view !== "terminal") return false;
+  const t = app.terms.find((x) => x.key === app.activeTerm);
+  if (!t) return false;
+  if (t.approvals && !t.members) return true;
+  if (t.layout) return false; // hay panel, pero puede no tener el foco: se lo da takeRaise
+  return !!t.members?.find((x) => x.key === t.activeMember)?.approvals;
 }
 
 /** `base`, o si ya hay una pestaña (o un panel de mosaico) que se llama asi, "base (2)",

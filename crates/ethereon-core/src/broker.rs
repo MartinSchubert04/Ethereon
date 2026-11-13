@@ -34,6 +34,9 @@ pub trait Notifier: Send + Sync {
     fn notify(&self, title: &str, body: &str);
     /// Un sonido ("approval"), con volumen de 0 a 100. Quien no tiene parlantes no hace nada.
     fn sound(&self, _name: &str, _volume: u8) {}
+    /// Trae la app adelante junto con una notificacion, mostrando `view` ("approvals") o lo
+    /// que hubiera ("" : los avisos se ven en cualquier vista).
+    fn raise(&self, _view: &str) {}
 }
 
 /// Quien pide: un dispositivo (token) y, si se sabe, la sesion MCP.
@@ -677,6 +680,7 @@ impl Broker {
         self.notifier.notify(&title, &body);
         self.notifier.sound("approval", settings.sound_volume);
         self.emit_approvals();
+        self.notifier.raise("approvals");
         // Si el agente se va antes (corta la conexion y este future se suelta), la
         // aprobacion se retira igual: si no, queda en la lista para siempre.
         let _withdraw = Withdraw { b: self, id };
@@ -837,11 +841,15 @@ impl Broker {
             _ => String::new(),
         };
         a.retain(|x| key(&x.error) != key(&e));
+        let changed = matches!(e, SshError::HostKeyChanged { .. });
         if let SshError::HostKeyChanged { host, .. } = &e {
             self.notifier.notify(&format!("Host key changed: {host}"), "The connection was blocked. Check it in Ethereon.");
         }
         a.push(Alert { id: self.next_id(), ts: now(), error: e });
         self.notifier.event("alerts", serde_json::to_value(&*a).unwrap());
+        if changed {
+            self.notifier.raise("");
+        }
     }
 
     pub fn alerts(&self) -> Vec<Alert> {

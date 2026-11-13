@@ -95,6 +95,10 @@ impl Notifier for UiNotifier {
     fn sound(&self, name: &str, volume: u8) {
         sound::play(name, volume);
     }
+    fn raise(&self, view: &str) {
+        let (h, view) = (self.0.clone(), view.to_string());
+        let _ = self.0.run_on_main_thread(move || window::raise(&h, &view));
+    }
 }
 
 /// `ETHEREON_DATA_DIR` permite probar con otro vault sin tocar el de verdad.
@@ -323,6 +327,7 @@ pub fn run() {
             window::term_windows,
             window::term_window_give,
             window::main_window_show,
+            window::raise_take,
             window::window_at,
             window::drag_hover,
             window::window_glass,

@@ -295,6 +295,60 @@ pub fn term_window_give(pending: tauri::State<'_, PendingTabs>, label: String, t
     }
 }
 
+/// Lo que tiene que mostrar la principal despues de `raise`. Queda guardado hasta que la
+/// interfaz lo toma: si la ventana estaba cerrada en la bandeja, el evento llega antes de
+/// que cargue.
+static RAISED: Mutex<Option<String>> = Mutex::new(None);
+
+/// Trae la principal adelante cuando salta una notificacion (una aprobacion, una huella
+/// cambiada). Si ya se esta usando una ventana de Ethereon, no le saca el foco.
+pub fn raise(app: &AppHandle, view: &str) {
+    use tauri::Emitter;
+    if app.webview_windows().values().any(|w| w.is_focused().unwrap_or(false)) {
+        return;
+    }
+    *RAISED.lock().unwrap() = Some(view.to_string());
+    show_main(app);
+    if let Some(w) = app.get_webview_window("main") {
+        foreground(&w);
+    }
+    let _ = app.emit_to("main", "raise", ());
+}
+
+/// Windows no deja que una app de fondo se ponga adelante: `set_focus` (y el truco de tao
+/// de mandar un Alt) solo hace titilar la barra de tareas. Pegada un momento a la entrada
+/// de la ventana que esta adelante, si la deja. Corre en el hilo de la ventana.
+fn foreground(w: &tauri::WebviewWindow) {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+        use windows::Win32::UI::WindowsAndMessaging::{BringWindowToTop, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow};
+        let Ok(hwnd) = w.hwnd() else { return };
+        let hwnd = HWND(hwnd.0);
+        unsafe {
+            let fg = GetForegroundWindow();
+            if fg == hwnd {
+                return;
+            }
+            let (me, them) = (GetCurrentThreadId(), GetWindowThreadProcessId(fg, None));
+            let attached = them != 0 && them != me && AttachThreadInput(me, them, true).as_bool();
+            let _ = BringWindowToTop(hwnd);
+            let _ = SetForegroundWindow(hwnd);
+            if attached {
+                let _ = AttachThreadInput(me, them, false);
+            }
+        }
+    }
+    #[cfg(not(windows))]
+    let _ = w.set_focus();
+}
+
+#[tauri::command]
+pub fn raise_take() -> Option<String> {
+    RAISED.lock().unwrap().take()
+}
+
 /// Muestra la ventana principal (la crea si estaba cerrada en la bandeja).
 #[tauri::command]
 pub fn main_window_show(app: AppHandle) {
