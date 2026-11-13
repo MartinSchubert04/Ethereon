@@ -36,6 +36,12 @@
   function reject(a: Approval) {
     attempt(() => api.resolve(a.id, { action: "reject", note: notes[a.id] }));
   }
+  /** Enter en la nota rechaza con esa nota (sin ir al boton). */
+  function noteKey(e: KeyboardEvent, a: Approval) {
+    if (e.key !== "Enter" || e.isComposing || e.repeat) return;
+    e.preventDefault();
+    reject(a);
+  }
 </script>
 
 {#if !app.approvals.length}
@@ -73,7 +79,7 @@
           <div class="row actions">
             <button class="btn primary" onclick={() => approve(a)}>Approve</button>
             <span class="grow"></span>
-            <input class="note" placeholder="Note for the agent" value={notes[a.id] ?? ""} oninput={(e) => (notes[a.id] = e.currentTarget.value)} />
+            <input class="note" placeholder="Note for the agent" title="Enter rejects with this note" value={notes[a.id] ?? ""} oninput={(e) => (notes[a.id] = e.currentTarget.value)} onkeydown={(e) => noteKey(e, a)} />
             <button class="btn danger" onclick={() => reject(a)}>Reject</button>
           </div>
         {:else}
@@ -95,7 +101,7 @@
           />
           <button class="btn" onclick={() => approvePattern(a)}>Allow pattern this session</button>
           <span class="grow"></span>
-          <input class="note" placeholder="Note for the agent" value={notes[a.id] ?? ""} oninput={(e) => (notes[a.id] = e.currentTarget.value)} />
+          <input class="note" placeholder="Note for the agent" title="Enter rejects with this note" value={notes[a.id] ?? ""} oninput={(e) => (notes[a.id] = e.currentTarget.value)} onkeydown={(e) => noteKey(e, a)} />
           <button class="btn danger" onclick={() => reject(a)}>Reject</button>
         </div>
         {/if}
