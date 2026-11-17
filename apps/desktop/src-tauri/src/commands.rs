@@ -62,7 +62,35 @@ pub async fn vault_lock(s: State<'_, AppState>) -> R<()> {
 #[tauri::command]
 pub async fn vault_change_password(s: State<'_, AppState>, old: String, new: String) -> R<()> {
     let b = s.broker.clone();
-    tauri::async_runtime::spawn_blocking(move || b.change_password(&old, &new)).await.map_err(|e| invalid(e.to_string()))?
+    tauri::async_runtime::spawn_blocking(move || b.change_password(&old, &new)).await.map_err(|e| invalid(e.to_string()))??;
+    // La clave cambio: si se abre sola al arrancar, se guarda la nueva.
+    if crate::remember::is_on(s.broker.dir()) {
+        if let Some(k) = s.broker.handoff_key() {
+            crate::remember::save(s.broker.dir(), &k).map_err(Error::Io)?;
+        }
+    }
+    Ok(())
+}
+
+/// Si pide la contrasena maestra al arrancar Ethereon (ver remember.rs).
+#[tauri::command]
+pub fn start_password_get(s: State<AppState>) -> bool {
+    !crate::remember::is_on(s.broker.dir())
+}
+
+/// Dejar de pedirla pide la contrasena maestra, como exportar con secretos: alguien sentado
+/// en la PC con el vault abierto no lo deja abriendose solo.
+#[tauri::command]
+pub async fn start_password_set(s: State<'_, AppState>, ask: bool, password: Option<String>) -> R<()> {
+    if ask {
+        crate::remember::forget(s.broker.dir());
+        return Ok(());
+    }
+    let b = s.broker.clone();
+    let pw = password.unwrap_or_default();
+    tauri::async_runtime::spawn_blocking(move || b.verify_password(&pw)).await.map_err(|e| invalid(e.to_string()))??;
+    let key = s.broker.handoff_key().ok_or(Error::Locked)?;
+    crate::remember::save(s.broker.dir(), &key).map_err(Error::Io)
 }
 
 #[tauri::command]

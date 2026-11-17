@@ -272,8 +272,8 @@ impl Broker {
     }
 
     /// La clave del vault abierto, para pasarsela a la version nueva al actualizar sin pedir
-    /// la contrasena otra vez. Solo la usa el actualizador de la app: nada del agente
-    /// (`mcp.rs`, `agent_*`) llega aca.
+    /// la contrasena otra vez, o guardarla si la persona eligio no pedirla al arrancar. Solo
+    /// la usa la app: nada del agente (`mcp.rs`, `agent_*`) llega aca.
     pub fn handoff_key(&self) -> Option<vault::Key> {
         self.open.lock().unwrap().as_ref().map(|o| o.vault.key())
     }

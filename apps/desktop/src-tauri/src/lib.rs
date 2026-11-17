@@ -6,6 +6,7 @@ mod files;
 pub mod handoff;
 mod fonts;
 mod hotkey;
+mod remember;
 mod sound;
 mod terminal;
 mod updater;
@@ -253,6 +254,19 @@ pub fn run() {
                     None => log::warn!("la version anterior no paso la clave del vault"),
                 }
             }
+            // Sin pedir la contrasena al arrancar (ver remember.rs).
+            let st = handle.state::<AppState>();
+            if !st.broker.is_unlocked() && remember::is_on(st.broker.dir()) {
+                match remember::load(st.broker.dir()).map(|k| st.broker.unlock_with_key(k)) {
+                    Some(Ok(())) => log::info!("vault abierto al arrancar"),
+                    // Clave vieja (vault restaurado de un respaldo) o de otro usuario: se borra
+                    // y vuelve a pedir la contrasena; el switch queda prendido otra vez.
+                    other => {
+                        log::warn!("la clave guardada no abre el vault: {:?}", other.map(|r| r.err()));
+                        remember::forget(st.broker.dir());
+                    }
+                }
+            }
             // Las copias que guardaron la clave ya terminaron (o terminan enseguida).
             std::thread::spawn(|| {
                 std::thread::sleep(std::time::Duration::from_secs(5));
@@ -273,6 +287,8 @@ pub fn run() {
             commands::vault_unlock,
             commands::vault_lock,
             commands::vault_change_password,
+            commands::start_password_get,
+            commands::start_password_set,
             commands::touch,
             commands::snapshot,
             commands::host_save,

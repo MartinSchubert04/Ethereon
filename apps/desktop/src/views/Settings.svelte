@@ -65,6 +65,32 @@
   let oldPw = $state("");
   let newPw = $state("");
 
+  // Pedir la contrasena al arrancar. Apagarlo pide la contrasena una vez (ver remember.rs).
+  let askAtStart = $state(true);
+  let startPw = $state("");
+  let confirmingStart = $state(false);
+  api.startPasswordGet().then((v) => (askAtStart = v)).catch(() => {});
+
+  async function toggleAskAtStart(v: boolean) {
+    if (!v) return (confirmingStart = true);
+    confirmingStart = false;
+    startPw = "";
+    if (!(await attempt(() => api.startPasswordSet(true, null), "Ethereon will ask for the password when it starts"))) askAtStart = false;
+  }
+
+  async function stopAsking() {
+    if (await attempt(() => api.startPasswordSet(false, startPw), "Ethereon will open the vault by itself when it starts")) {
+      confirmingStart = false;
+      startPw = "";
+    }
+  }
+
+  function cancelStopAsking() {
+    confirmingStart = false;
+    startPw = "";
+    askAtStart = true;
+  }
+
   // Por defecto el formato propio: lo que se exporta aca se vuelve a importar entero.
   let format = $state<ExportFormat>("json");
   let exportPw = $state("");
@@ -294,7 +320,7 @@
       id="security"
       title="Security"
       icon={Shield}
-      summary={s.autolock_minutes ? `Locks after ${s.autolock_minutes} min idle` : "Never locks by itself"}
+      summary="{s.autolock_minutes ? `Locks after ${s.autolock_minutes} min idle` : 'Never locks by itself'}{askAtStart || confirmingStart ? '' : ' · opens by itself at start'}"
     >
       <div class="grid2">
         <label class="field">Lock after (minutes without using Ethereon) <span class="hint">0 = never. Agent requests do not keep it open.</span>
@@ -309,6 +335,20 @@
         <div class="chk"><Switch bind:checked={s.audit_output}>Save the (masked) output in the audit log, not only its hash</Switch></div>
       </div>
       <div><button class="btn primary" onclick={saveSettings}>Save</button></div>
+      <div class="sub">Startup</div>
+      <Switch bind:checked={askAtStart} onchange={toggleAskAtStart}>Ask for the master password when Ethereon starts</Switch>
+      {#if confirmingStart}
+        <label class="field">Master password
+          <input type="password" bind:value={startPw} onkeydown={(e) => e.key === "Enter" && startPw && stopAsking()} />
+          <span class="hint">Windows keeps the vault key for your user, so the vault opens by itself after a restart. Any program you run, Claude Code included, could use it to open the vault.</span>
+        </label>
+        <div class="row">
+          <button class="btn primary" disabled={!startPw} onclick={stopAsking}>Stop asking</button>
+          <button class="btn" onclick={cancelStopAsking}>Cancel</button>
+        </div>
+      {:else if !askAtStart}
+        <div class="faint small">The vault opens by itself when Ethereon starts. Locking it by hand or after the idle time still asks for the password.</div>
+      {/if}
       <div class="sub">Master password</div>
       <div class="grid2">
         <input type="password" placeholder="Current password" bind:value={oldPw} />
