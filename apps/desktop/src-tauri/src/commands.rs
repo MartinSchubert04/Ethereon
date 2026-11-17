@@ -321,12 +321,15 @@ pub async fn host_test(s: State<'_, AppState>, name: String) -> R<Option<ethereo
 }
 
 /// Abre un link en el navegador (por ejemplo, el que manda Tailscale SSH para autorizar un
-/// login). Solo https, para que no sirva para lanzar otra cosa.
+/// login, o un link de la salida de una terminal). Solo http y https, para que no sirva
+/// para lanzar otra cosa.
 #[tauri::command]
 pub fn open_link(url: String) -> R<()> {
-    let ok = url.starts_with("https://") && !url.chars().any(|c| c.is_whitespace() || c == '"' || c.is_control());
+    let lower = url.to_ascii_lowercase();
+    let web = lower.starts_with("https://") || lower.starts_with("http://");
+    let ok = web && !url.chars().any(|c| c.is_whitespace() || c == '"' || c.is_control());
     if !ok {
-        return Err(Error::Invalid("only https links can be opened".into()));
+        return Err(Error::Invalid("only web links can be opened".into()));
     }
     #[cfg(windows)]
     let mut cmd = std::process::Command::new("rundll32");

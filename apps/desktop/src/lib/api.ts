@@ -247,7 +247,8 @@ export type XferEvent =
   | { kind: "error"; message: string };
 
 /** La salida de la terminal llega como bytes crudos; los avisos, como objetos. */
-export type TermEvent = ArrayBuffer | { kind: "exit"; code: number | null } | { kind: "replayed" };
+/** La salida llega como ArrayBuffer; como lista de numeros si la ventana uso el IPC de respaldo. */
+export type TermEvent = ArrayBuffer | number[] | { kind: "exit"; code: number | null } | { kind: "replayed" };
 
 export const api = {
   status: () => invoke<Status>("status"),

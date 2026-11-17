@@ -340,7 +340,13 @@
   }
 
   function handle(m: TermEvent) {
+    // La salida llega como ArrayBuffer, salvo que esta ventana haya pasado al IPC de respaldo
+    // de Tauri (postMessage): ahi los mensajes de 1 KB o mas llegan como lista de numeros. Pasa
+    // si una sola llamada por el protocolo ipc:// falla (por ejemplo, un dialogo modal o una
+    // ventana emergente del WebView en medio) y dura hasta cerrar la ventana. Antes eso se
+    // tomaba como el fin de la sesion: "The shell ended" con la shell viva.
     if (m instanceof ArrayBuffer) term.write(new Uint8Array(m));
+    else if (Array.isArray(m) || ArrayBuffer.isView(m)) term.write(Uint8Array.from(m as ArrayLike<number>));
     // Cuando xterm termino de procesar todo lo repetido, vuelve a escuchar.
     // Ahi recien se ajusta al panel: xterm reacomoda las lineas y la shell se entera.
     else if (m.kind === "replayed")
@@ -349,7 +355,7 @@
         fitNow();
         if (L.id) api.termResize(L.id, term.cols, term.rows).catch(() => {});
       });
-    else {
+    else if (m.kind === "exit") {
       term.writeln(`\r\n\x1b[2m[session closed${m.code != null ? `, exit ${m.code}` : ""} · ${pretty(prefs.binds.refresh)} reconnects]\x1b[0m`);
       setAlive(false);
       L.id = 0;
@@ -427,6 +433,15 @@
       allowTransparency: true,
       theme: theme(),
       scrollback: 5000,
+      // Los links de la salida (OSC 8, los que imprime Claude Code) van al navegador. Lo de
+      // xterm por defecto es confirm() y window.open() dentro del WebView: abria una ventana
+      // emergente y dejaba la ventana con el IPC de respaldo (ver handle).
+      linkHandler: {
+        activate: (_e, uri) => {
+          if (/^https?:\/\//i.test(uri)) api.openLink(uri).catch((err) => toast(errText(err), true));
+        },
+        allowNonHttpProtocols: false,
+      },
     });
     const f = new FitAddon();
     t.loadAddon(f);
