@@ -1,166 +1,166 @@
 # DESIGN.md
 
-Sistema de diseño de Ethereon. Formato: [awesome-design-md](https://github.com/VoltAgent/awesome-design-md)
-(nueve secciones). Leer antes de tocar la interfaz.
+Ethereon's design system. Format: [awesome-design-md](https://github.com/VoltAgent/awesome-design-md)
+(nine sections). Read before touching the interface.
 
-## 1. Tema visual y atmósfera
+## 1. Visual theme and atmosphere
 
-Un cliente SSH de escritorio, tranquilo y denso como Termius: barra lateral a la izquierda, tarjetas
-de hosts agrupadas, y la terminal como protagonista cuando está abierta. La seguridad se nota en los
-estados (entorno, modo de reglas, aprobaciones pendientes, acceso del agente) y no en adornos.
+A desktop SSH client, calm and dense like Termius: sidebar on the left, grouped host cards, and the
+terminal as the protagonist when it's open. Security shows in the states (environment, rules mode,
+pending approvals, agent access), not in decoration.
 
-- **Densidad:** media. Tarjetas de 250 px, tablas para listas largas (keychain, auditoría, dispositivos).
-- **Voz:** literal. "Approve", "Reject", "Agent access", "Lock vault". Sin metáforas.
-- **Cuatro temas, una estructura.** Cambian colores, bordes, sombras y fondos; nunca el layout ni las
-  letras.
+- **Density:** medium. 250 px cards, tables for long lists (keychain, audit, devices).
+- **Voice:** literal. "Approve", "Reject", "Agent access", "Lock vault". No metaphors.
+- **Four themes, one structure.** Colors, borders, shadows and backgrounds change; never the layout or
+  the type.
 
-## 2. Colores y roles
+## 2. Colors and roles
 
-Todos los colores son variables de `apps/desktop/src/styles/themes.css`.
+All colors are variables in `apps/desktop/src/styles/themes.css`.
 
-Cada tema tiene además una opacidad (Settings → Appearance, 30–100 %, cada tema recuerda la suya).
-Por debajo del 100 % la ventana es vidrio esmerilado: el escritorio se ve detrás desenfocado (el
-Acrylic de Windows, como en la app Haze) y el fondo y las superficies del tema se vuelven
-translúcidas. Lo resuelve `lib/themes.ts` sobre `<body>`; los temas no saben de ella.
+Each theme also has an opacity (Settings → Appearance, 30–100 %, each theme remembers its own).
+Below 100 % the window is frosted glass: the desktop shows through behind it, blurred (Windows
+Acrylic, like in the Haze app) and the theme's background and surfaces become translucent. It's
+handled by `lib/themes.ts` on `<body>`; the themes don't know about it.
 
-| Variable | Rol |
+| Variable | Role |
 |---|---|
-| `--bg`, `--bg-image` | Fondo de la ventana (Warp y Haze usan gradientes, Poolsuite un atardecer) |
-| `--sidebar`, `--panel`, `--panel-2` | Superficies, de más atrás a más adelante |
-| `--line`, `--line-strong`, `--border` | Bordes y su grosor (2 px en Poolsuite) |
-| `--text`, `--text-2`, `--text-3` | Texto principal, secundario y terciario |
-| `--accent`, `--accent-ink`, `--primary-bg` | Acento, texto sobre el acento, botón principal (puede ser gradiente) |
-| `--danger`, `--warn`, `--ok` | Rechazado o bloqueado; pendiente; permitido o activo |
-| `--env-prod`, `--env-test`, `--env-dev` | Entorno del host (insignia y chip) |
-| `--term-*` | Fondo, texto, cursor y selección de la terminal |
+| `--bg`, `--bg-image` | Window background (Warp and Haze use gradients, Poolsuite a sunset) |
+| `--sidebar`, `--panel`, `--panel-2` | Surfaces, from furthest back to furthest front |
+| `--line`, `--line-strong`, `--border` | Borders and their width (2 px in Poolsuite) |
+| `--text`, `--text-2`, `--text-3` | Primary, secondary and tertiary text |
+| `--accent`, `--accent-ink`, `--primary-bg` | Accent, text on the accent, primary button (can be a gradient) |
+| `--danger`, `--warn`, `--ok` | Rejected or blocked; pending; allowed or active |
+| `--env-prod`, `--env-test`, `--env-dev` | Host environment (badge and chip) |
+| `--term-*` | Terminal background, text, cursor and selection |
 
-Los colores de la terminal pueden ir aparte del tema (Settings → Terminal → Colors, como en
-Termius): un esquema pisa `--term-bg`, `--term-fg`, `--term-cursor`, `--term-selection`,
-`--term-selection-fg` y `--term-ansi` con un estilo en `<html>`. Están en
-`apps/desktop/scripts/termschemes.json` (cada uno con su fuente), que genera `lib/termschemes.ts`.
-"Theme colors" (vacío) deja los del tema.
+Terminal colors can be set separately from the theme (Settings → Terminal → Colors, like in
+Termius): a scheme overrides `--term-bg`, `--term-fg`, `--term-cursor`, `--term-selection`,
+`--term-selection-fg` and `--term-ansi` with a style on `<html>`. They're in
+`apps/desktop/scripts/termschemes.json` (each with its source), which generates `lib/termschemes.ts`.
+"Theme colors" (empty) keeps the theme's.
 
-Cada host puede tener los suyos (editar host → Terminal colors, `term_scheme` en el vault). Se
-ponen con las mismas variables como estilo del panel (`lib/hostcolors.svelte.ts`), no en `<html>`:
-en un mosaico cada terminal tiene los de su host, con su marco, y las demás heredan los generales.
+Each host can have its own (edit host → Terminal colors, `term_scheme` in the vault). They're
+applied with the same variables as a style on the pane (`lib/hostcolors.svelte.ts`), not on `<html>`:
+in a tiled layout each terminal has its host's colors, with its frame, and the rest inherit the global ones.
 
-Cada tema tiene paletas (Settings → Palette). Se definen en `apps/desktop/scripts/palettes.py`, que
-genera `styles/palettes.css` y `lib/palettes.gen.ts`; cada tema recuerda la suya.
+Each theme has palettes (Settings → Palette). They're defined in `apps/desktop/scripts/palettes.py`, which
+generates `styles/palettes.css` and `lib/palettes.gen.ts`; each theme remembers its own.
 
-| Tema | Paletas |
+| Theme | Palettes |
 |---|---|
-| Default | Mint, Nord, Dracula, Tokyo Night, Catppuccin, Gruvbox, Paper (clara) |
+| Default | Mint, Nord, Dracula, Tokyo Night, Catppuccin, Gruvbox, Paper (light) |
 | Warp | Violet, Solar Flare, Pink City, Jellyfish, Leafy, Red Rock |
-| Poolsuite FM | Sunset, Mint Pool, Tropicana, Lavender, Beach, Platinum (Mac OS 9), Monochrome (oscura, como la app nueva de Poolsuite: casi negro tramado con texto y bordes crema), Vellum |
-| Haze | Cream, Peach, Rose, Mauve, Sky, Sage, Amber (acentos de Catppuccin, con la bruma teñida a juego) |
-| Athanor | Srcery, Umber, Cinnabar, Vellum (clara), Orpiment (clara): las de portfolio-athanor |
+| Poolsuite FM | Sunset, Mint Pool, Tropicana, Lavender, Beach, Platinum (Mac OS 9), Monochrome (dark, like the new Poolsuite app: dithered near-black with cream text and borders), Vellum |
+| Haze | Cream, Peach, Rose, Mauve, Sky, Sage, Amber (Catppuccin accents, with the haze tinted to match) |
+| Athanor | Srcery, Umber, Cinnabar, Vellum (light), Orpiment (light): the ones from portfolio-athanor |
 
-Cada tema tiene además una paleta "a la athanor" (Srcery, Ember, Vellum, Amber): negro cálido,
-crema y un solo acento ámbar.
+Each theme also has an "athanor-style" palette (Srcery, Ember, Vellum, Amber): warm black,
+cream and a single amber accent.
 
-| Tema | Fondo | Acento | Rasgo |
+| Theme | Background | Accent | Trait |
 |---|---|---|---|
-| Default | `#0d0f14` | menta `#6ee7b7` | Plano, sobrio |
-| Warp | negro con luces violeta y cian | gradiente `#8b5cf6 → #22d3ee` | Paneles translúcidos con desenfoque |
-| Poolsuite FM | atardecer pastel (cielo, rosa, durazno) | rosa `#ff4f9a` | Claro, bordes negros de 2 px, sombras duras, barra de ventana rayada como el Mac clásico |
-| Haze | bruma cálida y fría sobre gris azulado | crema `#f9e2af` | Vidrio, igual que la app Haze |
-| Athanor | `#1C1B19` (Srcery) | ámbar `#FBB829` | Pixel clay: esquinas en escalera, biseles duros, sombras tramadas en damero; fuente bitmap |
+| Default | `#0d0f14` | mint `#6ee7b7` | Flat, sober |
+| Warp | black with violet and cyan lights | gradient `#8b5cf6 → #22d3ee` | Translucent panels with blur |
+| Poolsuite FM | pastel sunset (sky, pink, peach) | pink `#ff4f9a` | Light, 2 px black borders, hard shadows, striped window bar like the classic Mac |
+| Haze | warm and cool haze over blue-gray | cream `#f9e2af` | Glass, just like the Haze app |
+| Athanor | `#1C1B19` (Srcery) | amber `#FBB829` | Pixel clay: stair-stepped corners, hard bevels, checkerboard-dithered shadows; bitmap font |
 
-## 3. Tipografía
+## 3. Typography
 
-Inter Variable para todo y Geist Mono Variable para comandos, direcciones, huellas y la terminal.
-Las dos vienen empaquetadas (sin red).
+Inter Variable for everything and Geist Mono Variable for commands, addresses, fingerprints and the terminal.
+Both are bundled (no network).
 
-**Excepción: Athanor**, pedido así a propósito para que sea igual al portfolio. Todo el texto en
-PxPlus IBM VGA 8x16 a 16 px exactos y sin suavizado (es bitmap: a otro tamaño se ve borrosa), sin
-negrita ni cursiva; los títulos en Jacquard 24 a 48 px. Ver `styles/athanor.css` y `src/fonts/`.
+**Exception: Athanor**, requested this way on purpose so it matches the portfolio. All text in
+PxPlus IBM VGA 8x16 at exactly 16 px and without antialiasing (it's bitmap: at any other size it looks blurry), no
+bold or italic; headings in Jacquard 24 at 48 px. See `styles/athanor.css` and `src/fonts/`.
 
-| Uso | Tamaño | Peso |
+| Use | Size | Weight |
 |---|---|---|
-| Título de página | 21 px | 650 |
-| Título de cajón | 15 px | 650 |
-| Texto | 13,5 px | 400 a 550 |
-| Etiquetas de sección | 11,5 px mayúsculas | 650 |
-| Mono | 12,5 px (13 px en la terminal) | 400 |
+| Page title | 21 px | 650 |
+| Drawer title | 15 px | 650 |
+| Text | 13.5 px | 400 to 550 |
+| Section labels | 11.5 px uppercase | 650 |
+| Mono | 12.5 px (13 px in the terminal) | 400 |
 
-## 4. Componentes
+## 4. Components
 
-- **Tarjeta de host:** insignia del color del entorno, nombre, `usuario@host` en mono, descripción en
-  dos líneas, chips (entorno, modo, salto, etiquetas) y botón Connect. Los iconos de probar y editar
-  aparecen al pasar el mouse.
-- **Cajón (Drawer):** formularios a la derecha, sobre un velo. Pie con Delete a la izquierda y
-  Cancel / Save a la derecha.
-- **Chip:** pastilla de 20 px. Variantes `prod`, `test`, `dev`, `ok`, `warn`, `bad`.
-- **Control segmentado:** modo de reglas y entorno.
-- **Tarjeta de aprobación:** host + entorno + sudo, motivo en cursiva, advertencias, el comando
-  editable en mono, y las acciones. Un pedido de archivo muestra en su lugar un recuadro con la
-  dirección (Download / Upload), el tamaño, la ruta en mono y, si sube algo de esta PC, de dónde;
-  solo se aprueba o se rechaza.
-- **Alerta de huella:** franja arriba del contenido; roja si la clave cambió.
-- **Botón Agent access:** siempre visible abajo en la barra lateral; verde encendido, rojo apagado.
-- **Select** (`components/Select.svelte`): reemplaza al `<select>` nativo. Lista flotante con
-  check en el elegido, pista en gris por opción, flechas / Enter / Esc / escribir para saltar, y
-  buscador si hay más de 7 opciones.
-- **Switch**: reemplaza a las casillas de un solo ajuste. **Seg**: control segmentado con píldora
-  que se desliza. Las casillas que quedan (listas) son propias, con tilde animada.
-- **Confirm** (`components/Confirm.svelte`, `lib/confirm.svelte.ts`): modal para confirmar. Reemplaza
-  al `confirm()` de Windows. Rojo cuando la acción quita protecciones o borra algo.
-- **Arrastrar hosts**: una copia de la tarjeta sigue al cursor, el grupo de destino se marca con
-  borde punteado y los grupos vacíos muestran "Drop here".
-- **Menú ≡ en una terminal**: la barra lateral aparece flotando encima; se cierra tocando afuera,
-  con ≡ o con Esc.
-- **Campos**: la ayuda va debajo del campo (`.field .hint`), así los campos de una fila quedan
-  alineados aunque uno tenga ayuda y otro no.
+- **Host card:** badge in the environment's color, name, `user@host` in mono, description on
+  two lines, chips (environment, mode, jump, tags) and Connect button. The test and edit icons
+  appear on hover.
+- **Drawer:** forms on the right, over a scrim. Footer with Delete on the left and
+  Cancel / Save on the right.
+- **Chip:** 20 px pill. Variants `prod`, `test`, `dev`, `ok`, `warn`, `bad`.
+- **Segmented control:** rules mode and environment.
+- **Approval card:** host + environment + sudo, reason in italics, warnings, the editable command
+  in mono, and the actions. A file request shows instead a box with the
+  direction (Download / Upload), the size, the path in mono and, if it uploads something from this PC, from where;
+  it can only be approved or rejected.
+- **Fingerprint alert:** strip above the content; red if the key changed.
+- **Agent access button:** always visible at the bottom of the sidebar; green on, red off.
+- **Select** (`components/Select.svelte`): replaces the native `<select>`. Floating list with a
+  check on the selected one, a gray hint per option, arrows / Enter / Esc / typing to jump, and
+  a search box if there are more than 7 options.
+- **Switch**: replaces single-setting checkboxes. **Seg**: segmented control with a sliding
+  pill. The remaining checkboxes (lists) are custom, with an animated checkmark.
+- **Confirm** (`components/Confirm.svelte`, `lib/confirm.svelte.ts`): confirmation modal. Replaces
+  Windows' `confirm()`. Red when the action removes protections or deletes something.
+- **Dragging hosts**: a copy of the card follows the cursor, the target group is highlighted with a
+  dashed border and empty groups show "Drop here".
+- **≡ menu in a terminal**: the sidebar appears floating on top; it closes by clicking outside,
+  with ≡ or with Esc.
+- **Fields**: help text goes below the field (`.field .hint`), so fields in a row stay
+  aligned even if one has help and another doesn't.
 
 ## 5. Layout
 
-Como Termius. La ventana no tiene marco de Windows: arriba va una barra de 46 px que es a la vez
-barra de título y tira de pestañas (`components/Titlebar.svelte`):
+Like Termius. The window has no Windows frame: at the top there's a 46 px bar that is both
+title bar and tab strip (`components/Titlebar.svelte`):
 
-`≡` (plegar la barra lateral) · pestaña **Vault** · una pestaña por terminal · `+ New tab` · hueco
-para arrastrar · aprobaciones pendientes · minimizar, maximizar, cerrar (a la bandeja).
+`≡` (collapse the sidebar) · **Vault** tab · one tab per terminal · `+ New tab` · drag
+area · pending approvals · minimize, maximize, close (to the tray).
 
-Debajo, en la pestaña Vault, la barra lateral (216 px, o 58 px plegada con solo iconos) y el
-contenido. En una pestaña de terminal no hay barra lateral: la terminal usa todo el ancho. Las
-terminales quedan montadas aunque se cambie de pestaña (no se pierde la sesión).
+Below, in the Vault tab, the sidebar (216 px, or 58 px collapsed with icons only) and the
+content. In a terminal tab there's no sidebar: the terminal uses the full width. Terminals
+stay mounted when switching tabs (the session isn't lost).
 
-"New tab" (Ctrl T) abre un buscador de hosts; Enter abre la terminal. Los atajos están en
-`lib/shortcuts.ts` y se listan en Settings.
+"New tab" (Ctrl T) opens a host search; Enter opens the terminal. Shortcuts are in
+`lib/shortcuts.ts` and are listed in Settings.
 
-## 5b. Movimiento
+## 5b. Motion
 
-Todas las animaciones pasan por `lib/motion.ts` y duran 0 con "reducir animaciones" de Windows.
+All animations go through `lib/motion.ts` and last 0 with Windows' "reduce animations".
 
-| Qué | Cómo |
+| What | How |
 |---|---|
-| Cambiar de vista | sube 6 px y aparece (220 ms) |
-| Cajón | entra desde la derecha con un poco de resorte; el fondo se desenfoca |
-| Diálogos, buscador, desplegables | crecen desde 95 % (160 ms) |
-| Tarjetas de hosts | aparecen escalonadas (35 ms entre una y otra) y se elevan 2 px al pasar |
-| Botones | suben 1 px al pasar, se hunden al apretar; el principal tiene un brillo que lo cruza |
-| Interruptor | el pulgar rebota y se estira al apretar |
-| Contraseña incorrecta | la tarjeta tiembla |
-| Avisos | entran desde abajo y se reacomodan (flip) |
+| Switching views | moves up 6 px and fades in (220 ms) |
+| Drawer | enters from the right with a bit of spring; the background blurs |
+| Dialogs, search, dropdowns | grow from 95 % (160 ms) |
+| Host cards | appear staggered (35 ms apart) and lift 2 px on hover |
+| Buttons | rise 1 px on hover, sink when pressed; the primary has a shine that sweeps across it |
+| Switch | the thumb bounces and stretches when pressed |
+| Wrong password | the card shakes |
+| Toasts | enter from the bottom and rearrange (flip) |
 
-En Athanor el movimiento es por pasos (`steps()`), como el pixel art.
+In Athanor motion is stepped (`steps()`), like pixel art.
 
-## 6. Profundidad
+## 6. Depth
 
-Default, Warp y Haze: sin sombras en tarjetas; profundidad por superficies y bordes. Poolsuite:
-sombras duras desplazadas (`3px 3px 0`) en tarjetas, botones principales y el ítem activo.
+Default, Warp and Haze: no shadows on cards; depth through surfaces and borders. Poolsuite:
+hard offset shadows (`3px 3px 0`) on cards, primary buttons and the active item.
 
-## 7. Qué sí y qué no
+## 7. Do's and don'ts
 
-- Sí: estados con color y texto a la vez (un chip rojo dice "denied").
-- Sí: secretos nunca visibles; los campos guardados muestran "Stored. Type to replace."
-- No: colores fijos en componentes. Si hace falta uno, es una variable nueva en los cuatro temas.
-- No: animaciones largas. Solo la entrada del cajón (180 ms) y hovers.
+- Do: states with color and text at once (a red chip says "denied").
+- Do: secrets never visible; stored fields show "Stored. Type to replace."
+- Don't: hardcoded colors in components. If one is needed, it's a new variable in all four themes.
+- Don't: long animations. Only the drawer entrance (180 ms) and hovers.
 
-## 8. Comportamiento responsive
+## 8. Responsive behavior
 
-Ventana mínima de 860 x 560. La grilla de hosts se acomoda sola (`auto-fill`, 250 px).
+Minimum window 860 x 560. The host grid arranges itself (`auto-fill`, 250 px).
 
-## 9. Guía para agentes
+## 9. Agent guide
 
-Antes de cambiar la interfaz: leer este archivo y `styles/themes.css`. Probar en los cuatro temas
-(Settings → Theme). `npm run check` sin avisos.
+Before changing the interface: read this file and `styles/themes.css`. Test in all four themes
+(Settings → Theme). `npm run check` with no warnings.

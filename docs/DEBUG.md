@@ -1,50 +1,50 @@
-# Modo debug de la interfaz
+# Interface debug mode
 
-Un panel para ver qué pasa con las pestañas y las terminales cuando algo se ve mal y no se puede
-reproducir en un navegador común (cosas del WebView2). Está en `apps/desktop/src/lib/debug.svelte.ts`
-y solo aparece con `npm run dev` (o en la app instalada con `localStorage["ethereon.debug"] = "1"`).
-En un release no hace nada.
+A panel to see what's going on with tabs and terminals when something looks wrong and can't be
+reproduced in a regular browser (WebView2 issues). It lives in `apps/desktop/src/lib/debug.svelte.ts`
+and only shows up with `npm run dev` (or in the installed app with `localStorage["ethereon.debug"] = "1"`).
+In a release it does nothing.
 
-## Levantarlo al lado de la app instalada
+## Running it alongside the installed app
 
-Con `ETHEREON_DATA_DIR`, la copia de prueba usa otro vault y no se pasa a la instancia ya abierta
-(se saltea el single-instance, ver `src-tauri/src/lib.rs`). Con `ETHEREON_PORT`, el MCP escucha en
-otro puerto. Desde la raíz del repo:
+With `ETHEREON_DATA_DIR`, the test copy uses a different vault and doesn't hand off to the already open instance
+(single-instance is skipped, see `src-tauri/src/lib.rs`). With `ETHEREON_PORT`, the MCP listens on
+another port. From the repo root:
 
 ```powershell
 $env:ETHEREON_DATA_DIR = "$env:TEMP\ethereon-dev"; $env:ETHEREON_PORT = 47399; npm run dev
 ```
 
-Pide crear una contraseña (vault nuevo, vacío). Para probar terminales alcanza con "This PC" (`Ctrl T`).
+It asks you to create a password (new, empty vault). To test terminals, "This PC" is enough (`Ctrl T`).
 
-## El panel
+## The panel
 
-Abajo a la derecha:
+Bottom right:
 
-- **Mark (F9):** anota "se ve mal" con el estado completo de todas las terminales.
-- **Redraw:** redibuja todas las terminales. Si con esto se arregla, es un problema de pintado.
-- **Copy / Clear:** copia o limpia el registro.
-- **Interruptores** `capture`, `focus`, `tips`, `webgl`: cada uno apaga algo para aislar una causa
-  (el tooltip de cada botón dice qué hace). Se guardan en `localStorage["ethereon.dbgsw"]`.
-- Arriba, en vivo, cada terminal visible: tamaño, filas x columnas, WebGL, cuántas veces dibujó y
-  hace cuánto, sus canvas (con el color del medio de los 2D) y qué elemento queda encima del medio.
+- **Mark (F9):** logs "se ve mal" ("looks wrong") with the full state of every terminal.
+- **Redraw:** redraws every terminal. If this fixes it, it's a painting problem.
+- **Copy / Clear:** copies or clears the log.
+- **Switches** `capture`, `focus`, `tips`, `webgl`: each one turns something off to isolate a cause
+  (each button's tooltip says what it does). They're saved in `localStorage["ethereon.dbgsw"]`.
+- At the top, live, each visible terminal: size, rows x columns, WebGL, how many times it drew and
+  how long ago, its canvases (with the middle color of the 2D ones) and which element sits on top of the center.
 
-Se anota solo: apretar, arrastrar, soltar y hacer clic en pestañas; qué pestaña se ve; cuando una
-terminal gana o pierde el foco; cambios de filas y columnas; foco, tamaño y visibilidad de la
-ventana; pérdida del contexto WebGL; y los errores de JavaScript (`error`, `unhandledrejection`,
-`console.error`). Para anotar algo más: `dbg("qué pasó", datos, true)` (con `true` saca fotos del
-estado a los 80 ms y a los 700 ms).
+It logs on its own: pressing, dragging, dropping and clicking on tabs; which tab is visible; when a
+terminal gains or loses focus; row and column changes; window focus, size and visibility;
+WebGL context loss; and JavaScript errors (`error`, `unhandledrejection`,
+`console.error`). To log something else: `dbg("qué pasó", datos, true)` (with `true` it takes snapshots of the
+state at 80 ms and at 700 ms).
 
-## El registro en un archivo
+## The log in a file
 
-Todo lo que anota el panel también va a `target/ui-debug.log`, por el canal de recarga en vivo de
-vite (la CSP no deja hacer `fetch`; ver el plugin `debugLog` en `vite.config.ts`). Así se lee sin
-copiar y pegar. Las pruebas de Playwright contra el mismo vite también escriben ahí.
+Everything the panel logs also goes to `target/ui-debug.log`, through vite's live reload
+channel (the CSP doesn't allow `fetch`; see the `debugLog` plugin in `vite.config.ts`). That way it can be read without
+copying and pasting. Playwright tests against the same vite also write there.
 
-## Casos resueltos
+## Solved cases
 
-- **Terminal en negro al perder el foco** (clic en la pestaña actual, arrastrar una pestaña):
-  pasaba solo con una imagen Sixel en pantalla (el splash de athanor). El addon de imágenes
-  dibujaba en un canvas `desynchronized` y WebView2 dejaba la terminal en negro. Arreglado en
-  `vite.config.ts` (`imageCanvasSynchronized`). Lo que lo mostró: el interruptor `focus`, y que el
-  contador de dibujos no subía al perder el foco solo cuando había una imagen.
+- **Black terminal on losing focus** (click on the current tab, dragging a tab):
+  it only happened with a Sixel image on screen (the athanor splash). The image addon
+  drew on a `desynchronized` canvas and WebView2 left the terminal black. Fixed in
+  `vite.config.ts` (`imageCanvasSynchronized`). What revealed it: the `focus` switch, and that the
+  draw counter didn't go up on losing focus only when there was an image.

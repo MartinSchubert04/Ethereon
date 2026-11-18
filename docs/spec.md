@@ -1,105 +1,105 @@
-# Spec original
+# Original spec
 
-Tal como se pidió. "Yo" es el agente (Claude). Lo que cambió al construirlo está en
-[PLAN.md](PLAN.md), sección "Decisiones".
+As requested. "I" is the agent (Claude). What changed while building it is in
+[PLAN.md](PLAN.md), "Decisions" section.
 
-## Idea central
+## Core idea
 
-La app es la única que tiene las credenciales y la que abre las conexiones SSH. El agente nunca
-recibe una contraseña o una clave: le pide a la app "corré este comando en el host X" y recibe solo
-la salida. La persona maneja todo desde una interfaz gráfica parecida a Termius, y también la usa
-como cliente SSH.
+The app is the only one that has the credentials and the one that opens the SSH connections. The agent never
+receives a password or a key: it asks the app "run this command on host X" and receives only
+the output. The person manages everything from a graphical interface similar to Termius, and also uses it
+as an SSH client.
 
-## 1. Componentes
+## 1. Components
 
-- Servicio de fondo (broker): guarda el vault, abre las conexiones SSH, aplica las reglas de qué se
-  puede correr y registra todo. Puede correr en la PC o en un servidor, para usarlo desde varias PCs.
-- Interfaz web o de escritorio (tipo Termius): hosts, grupos, credenciales, reglas, aprobaciones y
-  auditoría. Terminal interactiva.
-- Conexión para agentes (MCP): local en la PC, o por HTTPS con un token por PC si el broker está en
-  un servidor.
+- Background service (broker): stores the vault, opens the SSH connections, applies the rules for what can
+  be run and logs everything. It can run on the PC or on a server, to use it from multiple PCs.
+- Web or desktop interface (Termius-style): hosts, groups, credentials, rules, approvals and
+  audit. Interactive terminal.
+- Connection for agents (MCP): local on the PC, or over HTTPS with a per-PC token if the broker is on
+  a server.
 
 ## 2. Vault
 
-- Tipos de secreto: contraseñas, claves privadas (con o sin passphrase), certificados SSH,
-  contraseña de sudo, tokens de API.
-- Cifrado de todo el vault (AES-256-GCM) con una clave derivada de una contraseña maestra
-  (Argon2id), o protegida por el sistema operativo (DPAPI en Windows, Keychain en Mac).
-- Solo una persona puede desbloquearlo, desde la interfaz. Se bloquea solo después de un tiempo sin
-  uso. El agente no tiene ninguna forma de desbloquearlo.
-- Los hosts referencian credenciales por ID (`cred: bastion-key`). El agente solo conoce ese ID.
-- Importar desde `~/.ssh/config`, desde Termius y desde archivos de clave.
-- Exportar fácil: Bitwarden, Termius y otros formatos comunes (agregado después).
+- Secret types: passwords, private keys (with or without passphrase), SSH certificates,
+  sudo password, API tokens.
+- Encryption of the whole vault (AES-256-GCM) with a key derived from a master password
+  (Argon2id), or protected by the operating system (DPAPI on Windows, Keychain on Mac).
+- Only a person can unlock it, from the interface. It locks itself after a period of no
+  use. The agent has no way to unlock it.
+- Hosts reference credentials by ID (`cred: bastion-key`). The agent only knows that ID.
+- Import from `~/.ssh/config`, from Termius and from key files.
+- Easy export: Bitwarden, Termius and other common formats (added later).
 
 ## 3. Hosts
 
-- Nombre, IP o hostname, puerto, usuario, credencial, grupo, etiquetas y entorno (prod, test, dev).
-- Saltos por bastión (ProxyJump encadenado).
-- Verificación de la clave del host: la primera vez muestra la huella y la tiene que confirmar una
-  persona. Si después cambia, se bloquea la conexión y se avisa.
-- Una descripción del host que el agente puede leer para tener contexto.
-- (Agregado después) Un host también puede ser un equipo por cable de consola serial (switch,
-  AP, router): puerto, baudios, 8N1, patrón de prompt y, si hace falta, usuario, contraseña y
-  contraseña de `enable` del vault. El agente lo usa con el mismo `run(host, comando)` y las mismas
-  reglas; nunca ve el nombre del puerto.
+- Name, IP or hostname, port, user, credential, group, tags and environment (prod, test, dev).
+- Bastion jumps (chained ProxyJump).
+- Host key verification: the first time it shows the fingerprint and a person has to
+  confirm it. If it changes later, the connection is blocked and a warning is shown.
+- A host description the agent can read for context.
+- (Added later) A host can also be a device on a serial console cable (switch,
+  AP, router): port, baud rate, 8N1, prompt pattern and, if needed, username, password and
+  `enable` password from the vault. The agent uses it with the same `run(host, command)` and the same
+  rules; it never sees the port name.
 
-## 4. Lo que puede hacer el agente
+## 4. What the agent can do
 
-- Listar hosts y grupos: nombre, entorno, etiquetas y descripción; nunca IPs, credenciales ni secretos.
-- `run(host, comando)`: salida, código de salida y duración.
-- Opcionales por host: sesiones persistentes, leer archivos, subir y bajar archivos, túneles.
-- sudo sin exponer la contraseña: la app la inyecta por la entrada estándar. Nunca en la línea de
-  comando, ni en variables de entorno, ni en la salida.
+- List hosts and groups: name, environment, tags and description; never IPs, credentials or secrets.
+- `run(host, command)`: output, exit code and duration.
+- Optional per host: persistent sessions, reading files, uploading and downloading files, tunnels.
+- sudo without exposing the password: the app injects it through standard input. Never on the command
+  line, in environment variables, or in the output.
 
-## 5. Reglas por host o por grupo
+## 5. Rules per host or per group
 
-- Modos: solo lectura (lista de permitidos), con aprobación, libre.
-- Lista de prohibidos siempre: `rm -rf`, `shutdown`, `mkfs`, ver el historial de la shell, leer
-  `~/.ssh` y `/etc/shadow`.
-- Los comandos se analizan completos, incluidos pipes, `;`, `$( )` y redirecciones.
-- Límites de tiempo, de tamaño de salida y de comandos por minuto.
+- Modes: read-only (allowlist), with approval, free.
+- Always-on forbidden list: `rm -rf`, `shutdown`, `mkfs`, viewing the shell history, reading
+  `~/.ssh` and `/etc/shadow`.
+- Commands are analyzed in full, including pipes, `;`, `$( )` and redirections.
+- Limits on time, output size and commands per minute.
 
-## 6. Aprobaciones
+## 6. Approvals
 
-- Cola con el comando, el host y el motivo que da el agente.
-- Aprobar, rechazar, aprobar este patrón por la sesión, o editar el comando antes de aprobarlo.
-- Notificación en el escritorio o en el celular.
+- Queue with the command, the host and the reason the agent gives.
+- Approve, reject, approve this pattern for the session, or edit the command before approving it.
+- Notification on the desktop or on the phone.
 
-## 7. Protección de la salida
+## 7. Output protection
 
-- Se buscan todos los secretos del vault en la salida y se reemplazan por `***`.
-- También patrones conocidos: claves privadas, tokens, JWT, `password=`, cabeceras Authorization y
-  cadenas de conexión con contraseña.
+- All vault secrets are searched for in the output and replaced with `***`.
+- Also known patterns: private keys, tokens, JWT, `password=`, Authorization headers and
+  connection strings with a password.
 
-## 8. Auditoría
+## 8. Audit
 
-- Cada comando: quién, desde qué PC, host, comando, salida (o su hash), resultado y quién lo aprobó.
-- Grabación opcional de sesiones; búsqueda y exportación desde la interfaz.
+- Each command: who, from which PC, host, command, output (or its hash), result and who approved it.
+- Optional session recording; search and export from the interface.
 
-## 9. Varias PCs
+## 9. Multiple PCs
 
-- Modo servidor: las PCs se conectan con un token de dispositivo con vencimiento, hosts permitidos y
-  revocación inmediata.
-- Botón de apagado general que corta todo el acceso del agente.
+- Server mode: PCs connect with a device token with expiry, allowed hosts and
+  immediate revocation.
+- Master kill switch that cuts all agent access.
 
-## 10. Fuera de alcance
+## 10. Out of scope
 
-Que el agente desbloquee el vault, exporte o lea secretos, o cambie las reglas o las credenciales.
+The agent unlocking the vault, exporting or reading secrets, or changing the rules or the credentials.
 
-## 11. Pruebas de aceptación
+## 11. Acceptance tests
 
-1. El agente pide un `cat` de un archivo que contiene una contraseña del vault y recibe `***`.
-2. sudo funciona sin que la contraseña aparezca en la salida, la auditoría ni la lista de procesos.
-3. Un comando prohibido escondido en un pipe o en un `$( )` se rechaza.
-4. Con el vault bloqueado, todo pedido falla.
-5. Si cambia la clave de un host, la conexión se bloquea.
+1. The agent asks for a `cat` of a file that contains a vault password and receives `***`.
+2. sudo works without the password appearing in the output, the audit or the process list.
+3. A forbidden command hidden in a pipe or in a `$( )` is rejected.
+4. With the vault locked, every request fails.
+5. If a host's key changes, the connection is blocked.
 
-## Etapas pedidas
+## Requested stages
 
-1. Vault con hosts, la conexión para agentes con run, enmascarado y auditoría.
-2. Reglas y aprobaciones.
-3. Modo servidor para varias PCs.
-4. Interfaz completa con terminal interactiva.
+1. Vault with hosts, the agent connection with run, masking and audit.
+2. Rules and approvals.
+3. Server mode for multiple PCs.
+4. Full interface with interactive terminal.
 
-Estilo: moderno, barato de modificar, liviano y que corra en segundo plano sin drama. Temas extra
-inspirados en Warp, Poolsuite FM y Haze.
+Style: modern, cheap to modify, lightweight and running in the background without fuss. Extra themes
+inspired by Warp, Poolsuite FM and Haze.

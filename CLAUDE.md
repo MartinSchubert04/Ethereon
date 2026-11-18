@@ -1,93 +1,93 @@
 # CLAUDE.md
 
-Ethereon: gestor SSH tipo Termius con vault, que le da a Claude Code acceso por MCP sin darle nunca una
-credencial. Tauri 2 + Svelte 5, con el broker en una crate de Rust aparte.
+Ethereon: a Termius-style SSH manager with a vault that gives Claude Code access over MCP without ever
+handing it a credential. Tauri 2 + Svelte 5, with the broker in a separate Rust crate.
 
-## Dónde está cada decisión
+## Where each decision lives
 
-| Pregunta | Archivo |
+| Question | File |
 |---|---|
-| Qué pidió el usuario | `docs/spec.md` |
-| Etapas, qué falta, alternativas descartadas | `docs/PLAN.md` |
-| Cómo tiene que verse la interfaz | `DESIGN.md` |
-| Qué hace cada módulo del broker | comentario de cabecera de cada archivo en `crates/ethereon-core/src/` |
-| Cómo depurar la interfaz (modo debug, copia de prueba) | `docs/DEBUG.md` |
+| What the user asked for | `docs/spec.md` |
+| Stages, what's missing, discarded alternatives | `docs/PLAN.md` |
+| How the interface should look | `DESIGN.md` |
+| What each broker module does | header comment of each file in `crates/ethereon-core/src/` |
+| How to debug the interface (debug mode, test copy) | `docs/DEBUG.md` |
 
-## Comandos
+## Commands
 
 ```powershell
-npm run dev     # la app con recarga en vivo
+npm run dev     # the app with live reload
 npm run check   # svelte-check
-cargo test      # tests del núcleo
+cargo test      # core tests
 ```
 
-Antes de dar un cambio por terminado: `cargo test` y `npm run check` sin errores ni avisos. Si el
-cambio toca `ssh`, `broker`, `policy` o `mcp`, también las pruebas de aceptación (ver README).
+Before calling a change done: `cargo test` and `npm run check` with no errors or warnings. If the
+change touches `ssh`, `broker`, `policy` or `mcp`, also the acceptance tests (see README).
 
-## Versiones: commit, tag y push
+## Versions: commit, tag and push
 
-Cada fix o feature terminado (tests y check en verde) se publica sin esperar a que lo pidan:
-subir la versión, commitear, tagear y pushear `main` y el tag.
+Every finished fix or feature (tests and check green) gets published without waiting to be asked:
+bump the version, commit, tag, and push `main` and the tag.
 
-- **Qué número sube** (semver, `MAYOR.MENOR.PARCHE`):
-  - `x.y.Z` (parche): arreglos y retoques chicos de algo que ya existía (un texto, un ancho,
-    un bug).
-  - `x.Y.0` (menor): algo nuevo que se puede usar (una opción, un ícono, una pantalla), sin
-    romper nada.
-  - `X.0.0` (mayor): rompe algo de lo que ya existe (el formato del vault sin migración, la
-    API del MCP, quitar una función). Antes de subirla, preguntar.
-- **Dónde está la versión** (las cinco iguales): `apps/desktop/package.json`,
+- **Which number goes up** (semver, `MAJOR.MINOR.PATCH`):
+  - `x.y.Z` (patch): fixes and small tweaks to something that already existed (a text, a width,
+    a bug).
+  - `x.Y.0` (minor): something new that can be used (an option, an icon, a screen), without
+    breaking anything.
+  - `X.0.0` (major): breaks something that already exists (the vault format without a migration, the
+    MCP API, removing a feature). Ask before bumping it.
+- **Where the version lives** (all five the same): `apps/desktop/package.json`,
   `apps/desktop/src-tauri/tauri.conf.json`, `apps/desktop/src-tauri/Cargo.toml`,
-  `crates/ethereon-core/Cargo.toml`, y las entradas de `ethereon` / `ethereon-core` en
-  `Cargo.lock` y de `@ethereon/desktop` en `package-lock.json` (ojo con reemplazar a ciegas:
-  otras dependencias pueden tener el mismo número).
-- **Commit**: `vX.Y.Z: <resumen>` y en el cuerpo una línea por cambio, en español, terminando
-  con la versión (ver `git log`). Tag `vX.Y.Z` sobre ese commit.
-- Cambios que no son ni fix ni feature (docs, este archivo) se commitean y pushean sin tag.
+  `crates/ethereon-core/Cargo.toml`, and the `ethereon` / `ethereon-core` entries in
+  `Cargo.lock` and `@ethereon/desktop` in `package-lock.json` (careful with blind replacing:
+  other dependencies may have the same number).
+- **Commit**: `vX.Y.Z: <summary>` and in the body one line per change, in Spanish, ending
+  with the version (see `git log`). Tag `vX.Y.Z` on that commit.
+- Changes that are neither a fix nor a feature (docs, this file) are committed and pushed without a tag.
 
-## Estructura
+## Structure
 
 ```
-crates/ethereon-core/src/   broker sin interfaz
-  vault.rs                archivo cifrado (AES-256-GCM + Argon2id)
-  model.rs                lo que hay dentro del vault
-  shell.rs, policy.rs     parser de comandos y reglas
-  mask.rs                 enmascarado de la salida
-  audit.rs                registro con HMAC encadenado
-  ssh.rs                  conexiones, saltos, huellas, exec, PTY
-  serial.rs               consola serial (cable de consola): puerto compartido, exec por prompt,
-                          paginadores, login; trait `Link` para probarlo sin hardware
-  broker.rs               une todo y despacha por transporte (SSH o serial); lo único que usan la interfaz y el MCP
-  mcp.rs                  servidor MCP (HTTP, JSON-RPC a mano)
-  import.rs, export.rs    ssh config, claves, Bitwarden; OpenSSH, Bitwarden, CSV, JSON
-  files.rs                SFTP y disco local para la persona (sin reglas)
-  transfer.rs             archivos del agente por SFTP (`download` / `upload`): rutas, contenido, archivos locales
-crates/ethereon-core/tests/ pruebas de aceptación y los contenedores SSH de prueba
-apps/desktop/src-tauri/   bandeja, ventana, comandos de la interfaz (commands.rs), terminal (SSH, serial y local), files.rs (SFTP),
-                          hotkey.rs (atajo global), conpty/ (ConPTY de Windows Terminal, ver su README)
-apps/desktop/src/         interfaz: views/ (una por sección), components/, lib/, styles/
+crates/ethereon-core/src/   broker without a UI
+  vault.rs                encrypted file (AES-256-GCM + Argon2id)
+  model.rs                what's inside the vault
+  shell.rs, policy.rs     command parser and rules
+  mask.rs                 output masking
+  audit.rs                log with chained HMAC
+  ssh.rs                  connections, jumps, fingerprints, exec, PTY
+  serial.rs               serial console (console cable): shared port, prompt-based exec,
+                          pagers, login; `Link` trait to test it without hardware
+  broker.rs               ties everything together and dispatches by transport (SSH or serial); the only thing the UI and the MCP use
+  mcp.rs                  MCP server (HTTP, hand-written JSON-RPC)
+  import.rs, export.rs    ssh config, keys, Bitwarden; OpenSSH, Bitwarden, CSV, JSON
+  files.rs                SFTP and local disk for the person (no rules)
+  transfer.rs             agent files over SFTP (`download` / `upload`): paths, content, local files
+crates/ethereon-core/tests/ acceptance tests and the test SSH containers
+apps/desktop/src-tauri/   tray, window, UI commands (commands.rs), terminal (SSH, serial and local), files.rs (SFTP),
+                          hotkey.rs (global hotkey), conpty/ (Windows Terminal's ConPTY, see its README)
+apps/desktop/src/         UI: views/ (one per section), components/, lib/, styles/
 ```
 
-## Reglas del proyecto
+## Project rules
 
-- **El agente nunca llega a un secreto.** Nada de lo que devuelve `mcp.rs` o `Broker::agent_*` puede
-  incluir IPs, nombres de puerto serie (`COM3`), usuarios, credenciales ni salida sin enmascarar. Lo
-  que desbloquea, edita o exporta solo existe como comando de Tauri.
-- **El broker no sabe por dónde viaja un comando.** Las reglas, aprobaciones, enmascarado y auditoría
-  son los mismos para SSH y serial; solo `Broker::exec` despacha por `Host::transport`.
-- **Todo lo que afecta la seguridad va dentro del vault** (reglas, huellas, dispositivos, ajustes),
-  nunca en un archivo plano: el agente corre en la misma PC y podría editarlo.
-- **Los comandos de Tauri son finitos.** La lógica va en `ethereon-core`, así la etapa 3 los reemplaza
-  por HTTP sin reescribir nada.
-- **Temas solo con variables.** Los colores viven en `src/styles/themes.css`; los componentes no
-  tienen colores fijos. Un tema nuevo = un bloque ahí + una línea en `src/lib/themes.ts`.
-- Docs y comentarios en español; textos de la interfaz en inglés, literales (ver `DESIGN.md`).
-- **Espacio en disco de Rust.** En noviembre de 2026 `target/` llegó a ~110 GB (más ~12 GB en los
-  worktrees) y llenó el C:. Para que no vuelva a pasar:
-  - `--release` solo para publicar o probar el instalador.
-  - En un worktree (`.claude/worktrees/`) compilar con `CARGO_TARGET_DIR` apuntando al `target/`
-    del repo principal (`$env:CARGO_TARGET_DIR="<repo>\target"`), no crear uno nuevo. Al terminar
-    la tarea, `git worktree remove` del worktree.
-  - Al terminar las pruebas de una tarea que compiló (antes del push que la publica), `cargo clean`
-    en `target/`: queda en 0. Volver a compilar tarda unos minutos, pero el disco no se llena.
-    Antes, cerrar la instancia de prueba que corre desde ahí (Windows no deja borrar su .exe).
+- **The agent never reaches a secret.** Nothing returned by `mcp.rs` or `Broker::agent_*` may
+  include IPs, serial port names (`COM3`), usernames, credentials or unmasked output. Whatever
+  unlocks, edits or exports exists only as a Tauri command.
+- **The broker doesn't know how a command travels.** Rules, approvals, masking and auditing
+  are the same for SSH and serial; only `Broker::exec` dispatches on `Host::transport`.
+- **Everything that affects security goes inside the vault** (rules, fingerprints, devices, settings),
+  never in a plain file: the agent runs on the same PC and could edit it.
+- **Tauri commands are thin.** The logic goes in `ethereon-core`, so stage 3 can replace them
+  with HTTP without rewriting anything.
+- **Themes only through variables.** Colors live in `src/styles/themes.css`; components have no
+  hardcoded colors. A new theme = one block there + one line in `src/lib/themes.ts`.
+- Docs in English; code comments in Spanish; interface text in English, literal (see `DESIGN.md`).
+- **Rust disk space.** In November 2026 `target/` reached ~110 GB (plus ~12 GB in the
+  worktrees) and filled C:. So it doesn't happen again:
+  - `--release` only to publish or to test the installer.
+  - In a worktree (`.claude/worktrees/`) build with `CARGO_TARGET_DIR` pointing to the `target/`
+    of the main repo (`$env:CARGO_TARGET_DIR="<repo>\target"`), don't create a new one. When the
+    task is done, `git worktree remove` the worktree.
+  - When done testing a task that compiled (before the push that publishes it), `cargo clean`
+    in `target/`: it goes down to 0. Rebuilding takes a few minutes, but the disk doesn't fill up.
+    First, close the test instance running from there (Windows won't let you delete its .exe).

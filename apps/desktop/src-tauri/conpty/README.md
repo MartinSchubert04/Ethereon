@@ -1,16 +1,16 @@
-# ConPTY de Windows Terminal
+# Windows Terminal's ConPTY
 
-`conpty.dll` y `OpenConsole.exe` del paquete oficial de Microsoft
+`conpty.dll` and `OpenConsole.exe` from Microsoft's official package
 [`Microsoft.Windows.Console.ConPTY`](https://www.nuget.org/packages/Microsoft.Windows.Console.ConPTY)
-1.25.260930003 (x64), licencia MIT (`LICENSE`). Firmados por Microsoft Corporation.
+1.25.260930003 (x64), MIT license (`LICENSE`). Signed by Microsoft Corporation.
 
-Por qué: la ConPTY que trae Windows reinterpreta la salida de la shell y descarta lo que no
-entiende, como las imagenes Sixel. Esta es la de Windows Terminal y las deja pasar.
-`portable-pty` usa un `conpty.dll` que este al lado del ejecutable antes que el de Windows;
-`tauri.conf.json` los copia ahi (`bundle.resources`).
+Why: the ConPTY that ships with Windows reinterprets the shell's output and discards what it doesn't
+understand, such as Sixel images. This is Windows Terminal's and it lets them through.
+`portable-pty` uses a `conpty.dll` sitting next to the executable before Windows' own;
+`tauri.conf.json` copies them there (`bundle.resources`).
 
-Para actualizar: bajar el `.nupkg` de NuGet, abrirlo como zip y copiar
-`runtimes/win-x64/native/conpty.dll` y `build/native/runtimes/x64/OpenConsole.exe`.
+To update: download the `.nupkg` from NuGet, open it as a zip and copy
+`runtimes/win-x64/native/conpty.dll` and `build/native/runtimes/x64/OpenConsole.exe`.
 
 SHA-256 (1.25.260930003):
 

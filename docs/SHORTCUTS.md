@@ -1,220 +1,220 @@
-# Atajos y comodidades
+# Shortcuts and conveniences
 
-Todo lo que se puede hacer con el teclado (y algunos gestos con el mouse) en Ethereon.
-Los atajos marcados con ✎ se cambian en **Settings → Keyboard shortcuts**; los demás son fijos.
+Everything you can do with the keyboard (and some mouse gestures) in Ethereon.
+Shortcuts marked with ✎ can be changed in **Settings → Keyboard shortcuts**; the rest are fixed.
 
-## Desde cualquier lado de Windows
+## From anywhere in Windows
 
-| Atajo | Qué hace |
+| Shortcut | What it does |
 |---|---|
-| `Ctrl Shift Alt T` | Si la ventana activa es una carpeta del Explorador (o el Escritorio), abre una terminal en esa carpeta, como "Abrir en Terminal". Si no, trae Ethereon al frente (aunque esté cerrado en la bandeja) con PowerShell en tu Escritorio; si ya hay una terminal local abierta, va a esa en vez de abrir otra |
+| `Ctrl Shift Alt T` | If the active window is an Explorer folder (or the Desktop), opens a terminal in that folder, like "Abrir en Terminal" ("Open in Terminal"). Otherwise, brings Ethereon to the front (even if it's closed to the tray) with PowerShell in your Desktop; if a local terminal is already open, it goes to that one instead of opening another |
 
-Se cambia o se apaga en **Settings → Startup and updates**. Si otra app ya usa la combinación,
-avisa y queda la anterior. Ahí mismo se elige dónde se abre la carpeta:
+It can be changed or turned off in **Settings → Startup and updates**. If another app already uses the combination,
+it warns and the previous one is kept. That's also where you choose where the folder opens:
 
-- **Windows Terminal** (por defecto): con tu perfil, tu tema y tu fuente. Ethereon queda en la
-  bandeja.
-- **Ethereon**: una pestaña de PowerShell 7. Con el vault bloqueado, se abre al desbloquearlo.
+- **Windows Terminal** (default): with your profile, your theme and your font. Ethereon stays in the
+  tray.
+- **Ethereon**: a PowerShell 7 tab. With the vault locked, it opens when you unlock it.
 
-## En toda la app
+## Throughout the app
 
-| Atajo | Qué hace |
+| Shortcut | What it does |
 |---|---|
-| `Ctrl T` ✎ | Pestaña nueva: buscar un host o una shell de esta PC |
-| `Ctrl Shift T` ✎ | Terminal local nueva (la primera shell de la lista, normalmente PowerShell 7) |
-| `Ctrl R` ✎ | Refrescar la pestaña actual: en SFTP recarga las carpetas; en una pestaña que no conectó o se cortó, reconecta ahí mismo. En una terminal conectada, `Ctrl R` es de la shell (buscar en el historial) |
-| `Ctrl W` ✎ | Cerrar la pestaña (dentro de una terminal va a la shell si así está configurado) |
-| `Ctrl Shift W` ✎ | Cerrar la pestaña, también desde una terminal |
-| `Ctrl Tab` / `Ctrl Shift Tab` ✎ | Pestaña siguiente / anterior |
-| `Ctrl 1` … `Ctrl 9` | Ir a la pestaña N (`Ctrl 1` es el vault) |
-| `Ctrl B` ✎ | Mostrar u ocultar la barra lateral (en una terminal, flota encima) |
-| `Ctrl F` ✎ | Buscar hosts |
-| `Ctrl N` ✎ | Host nuevo. En Keychain: credencial nueva |
+| `Ctrl T` ✎ | New tab: search for a host or a shell on this PC |
+| `Ctrl Shift T` ✎ | New local terminal (the first shell in the list, usually PowerShell 7) |
+| `Ctrl R` ✎ | Refresh the current tab: in SFTP it reloads the folders; in a tab that didn't connect or got cut off, it reconnects right there. In a connected terminal, `Ctrl R` belongs to the shell (history search) |
+| `Ctrl W` ✎ | Close the tab (inside a terminal it goes to the shell if configured that way) |
+| `Ctrl Shift W` ✎ | Close the tab, also from a terminal |
+| `Ctrl Tab` / `Ctrl Shift Tab` ✎ | Next / previous tab |
+| `Ctrl 1` … `Ctrl 9` | Go to tab N (`Ctrl 1` is the vault) |
+| `Ctrl B` ✎ | Show or hide the sidebar (in a terminal, it floats on top) |
+| `Ctrl F` ✎ | Search hosts |
+| `Ctrl N` ✎ | New host. In Keychain: new credential |
 | `Ctrl ,` ✎ | Settings |
-| `Ctrl Shift L` ✎ | Bloquear el vault |
+| `Ctrl Shift L` ✎ | Lock the vault |
 
-La app nunca se recarga: `F5`, `Ctrl R` y `Ctrl Shift R` no cierran las pestañas como en un
-navegador.
+The app never reloads: `F5`, `Ctrl R` and `Ctrl Shift R` don't close the tabs like in a
+browser.
 
-## Pestañas y ventanas
+## Tabs and windows
 
-- **Reordenar:** arrastrar una pestaña sobre otra. La pestaña va bajo el mouse y las otras se
-  corren para hacerle lugar.
-- **Sacarla a su propia ventana:** arrastrarla fuera de la barra (hacia abajo o fuera de la
-  ventana) y soltarla; la ventana nueva aparece donde se suelta. También con clic derecho →
+- **Reorder:** drag a tab over another. The tab goes under the mouse and the others
+  shift to make room for it.
+- **Move it to its own window:** drag it out of the bar (downward or outside the
+  window) and drop it; the new window appears where it's dropped. Also with right-click →
   **Move to new window**.
-- **Pasarla a otra ventana o volverla a la principal:** clic derecho → **Move to …**. Una ventana
-  de terminales puede tener varias pestañas, y se cierra sola cuando se queda sin ninguna.
-- La sesión no se corta al mudarse: la terminal sigue siendo la misma, con lo que se veía.
-  (Las de SFTP se vuelven a abrir en la otra ventana.)
+- **Move it to another window or back to the main one:** right-click → **Move to …**. A terminal
+  window can have several tabs, and it closes on its own when it has none left.
+- The session isn't cut when moving: the terminal is still the same one, with what was on screen.
+  (SFTP tabs are reopened in the other window.)
 
-## Varias terminales en una pestaña (mosaico)
+## Several terminals in one tab (tiling)
 
-- **Juntar:** arrastrar una pestaña hacia abajo, sobre una terminal, y soltarla sobre uno de sus
-  bordes (izquierda, derecha, arriba o abajo): ese espacio se parte en dos. Para sumarla a otra
-  pestaña, quedarse medio segundo encima de esa pestaña mientras se arrastra: se muestra, y ahí
-  se baja a su terminal. Funciona también entre ventanas. Una pestaña que ya tiene varias
-  terminales se suma entera.
-- **Aprobaciones al lado de una terminal:** arrastrar **Approvals** desde la barra lateral (la del
-  vault o la que se abre con ☰) a una pestaña de la barra, o directo sobre un borde de la
-  terminal que se ve. Igual que con un panel: soltarlo sobre la pestaña lo suma a la derecha, y
-  quedarse encima la muestra. Cada pestaña puede tener las suyas: las de otros mosaicos se quedan
-  donde están (todas muestran la misma lista). Si esa pestaña ya las tiene, se mueve ese panel
-  (dos en la misma no hay). Un clic en Approvals sigue abriendo su vista.
-- **Ancho y alto:** arrastrar la separación entre dos terminales.
-- **Reacomodar:** arrastrar una terminal por su nombre (arriba a la izquierda, sobre el borde) a
-  otro costado de otra. **Volverla una pestaña sola:** soltarla sobre un hueco de la barra de
-  pestañas.
-- **Pasarla a otra pestaña:** arrastrarla por su nombre hasta esa pestaña de la barra. Soltarla
-  ahí la suma a la derecha de todo; quedarse medio segundo encima muestra esa pestaña, y ahí se
-  baja y se suelta sobre el borde que se quiera. Si la otra no era un mosaico, pasa a serlo. La
-  sesión no se corta.
-- **Reacomodar con el teclado:** con `Ctrl Shift` apretados, las flechas mueven un cursor por el
-  mosaico y una marca muestra a dónde iría la terminal con el foco. Se mueve recién al soltar
-  `Ctrl Shift`; `Esc` cancela.
-  - Hacia otra terminal: el cursor salta a la más cercana de ese lado, recordando la altura o la
-    columna en la que venía. Con dos a la izquierda (arriba y abajo) y una a la derecha, desde la
-    derecha `←` va a la de arriba y desde ahí `↓` a la de abajo. Marca entera = se intercambian;
-    punteada sobre la propia = se queda donde está.
-  - Sin nada más de ese lado: la marca pasa a la mitad de esa terminal (va a ese costado, se
-    parte su lugar). La misma flecha otra vez: todo ese lado del mosaico.
-  - La flecha contraria deshace el último paso.
+- **Combine:** drag a tab downward, over a terminal, and drop it on one of its
+  edges (left, right, top or bottom): that space is split in two. To add it to another
+  tab, hover over that tab for half a second while dragging: it's shown, and then you
+  move down to its terminal. Also works across windows. A tab that already has several
+  terminals is added whole.
+- **Approvals next to a terminal:** drag **Approvals** from the sidebar (the vault's
+  or the one that opens with ☰) to a tab in the bar, or directly onto an edge of the
+  visible terminal. Same as with a pane: dropping it on the tab adds it on the right, and
+  hovering shows the tab. Each tab can have its own: the ones in other tiled layouts stay
+  where they are (they all show the same list). If that tab already has them, that pane is moved
+  (there can't be two in the same one). A click on Approvals still opens its view.
+- **Width and height:** drag the divider between two terminals.
+- **Rearrange:** drag a terminal by its name (top left, on the edge) to
+  another side of another one. **Make it a standalone tab again:** drop it on an empty spot of the tab
+  bar.
+- **Move it to another tab:** drag it by its name to that tab in the bar. Dropping it
+  there adds it at the far right; hovering for half a second shows that tab, and then you
+  move down and drop it on the edge you want. If the other one wasn't a tiled layout, it becomes one. The
+  session isn't cut.
+- **Rearrange with the keyboard:** with `Ctrl Shift` held, the arrows move a cursor through the
+  tiled layout and a marker shows where the focused terminal would go. It only moves when you release
+  `Ctrl Shift`; `Esc` cancels.
+  - Toward another terminal: the cursor jumps to the nearest one on that side, remembering the row or
+    column it was coming from. With two on the left (top and bottom) and one on the right, from the
+    right `←` goes to the top one and from there `↓` to the bottom one. Solid marker = they swap;
+    dashed over its own = it stays where it is.
+  - With nothing else on that side: the marker moves to half of that terminal (it goes to that side,
+    splitting its spot). The same arrow again: that whole side of the tiled layout.
+  - The opposite arrow undoes the last step.
 
-  Solo en un mosaico: si no, `Ctrl Shift ←/→` sigue siendo de la shell (seleccionar por
-  palabras). Se cambia en Settings → Shortcuts (cuentan los modificadores).
-- **Pasar de una a otra:** `Shift Tab` (en orden, y de la última vuelve a la primera). También
-  en las pestañas de grupo. Con una sola terminal en la pestaña, `Shift Tab` sigue siendo de la
-  shell (en PowerShell completa hacia atrás). Se cambia en Settings → Shortcuts.
-- **Cerrar una:** la `×` de su borde, o `Ctrl Shift W` en la que tiene el foco.
-- Si una conexión se cae, las demás siguen. La caída muestra el camino (esta PC, los saltos, el
-  host) con el tramo cortado y un botón **Retry**. `Ctrl R` reintenta todas las caídas de la
-  pestaña y deja las conectadas como están; si no hay ninguna caída, `Ctrl R` es de la shell.
-- Mover terminales dentro de la ventana no reconecta nada: es la misma terminal, viva, en otro
-  lugar. Al angostarse, xterm reacomoda lo que ya estaba escrito (como cualquier terminal);
-  una imagen que había en ese historial puede quedar partida.
+  Only in a tiled layout: otherwise, `Ctrl Shift ←/→` still belongs to the shell (select by
+  word). It can be changed in Settings → Shortcuts (modifiers count).
+- **Switch from one to another:** `Shift Tab` (in order, and from the last it goes back to the first). Also
+  in group tabs. With a single terminal in the tab, `Shift Tab` still belongs to the
+  shell (in PowerShell it completes backwards). It can be changed in Settings → Shortcuts.
+- **Close one:** the `×` on its edge, or `Ctrl Shift W` in the focused one.
+- If a connection drops, the others keep going. The drop shows the path (this PC, the jumps, the
+  host) with the broken hop and a **Retry** button. `Ctrl R` retries all dropped ones in the
+  tab and leaves the connected ones as they are; if none dropped, `Ctrl R` belongs to the shell.
+- Moving terminals within the window doesn't reconnect anything: it's the same terminal, live, in another
+  place. When it gets narrower, xterm reflows what was already written (like any terminal);
+  an image that was in that history may end up split.
 
-## Grupos
+## Groups
 
-- **Open all** (en el título de cada grupo de Hosts) abre todos sus hosts en una sola pestaña,
-  como Termius: a la izquierda la lista "Terminals" con el estado de cada una (Connecting,
-  Connected, Disconnected) y a la derecha la elegida.
-- En esa lista: clic o `↑` `↓` para cambiar, `×` o clic del medio para cerrar una.
-  `Ctrl Shift W` cierra solo la terminal elegida; con la última se cierra la pestaña.
-- **Reordenar hosts:** arrastrar la tarjeta; una línea marca dónde cae. Soltarla en otro grupo la
-  mueve ahí (si el agente pasa a correr sin preguntar, pide confirmación).
+- **Open all** (in the title of each group in Hosts) opens all its hosts in a single tab,
+  like Termius: on the left the "Terminals" list with the state of each one (Connecting,
+  Connected, Disconnected) and on the right the selected one.
+- In that list: click or `↑` `↓` to switch, `×` or middle-click to close one.
+  `Ctrl Shift W` closes only the selected terminal; with the last one the tab closes.
+- **Reorder hosts:** drag the card; a line marks where it lands. Dropping it in another group
+  moves it there (if the agent would then run without asking, it asks for confirmation).
 
-## Buscador de pestaña nueva (`Ctrl T`)
+## New tab search (`Ctrl T`)
 
-| Atajo | Qué hace |
+| Shortcut | What it does |
 |---|---|
-| Escribir | Filtra por nombre, dirección, grupo, tags o descripción |
-| `↑` `↓` | Elegir |
-| `Enter` | Abrir la terminal del host (o la shell local) |
-| `Shift Enter` / `Shift` + clic | Abrir los archivos del host (SFTP) |
-| `Esc` | Cerrar |
+| Type | Filters by name, address, group, tags or description |
+| `↑` `↓` | Select |
+| `Enter` | Open the host's terminal (or the local shell) |
+| `Shift Enter` / `Shift` + click | Open the host's files (SFTP) |
+| `Esc` | Close |
 
-## Formularios (host, grupo, credencial)
+## Forms (host, group, credential)
 
-| Atajo | Qué hace |
+| Shortcut | What it does |
 |---|---|
-| `Ctrl S` ✎ o `Ctrl Enter` | Guardar |
-| `Esc` | Cerrar sin guardar |
+| `Ctrl S` ✎ or `Ctrl Enter` | Save |
+| `Esc` | Close without saving |
 
-- Al crear un host se puede escribir la contraseña ahí mismo (**Login → Password**). Se guarda
-  cifrada en el vault como `<host>-password`; no hace falta crearla antes en Keychain.
-- Si la credencial tiene usuario, el campo **User** del host puede quedar vacío y se usa el de la
-  credencial.
-- **Environment** arranca en **None**. Es solo una etiqueta (prod, test, dev): pinta el host y le
-  dice al agente que una máquina es de producción. No cambia ninguna regla.
-- En **Settings**, `Ctrl S` guarda la sección Security (lo demás se guarda solo).
-- `Esc` en un diálogo de confirmación cierra solo el diálogo, no el formulario de atrás.
+- When creating a host you can type the password right there (**Login → Password**). It's stored
+  encrypted in the vault as `<host>-password`; there's no need to create it first in Keychain.
+- If the credential has a username, the host's **User** field can be left empty and the
+  credential's is used.
+- **Environment** starts at **None**. It's just a label (prod, test, dev): it colors the host and
+  tells the agent that a machine is production. It doesn't change any rule.
+- In **Settings**, `Ctrl S` saves the Security section (everything else saves itself).
+- `Esc` in a confirmation dialog closes only the dialog, not the form behind it.
 
 ## Terminal
 
-| Atajo | Qué hace |
+| Shortcut | What it does |
 |---|---|
-| `Ctrl Shift C` / `Ctrl Shift V` ✎ | Copiar / pegar |
-| `Ctrl C` | Copia si hay texto elegido; si no, corta el proceso (configurable) |
-| `Ctrl V` | Pega (configurable) |
-| Clic derecho | Copia lo elegido o pega si no hay nada (configurable) |
-| `Ctrl =` / `Ctrl -` ✎ | Letra más grande / más chica |
-| `Ctrl 0` ✎ | Volver al tamaño del tema |
+| `Ctrl Shift C` / `Ctrl Shift V` ✎ | Copy / paste |
+| `Ctrl C` | Copies if there's selected text; otherwise, interrupts the process (configurable) |
+| `Ctrl V` | Pastes (configurable) |
+| Right-click | Copies the selection or pastes if there's nothing selected (configurable) |
+| `Ctrl =` / `Ctrl -` ✎ | Bigger / smaller font |
+| `Ctrl 0` ✎ | Back to the theme's size |
 
-- La fuente se elige en **Settings → Terminal → Font**: la del tema, la misma de Windows Terminal
-  (copia fuente y tamaño), una de las incluidas (JetBrains Mono, Fira Code, IBM Plex Mono, Source
-  Code Pro, Cascadia Mono, y las de los temas) o cualquier instalada. Los iconos de Nerd Font se ven
-  con cualquiera. La fuente la pone la terminal, no la shell: el tema de PowerShell no la cambia.
-- Las terminales locales no heredan variables de la terminal desde la que se abrió Ethereon
-  (`WT_SESSION`, `NO_COLOR`…) y se presentan como `TERM_PROGRAM=Ethereon`, para que el perfil de
-  PowerShell sepa dónde está.
-- Muestran imágenes Sixel (`chafa -f sixel`, `img2sixel`…). Para eso Ethereon usa la ConPTY de
-  Windows Terminal (`apps/desktop/src-tauri/conpty`): la de Windows descarta las imágenes. Por
-  defecto las escala como Windows Terminal (10×20 píxeles por celda), así lo pensado para Windows
-  Terminal se ve igual; se cambia en **Settings → Terminal**.
-  El decodificador Sixel es WebAssembly: la CSP de `tauri.conf.json` necesita `'wasm-unsafe-eval'`
-  (sin eso, en la app instalada las imágenes no salen; en `npm run dev` no hay CSP y sí salen).
-- Con fuentes de píxeles (PxPlus y similares) la negrita se dibuja como en Windows Terminal: la
-  letra repetida un píxel a la derecha, nítida. El navegador la engrosaría con suavizado y se
-  vería borrosa (plugin `pixelBold` en `vite.config.ts`).
-- Las terminales locales usan la shell real de Windows (PowerShell 7, Windows PowerShell, CMD, WSL,
-  Git Bash, las que estén instaladas), con tu perfil, oh-my-posh incluido.
-- Los bloques y las líneas de caja (`█ ▀ ▄ ─ │`), y también los sextantes y octantes que usan
-  `chafa` y los MOTD con imágenes, se dibujan pixel exacto, sin rayas entre filas ni letras de otra
-  fuente. La tabla de sextantes y octantes sale de `apps/desktop/scripts/legacy_glyphs.py`.
+- The font is chosen in **Settings → Terminal → Font**: the theme's, the same as Windows Terminal
+  (copies font and size), one of the bundled ones (JetBrains Mono, Fira Code, IBM Plex Mono, Source
+  Code Pro, Cascadia Mono, and the themes' fonts) or any installed one. Nerd Font icons show up
+  with any of them. The font is set by the terminal, not the shell: the PowerShell theme doesn't change it.
+- Local terminals don't inherit variables from the terminal Ethereon was opened from
+  (`WT_SESSION`, `NO_COLOR`…) and identify themselves as `TERM_PROGRAM=Ethereon`, so the
+  PowerShell profile knows where it is.
+- They show Sixel images (`chafa -f sixel`, `img2sixel`…). For that Ethereon uses Windows
+  Terminal's ConPTY (`apps/desktop/src-tauri/conpty`): Windows' own discards images. By
+  default it scales them like Windows Terminal (10×20 pixels per cell), so what was designed for Windows
+  Terminal looks the same; it can be changed in **Settings → Terminal**.
+  The Sixel decoder is WebAssembly: the CSP in `tauri.conf.json` needs `'wasm-unsafe-eval'`
+  (without it, images don't show in the installed app; in `npm run dev` there's no CSP and they do show).
+- With pixel fonts (PxPlus and similar) bold is drawn like in Windows Terminal: the
+  glyph repeated one pixel to the right, crisp. The browser would thicken it with antialiasing and it would
+  look blurry (`pixelBold` plugin in `vite.config.ts`).
+- Local terminals use the real Windows shell (PowerShell 7, Windows PowerShell, CMD, WSL,
+  Git Bash, whichever are installed), with your profile, oh-my-posh included.
+- Block and box-drawing characters (`█ ▀ ▄ ─ │`), and also the sextants and octants used by
+  `chafa` and MOTDs with images, are drawn pixel-exact, with no stripes between rows or glyphs from another
+  font. The sextant and octant table comes from `apps/desktop/scripts/legacy_glyphs.py`.
 
-## Archivos (SFTP)
+## Files (SFTP)
 
-Se abre con el botón **SFTP** de cada host o con `Shift Enter` en el buscador. Arranca con esta PC a
-la izquierda y el servidor a la derecha, pero **cada lado se cambia desde su título**: esta PC o
-cualquier host. Así se sube, se baja, se copia de un servidor a otro (directo, sin pasar por el disco
-de esta PC) o dentro de esta PC. Si un lado no conecta, el otro sigue andando y desde el mismo título
-se elige otro.
+It's opened with each host's **SFTP** button or with `Shift Enter` in the search. It starts with this PC on
+the left and the server on the right, but **each side can be changed from its title**: this PC or
+any host. That way you upload, download, copy from one server to another (directly, without going through this
+PC's disk) or within this PC. If one side doesn't connect, the other keeps working and from the same title
+you pick another.
 
-| Atajo | Qué hace |
+| Shortcut | What it does |
 |---|---|
-| Escribir letras | Saltar al primer elemento que empieza así; la misma letra otra vez va al siguiente |
-| `↑` `↓` `Inicio` `Fin` | Moverse (con `Shift`, elegir varios) |
-| Clic / `Ctrl` clic / `Shift` clic | Elegir uno / sumar o sacar / elegir un rango |
-| `Ctrl A` | Elegir todo |
-| `Enter` / doble clic | Abrir la carpeta; en un archivo, mandarlo al otro lado |
-| `Espacio` o `Ctrl Enter` | Copiar lo elegido al otro lado |
-| `Backspace` / `Alt ←` | Subir una carpeta |
-| `F2` | Renombrar |
-| `Supr` | Borrar (pregunta antes; las carpetas se borran con todo) |
-| `Ctrl Shift N` | Carpeta nueva (queda lista para ponerle nombre) |
-| `F5` o `Ctrl R` | Recargar |
-| `Ctrl F` | Filtrar la carpeta |
-| `Ctrl H` | Mostrar u ocultar archivos ocultos (los que empiezan con punto) |
-| `Esc` | Soltar la selección |
-| `Tab` | Pasar al otro panel |
+| Type letters | Jump to the first item that starts that way; the same letter again goes to the next one |
+| `↑` `↓` `Home` `End` | Move (with `Shift`, select several) |
+| Click / `Ctrl` click / `Shift` click | Select one / add or remove / select a range |
+| `Ctrl A` | Select all |
+| `Enter` / double-click | Open the folder; on a file, send it to the other side |
+| `Space` or `Ctrl Enter` | Copy the selection to the other side |
+| `Backspace` / `Alt ←` | Go up one folder |
+| `F2` | Rename |
+| `Delete` | Delete (asks first; folders are deleted with everything in them) |
+| `Ctrl Shift N` | New folder (ready to be named) |
+| `F5` or `Ctrl R` | Reload |
+| `Ctrl F` | Filter the folder |
+| `Ctrl H` | Show or hide hidden files (the ones starting with a dot) |
+| `Esc` | Clear the selection |
+| `Tab` | Switch to the other pane |
 
-- **Arrastrar** archivos de un panel al otro los transfiere. Soltarlos sobre una carpeta los mete
-  ahí adentro.
-- También se pueden **arrastrar desde el Explorador de Windows** a cualquiera de los dos paneles.
-- Clic derecho abre un menú con todas las acciones.
-- El panel de esta PC arranca en el Escritorio. Se cambia en **Settings → Files (SFTP)**: Escritorio,
-  carpeta del usuario u otra carpeta. El botón de la casita vuelve ahí.
-- Clic en la ruta de arriba para escribir una a mano (`Enter` para ir). Las migas de pan llevan a
-  cada carpeta; en esta PC, el ícono del disco muestra las unidades.
-- Antes de pisar algo que ya existe, pregunta.
-- Las transferencias corren en segundo plano con progreso, velocidad y botón para cancelar. Un
-  archivo cancelado a mitad se borra.
-- Cada acción en el servidor queda en la auditoría (`[sftp] upload …`, `delete …`, etc.).
-- Con el vault bloqueado no se toca nada del servidor. Al desbloquear, la pestaña se reconecta sola.
+- **Dragging** files from one pane to the other transfers them. Dropping them on a folder puts them
+  inside it.
+- You can also **drag from Windows Explorer** to either of the two panes.
+- Right-click opens a menu with all the actions.
+- This PC's pane starts on the Desktop. It can be changed in **Settings → Files (SFTP)**: Desktop,
+  user folder or another folder. The house button goes back there.
+- Click the path at the top to type one by hand (`Enter` to go). The breadcrumbs lead to
+  each folder; on this PC, the disk icon shows the drives.
+- Before overwriting something that already exists, it asks.
+- Transfers run in the background with progress, speed and a button to cancel. A
+  file cancelled halfway is deleted.
+- Every action on the server is recorded in the audit (`[sftp] upload …`, `delete …`, etc.).
+- With the vault locked nothing on the server is touched. On unlock, the tab reconnects on its own.
 
-## Importar
+## Import
 
-**Hosts → Import → A file...** (o **Settings → Import and export**), o soltar el archivo sobre la
-página de Hosts. El formato se reconoce solo, mirando el contenido:
+**Hosts → Import → A file...** (or **Settings → Import and export**), or drop the file on the
+Hosts page. The format is detected automatically, by looking at the content:
 
-- Respaldo cifrado de Ethereon (pide la contraseña maestra de ese respaldo).
-- Export de Ethereon en JSON (el formato por defecto al exportar) o CSV.
-- Carpeta exportada en formato OpenSSH, o una carpeta `.ssh` (**A folder...**).
-- SSH config (también lo que exporta Termius), claves privadas y JSON de Bitwarden.
+- Ethereon encrypted backup (asks for that backup's master password).
+- Ethereon export in JSON (the default export format) or CSV.
+- Folder exported in OpenSSH format, or a `.ssh` folder (**A folder...**).
+- SSH config (also what Termius exports), private keys and Bitwarden JSON.
 
-Siempre suma al vault actual: lo que ya existe con el mismo nombre se deja como está, y las huellas
-de servidores ya confirmadas no se pisan. Los tokens de los agentes no se importan.
+It always adds to the current vault: whatever already exists with the same name is left as is, and already
+confirmed server fingerprints aren't overwritten. Agent tokens aren't imported.
 
 ## Settings
 
-Las secciones se abren y cierran con un clic; Ethereon recuerda cuáles dejaste abiertas.
+Sections open and close with a click; Ethereon remembers which ones you left open.

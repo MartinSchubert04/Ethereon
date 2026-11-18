@@ -9,91 +9,91 @@
 ![Rust](https://img.shields.io/badge/Rust-black?logo=rust)
 ![MCP](https://img.shields.io/badge/MCP-Claude%20Code-D97757?logo=anthropic)
 
-Gestor SSH para Windows al estilo Termius, que también le da acceso a Claude Code sin darle ninguna
-credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
+A Termius-style SSH manager for Windows that also gives Claude Code access without handing it any
+credential. It sits in the tray and is lightweight with the window closed.
 
-![Ethereon con el tema Poolsuite FM, paleta Monochrome](docs/screenshot.png)
+![Ethereon with the Poolsuite FM theme, Monochrome palette](docs/screenshot.png)
 
-![Demo: desbloquear, abrir terminales por el bastión, juntarlas en mosaico, aprobar un comando del agente, auditoría, reglas y agentes](docs/demo.gif)
+![Demo: unlock, open terminals through the bastion, tile them, approve an agent command, audit, rules and agents](docs/demo.gif)
 
-<sub>La demo usa datos inventados: ningún host, IP ni credencial es real.</sub>
+<sub>The demo uses made-up data: no host, IP or credential is real.</sub>
 
-- **Vault cifrado:** contraseñas, claves privadas (con passphrase), certificados, contraseñas de sudo
-  y tokens. AES-256-GCM con una clave derivada de la contraseña maestra (Argon2id). Se bloquea solo.
-- **Hosts tipo Termius:** grupos, etiquetas, entorno (prod, test, dev), saltos por bastión
-  encadenados y una descripción que el agente lee para tener contexto.
-- **Terminal propia:** doble clic en un host y se abre una terminal en la app, con pestañas. También
-  terminales locales (PowerShell, CMD, WSL, Git Bash).
-- **Consola serial:** un host puede ser un switch, AP o router por cable de consola (puerto, baudios,
-  8N1, patrón de prompt, login y `enable` del vault). La terminal habla con el equipo en crudo, y el
-  agente usa el mismo `run(host, comando)`: Ethereon manda el comando, lee hasta el prompt, contesta
-  los `--More--` y devuelve la salida enmascarada. Las reglas de solo lectura traen una lista base
-  para equipos de red (`show`, `display`, `get`...).
-- **SFTP:** esta PC y el servidor lado a lado; se pasan archivos arrastrando (también desde el
-  Explorador), con progreso y cancelación.
-- **Para Claude Code (MCP):** `list_hosts` y `run(host, comando)`. El agente ve nombres y
-  descripciones, nunca IPs ni secretos. La salida vuelve con los secretos tapados con `***`.
-  Opcional por host o grupo (apagado por defecto): `download` y `upload` por SFTP, con las mismas
-  reglas; lo bajado vuelve como texto enmascarado y nada con un secreto del vault se sube.
-- **sudo sin exponer la contraseña:** Ethereon la escribe por la entrada estándar del proceso.
-- **Reglas:** por host o grupo, en uno de cinco modos: solo lectura, con aprobación, Guarded (todo
-  menos lo prohibido), Free (libertad total) o sin agente. La lista de prohibidos se aplica a cada
-  parte del comando (pipes, `;`, `$( )`, backticks, `sh -c`, `sudo`...). Elegir Free, o arrastrar un
-  host a un grupo donde el agente no pregunta, pide confirmación.
-- **Grupos con arrastrar y soltar:** los hosts se mueven de un grupo a otro arrastrando la tarjeta.
-- **Aprobaciones:** aprobar, rechazar, editar el comando o permitir un patrón por el resto de la
-  sesión. Aviso en el escritorio.
-- **Huellas:** la primera conexión pide confirmar la huella del host; si cambia, se bloquea y avisa.
-- **Auditoría:** cada pedido con dispositivo, host, comando, resultado y hash de la salida, en una
-  cadena firmada que detecta si alguien la edita. Búsqueda y exportación a CSV.
-- **Importar y exportar:** el import reconoce el formato solo: respaldos y exports de Ethereon,
-  `~/.ssh/config` (también el de Termius), claves y Bitwarden. Exporta a Ethereon, OpenSSH (lo que
-  importa Termius), Bitwarden, CSV o un respaldo cifrado.
-- **Temas:** Default, Warp, Poolsuite FM, Haze y Athanor (fuente bitmap IBM VGA y "pixel clay",
-  como el portfolio-athanor), cada uno con varias paletas (Nord, Dracula, Tokyo Night, Srcery, Solar
+- **Encrypted vault:** passwords, private keys (with passphrase), certificates, sudo passwords
+  and tokens. AES-256-GCM with a key derived from the master password (Argon2id). Locks itself.
+- **Termius-style hosts:** groups, tags, environment (prod, test, dev), chained bastion
+  jumps and a description the agent reads for context.
+- **Built-in terminal:** double-click a host and a terminal opens in the app, with tabs. Also
+  local terminals (PowerShell, CMD, WSL, Git Bash).
+- **Serial console:** a host can be a switch, AP or router over a console cable (port, baud rate,
+  8N1, prompt pattern, login and `enable` from the vault). The terminal talks to the device raw, and the
+  agent uses the same `run(host, command)`: Ethereon sends the command, reads up to the prompt, answers
+  the `--More--` prompts and returns the masked output. The read-only rules ship with a base list
+  for network gear (`show`, `display`, `get`...).
+- **SFTP:** this PC and the server side by side; files are transferred by dragging (also from
+  Explorer), with progress and cancellation.
+- **For Claude Code (MCP):** `list_hosts` and `run(host, command)`. The agent sees names and
+  descriptions, never IPs or secrets. Output comes back with secrets covered by `***`.
+  Optional per host or group (off by default): `download` and `upload` over SFTP, with the same
+  rules; downloads come back as masked text and nothing containing a vault secret is uploaded.
+- **sudo without exposing the password:** Ethereon writes it to the process's standard input.
+- **Rules:** per host or group, in one of five modes: read-only, with approval, Guarded (everything
+  except what's forbidden), Free (total freedom) or no agent. The forbidden list is applied to each
+  part of the command (pipes, `;`, `$( )`, backticks, `sh -c`, `sudo`...). Choosing Free, or dragging a
+  host into a group where the agent doesn't ask, requires confirmation.
+- **Drag-and-drop groups:** hosts move from one group to another by dragging the card.
+- **Approvals:** approve, reject, edit the command or allow a pattern for the rest of the
+  session. Desktop notification.
+- **Fingerprints:** the first connection asks to confirm the host's fingerprint; if it changes, it blocks and warns.
+- **Audit:** every request with device, host, command, result and output hash, in a
+  signed chain that detects if someone edits it. Search and CSV export.
+- **Import and export:** import detects the format on its own: Ethereon backups and exports,
+  `~/.ssh/config` (Termius's too), keys and Bitwarden. Exports to Ethereon, OpenSSH (what
+  Termius imports), Bitwarden, CSV or an encrypted backup.
+- **Themes:** Default, Warp, Poolsuite FM, Haze and Athanor (IBM VGA bitmap font and "pixel clay",
+  like portfolio-athanor), each with several palettes (Nord, Dracula, Tokyo Night, Srcery, Solar
   Flare, Lavender, Vellum...).
-- **Terminal:** copiar y pegar como en Windows Terminal (Ctrl C con selección, Ctrl V, clic derecho,
-  copiar al seleccionar), todo configurable en Settings, igual que el tamaño de letra.
-- **Como Termius:** barra de arriba con pestañas (Vault + una por terminal), "New tab" con buscador
-  de hosts, y la ventana vuelve con el mismo tamaño y lugar.
-- **Atajos:** Ctrl T nueva pestaña, Ctrl W cerrar (Ctrl Shift W dentro de una terminal), Ctrl Tab /
-  Ctrl Shift Tab, Ctrl 1…9, Ctrl B barra lateral, Ctrl F buscar, Ctrl , ajustes, Ctrl Shift L bloquear,
-  Ctrl Shift C / V en la terminal. Se reasignan en Settings → Keyboard shortcuts.
+- **Terminal:** copy and paste like in Windows Terminal (Ctrl C with a selection, Ctrl V, right-click,
+  copy on select), all configurable in Settings, as is the font size.
+- **Like Termius:** top bar with tabs (Vault + one per terminal), "New tab" with a host
+  search, and the window comes back with the same size and position.
+- **Shortcuts:** Ctrl T new tab, Ctrl W close (Ctrl Shift W inside a terminal), Ctrl Tab /
+  Ctrl Shift Tab, Ctrl 1…9, Ctrl B sidebar, Ctrl F search, Ctrl , settings, Ctrl Shift L lock,
+  Ctrl Shift C / V in the terminal. They can be reassigned in Settings → Keyboard shortcuts.
 
-## Conectar Claude Code
+## Connecting Claude Code
 
-En **Agents → Connect Claude Code** se crea un token y Ethereon muestra el comando para pegar:
+In **Agents → Connect Claude Code** a token is created and Ethereon shows the command to paste:
 
 ```
 claude mcp add --transport http --scope user ethereon http://127.0.0.1:47321/mcp --header "Authorization: Bearer eth_..."
 ```
 
-El token se ve una sola vez; Ethereon guarda solo su hash. Se puede revocar al instante, y el botón
-**Agent access** de la barra lateral (o de la bandeja) corta todo el acceso de golpe.
+The token is shown only once; Ethereon stores only its hash. It can be revoked instantly, and the
+**Agent access** button in the sidebar (or the tray) cuts all access at once.
 
-## Cómo está hecho
+## How it's built
 
-| Carpeta | Qué es |
+| Folder | What it is |
 |---|---|
-| `crates/ethereon-core/` | El broker, sin interfaz: vault, SSH, reglas, enmascarado, auditoría y servidor MCP. Es lo que va a correr solo en un servidor en la etapa 3 |
-| `apps/desktop/src-tauri/` | La app (Rust, Tauri 2): aloja el broker, la bandeja y la terminal |
-| `apps/desktop/src/` | La interfaz (Svelte 5). Al cerrar la ventana se destruye el WebView entero |
-| `docs/PLAN.md` | Etapas, qué falta y por qué se eligió cada cosa |
-| `docs/spec.md` | La spec original |
-| `docs/ATAJOS.md` | Todos los atajos de teclado y comodidades (terminal, SFTP, formularios) |
+| `crates/ethereon-core/` | The broker, without a UI: vault, SSH, rules, masking, audit and MCP server. It's what will run on its own on a server in stage 3 |
+| `apps/desktop/src-tauri/` | The app (Rust, Tauri 2): hosts the broker, the tray and the terminal |
+| `apps/desktop/src/` | The interface (Svelte 5). Closing the window destroys the entire WebView |
+| `docs/PLAN.md` | Stages, what's missing and why each thing was chosen |
+| `docs/spec.md` | The original spec |
+| `docs/SHORTCUTS.md` | All keyboard shortcuts and conveniences (terminal, SFTP, forms) |
 
-## Desarrollo
+## Development
 
-Requiere Rust (con las Build Tools de Visual Studio) y Node 22 o más nuevo.
+Requires Rust (with the Visual Studio Build Tools) and Node 22 or newer.
 
 ```
 npm install
-npm run dev            # la app con recarga en vivo
-npm run check          # tipos de la interfaz
-cargo test             # tests del núcleo
+npm run dev            # the app with live reload
+npm run check          # interface types
+cargo test             # core tests
 ```
 
-Pruebas de aceptación contra servidores SSH reales (necesita Docker):
+Acceptance tests against real SSH servers (needs Docker):
 
 ```
 bash crates/ethereon-core/tests/ssh-fixture/up.sh /tmp/ethereon-fixture
@@ -101,28 +101,28 @@ ETHEREON_TEST_KEY=/tmp/ethereon-fixture/key cargo test -p ethereon-core --test a
 bash crates/ethereon-core/tests/ssh-fixture/down.sh
 ```
 
-Para probar sin tocar el vault de verdad:
+To test without touching the real vault:
 
-- `ETHEREON_DATA_DIR=<carpeta>` usa otra carpeta de datos.
-- `ETHEREON_PORT=<puerto>` cambia el puerto del MCP (por defecto 47321, o lo que diga `config.json`).
+- `ETHEREON_DATA_DIR=<folder>` uses a different data folder.
+- `ETHEREON_PORT=<port>` changes the MCP port (47321 by default, or whatever `config.json` says).
 
-Los datos viven en `%APPDATA%\app.ethereon.ssh`: `vault.json` (cifrado), `audit.jsonl` y `config.json`
-(puerto y posición de la ventana).
+Data lives in `%APPDATA%\app.ethereon.ssh`: `vault.json` (encrypted), `audit.jsonl` and `config.json`
+(port and window position).
 
-## Publicar una versión
+## Publishing a version
 
 ```
 git tag v0.2.0
 git push origin v0.2.0
 ```
 
-El tag dispara `.github/workflows/desktop.yml`: compila el instalador, lo firma y lo publica en el
-Release junto con `latest.json`. Las apps instaladas miran ese archivo al minuto de arrancar y cada 6
-horas, bajan la versión nueva de fondo y la instalan solas cuando la ventana está cerrada, el vault
-bloqueado y no hay comandos del agente en curso (actualizar reinicia la app y el vault queda
-bloqueado). Si no se da, aparece **Update** en la barra de arriba.
+The tag triggers `.github/workflows/desktop.yml`: it builds the installer, signs it and publishes it to the
+Release along with `latest.json`. Installed apps check that file a minute after starting and every 6
+hours, download the new version in the background and install it on their own when the window is closed, the vault
+locked and no agent commands are running (updating restarts the app and the vault ends up
+locked). If that doesn't happen, **Update** appears in the top bar.
 
-La firma usa la clave de `~/.tauri/ethereon.key` (fuera del repo), cargada en el secret
-`TAURI_SIGNING_PRIVATE_KEY` del repo. **Hay que guardarla en un lugar seguro:** si se pierde, las
-apps instaladas no aceptan más actualizaciones y hay que reinstalar a mano. La clave pública está en
+Signing uses the key at `~/.tauri/ethereon.key` (outside the repo), loaded into the repo's
+`TAURI_SIGNING_PRIVATE_KEY` secret. **It must be kept somewhere safe:** if it's lost, installed
+apps stop accepting updates and have to be reinstalled by hand. The public key is in
 `tauri.conf.json`.
