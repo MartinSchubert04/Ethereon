@@ -1,5 +1,14 @@
 # Ethereon
 
+[![CI](https://github.com/MartinSchubert04/Ethereon/actions/workflows/desktop.yml/badge.svg?branch=main)](https://github.com/MartinSchubert04/Ethereon/actions/workflows/desktop.yml)
+[![Release](https://img.shields.io/github/v/release/MartinSchubert04/Ethereon)](https://github.com/MartinSchubert04/Ethereon/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/MartinSchubert04/Ethereon/total)](https://github.com/MartinSchubert04/Ethereon/releases)
+![Windows](https://img.shields.io/badge/platform-Windows-0078D6?logo=windows)
+![Tauri 2](https://img.shields.io/badge/Tauri-2-24C8DB?logo=tauri)
+![Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte)
+![Rust](https://img.shields.io/badge/Rust-black?logo=rust)
+![MCP](https://img.shields.io/badge/MCP-Claude%20Code-D97757?logo=anthropic)
+
 Gestor SSH para Windows al estilo Termius, que también le da acceso a Claude Code sin darle ninguna
 credencial. Queda en la bandeja y pesa poco con la ventana cerrada.
 
