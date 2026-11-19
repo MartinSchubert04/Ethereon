@@ -40,12 +40,10 @@ export async function testHost(name: string, quiet = false, why?: (text: string,
       if (!quiet) toast(`${name}: connection OK`);
       return true;
     }
-    if (res.kind === "auth") {
-      why?.(`${res.user}@${res.host}: authentication failed (${res.detail})`, res.host);
-      return false;
-    }
-    if (res.kind === "connect") {
-      why?.(`${res.host}: ${res.detail}`, res.host);
+    if (res.kind === "auth" || res.kind === "connect") {
+      const text = res.kind === "auth" ? `${res.user}@${res.host}: authentication failed (${res.detail})` : `${res.host}: ${res.detail}`;
+      if (!quiet) toast(text, true);
+      why?.(text, res.host);
       return false;
     }
     if (!(await confirmKey(res))) {

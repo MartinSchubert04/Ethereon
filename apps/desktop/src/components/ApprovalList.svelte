@@ -6,6 +6,7 @@
   // se rechaza: no hay comando que editar ni patron de sesion.
   import { FileDown, FileUp, Inbox, TriangleAlert } from "@lucide/svelte";
   import { human } from "./FilePanel.svelte";
+  import Odometer from "./Odometer.svelte";
   import { api, type Approval } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
   import { flip } from "svelte/animate";
@@ -20,9 +21,18 @@
   const notes = $state<Record<number, string>>({});
 
   const cmd = (a: Approval) => edits[a.id] ?? a.command;
+  // La edad se recalcula cada segundo pero avanza de a 5 s (cada pedido en su propio
+  // compas), y el numero gira al cambiar (Odometer).
+  let now = $state(Date.now());
+  $effect(() => {
+    if (!app.approvals.length) return;
+    now = Date.now();
+    const t = setInterval(() => (now = Date.now()), 1000);
+    return () => clearInterval(t);
+  });
   const age = (iso: string) => {
-    const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
-    return s < 60 ? `${s}s ago` : `${Math.round(s / 60)}m ago`;
+    const s = Math.max(0, Math.floor((now - Date.parse(iso)) / 1000));
+    return s < 60 ? `${s - (s % 5)}s ago` : `${Math.floor(s / 60)}m ago`;
   };
 
   function approve(a: Approval) {
@@ -59,7 +69,7 @@
           {#if a.env !== "none"}<span class="chip {a.env}">{a.env}</span>{/if}
           {#if a.sudo}<span class="chip bad">sudo</span>{/if}
           <span class="grow"></span>
-          <span class="faint">{a.device} · {age(a.created)}</span>
+          <span class="faint">{a.device} · <Odometer text={age(a.created)} /></span>
         </div>
         {#if a.reason}<div class="reason">"{a.reason}"</div>{/if}
         {#each a.warnings as w}

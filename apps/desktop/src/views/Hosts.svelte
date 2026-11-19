@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { FileInput, FolderInput, FolderOpen, Layers, GripVertical, Pencil, Plug, Plus, Search, Server, Upload } from "@lucide/svelte";
+  import { Check, FileInput, FolderInput, FolderOpen, Layers, GripVertical, LoaderCircle, Pencil, Plug, Plus, Search, Server, Upload, X } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { importLocalSsh, importPath, importPick } from "../lib/importer";
@@ -12,6 +12,17 @@
   import { testHost } from "../lib/hostkey.svelte";
   import { pop } from "../lib/motion";
   import { ask } from "../lib/confirm.svelte";
+
+  // Probar la conexion: mientras prueba el enchufe gira (y los botones quedan a la vista
+  // aunque el mouse se vaya); al terminar muestra un tilde o una cruz un par de segundos.
+  const tests = $state<Record<string, "testing" | "ok" | "fail">>({});
+  const shown = new Map<string, number>();
+  async function test(name: string) {
+    clearTimeout(shown.get(name));
+    tests[name] = "testing";
+    tests[name] = (await testHost(name)) ? "ok" : "fail";
+    shown.set(name, window.setTimeout(() => delete tests[name], 2500));
+  }
 
   let query = $state("");
   let editing = $state<Host | null | undefined>(undefined); // undefined = cerrado, null = nuevo
@@ -262,6 +273,7 @@
           </div>
           <div class="grid">
             {#each g.hosts as h, i (h.name)}
+              {@const t = tests[h.name]}
               <div
                 class="host card lift stagger"
                 class:dragging={drag?.started && drag.host.name === h.name}
@@ -283,7 +295,18 @@
                     <div class="addr mono ellipsis">{addrOf(h, app.snap?.credentials)}</div>
                   </div>
                   <div class="actions">
-                    <button class="icon-btn" title="Test connection" onclick={() => testHost(h.name)}><Plug size={14} /></button>
+                    <button
+                      class="icon-btn test {t}"
+                      title={t === "testing" ? "Testing connection…" : "Test connection"}
+                      aria-busy={t === "testing"}
+                      disabled={t === "testing"}
+                      onclick={() => test(h.name)}
+                    >
+                      {#if t === "testing"}<LoaderCircle size={14} class="spin" />
+                      {:else if t === "ok"}<Check size={14} />
+                      {:else if t === "fail"}<X size={14} />
+                      {:else}<Plug size={14} />{/if}
+                    </button>
                     <button class="icon-btn" title="Edit" onclick={() => (editing = h)}><Pencil size={14} /></button>
                   </div>
                 </div>
@@ -556,8 +579,19 @@
     transition: opacity 0.12s;
   }
   .host:hover .actions,
-  .host:focus-within .actions {
+  .host:focus-within .actions,
+  .actions:has(.test.testing, .test.ok, .test.fail) {
     opacity: 1;
+  }
+  .test.testing {
+    color: var(--accent);
+    cursor: progress;
+  }
+  .test.ok {
+    color: var(--ok);
+  }
+  .test.fail {
+    color: var(--danger);
   }
   .desc {
     font-size: 12px;
