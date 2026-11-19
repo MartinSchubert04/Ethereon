@@ -10,7 +10,7 @@ russh = { version = "0.65", default-features = false, features = ["ring", "rsa",
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "macros", "rt-multi-thread", "fs"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio"] }
 # Para responder tools/call como SSE (ver mcp.rs); ya venia con axum.
-futures-util = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 aes-gcm = "0.10"
@@ -28,6 +28,12 @@ log = "0.4"
 russh-sftp = "3.0.1"
 # Sin libudev: en Linux lista los puertos leyendo /dev; en Windows y Mac no cambia nada.
 serialport = { version = "4.10", default-features = false }
+# FTP y FTPS para el explorador de archivos (ver remote.rs). Con rustls+ring, como russh.
+suppaftp = { version = "=12.2.1", default-features = false, features = ["tokio", "tokio-rustls-ring"] }
+# FTPS: el certificado se verifica con los de Windows. Ya venian con el actualizador de Tauri.
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
+rustls-platform-verifier = "0.7"
 
 [dev-dependencies]
 tempfile = "3"

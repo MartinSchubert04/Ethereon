@@ -176,6 +176,26 @@ impl Default for SerialConfig {
 /// `Switch#`, `Router>`, `user@host:~$`, `[edit] user@fw#`, `AP(config)#`.
 pub const DEFAULT_PROMPT: &str = r"[\w\-\.()\[\]/:@~]*[#>$]\s*$";
 
+/// Por donde pasa archivos el explorador de un host (el agente siempre usa SFTP).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FileProto {
+    #[default]
+    Sftp,
+    /// Por la conexion SSH, para servidores sin SFTP y equipos de red.
+    Scp,
+    /// Con el usuario y la contrasena del host, directo (sin bastiones).
+    Ftp,
+    /// FTP con `AUTH TLS`; el certificado tiene que ser de confianza para Windows.
+    Ftps,
+}
+
+impl FileProto {
+    pub fn is_default(&self) -> bool {
+        *self == FileProto::Sftp
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Host {
     /// Nombre unico; es lo que usa el agente en `run(host, ...)`.
@@ -233,6 +253,12 @@ pub struct Host {
     /// None usa los de Settings → Terminal → Colors. Solo la interfaz lo mira.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub term_scheme: Option<String>,
+    /// Protocolo del explorador de archivos. Solo la persona lo usa.
+    #[serde(default, skip_serializing_if = "FileProto::is_default")]
+    pub file_proto: FileProto,
+    /// Puerto de FTP / FTPS; None = 21.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub file_port: Option<u16>,
 }
 
 impl Host {

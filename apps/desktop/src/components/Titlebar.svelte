@@ -555,7 +555,7 @@
     padding: 5px;
     display: flex;
     flex-direction: column;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
   }
   .tabmenu button {

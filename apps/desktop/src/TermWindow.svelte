@@ -80,7 +80,7 @@
   }
   .toast {
     padding: 10px 14px;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
     font-size: 12.5px;
   }

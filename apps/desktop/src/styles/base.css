@@ -557,7 +557,7 @@ table.list tr.click:hover td {
   padding: 5px 9px;
   border: var(--border) solid var(--line-strong);
   border-radius: var(--radius-sm);
-  background: var(--sidebar);
+  background: var(--float, var(--sidebar));
   box-shadow: var(--pop-shadow);
   color: var(--text);
   font-size: 12px;

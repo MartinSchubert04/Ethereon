@@ -16,6 +16,7 @@
 
 pub mod audit;
 pub mod broker;
+pub mod diag;
 pub mod export;
 pub mod files;
 pub mod import;
@@ -23,9 +24,11 @@ pub mod mask;
 pub mod mcp;
 pub mod model;
 pub mod policy;
+pub mod remote;
 pub mod serial;
 pub mod shell;
 pub mod ssh;
+pub mod tftp;
 pub mod transfer;
 pub mod vault;
 

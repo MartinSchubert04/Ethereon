@@ -10,7 +10,7 @@
   import { ArrowLeft, ArrowRight, Check, CircleAlert, Laptop, LoaderCircle, RotateCw, Server, X } from "@lucide/svelte";
   import FilePanel, { human, type Fs } from "./FilePanel.svelte";
   import Select from "./Select.svelte";
-  import { api, errText, type XferEvent } from "../lib/api";
+  import { api, errText, fileProtoOf, type XferEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
   import { app, toast, type TermTab } from "../lib/state.svelte";
   import { ask } from "../lib/confirm.svelte";
@@ -27,11 +27,21 @@
     home: string;
     status: "connecting" | "ready" | "failed";
     failure: string;
+    /** "SFTP", "SCP", "FTP" o "FTPS". */
+    proto: string;
     /** Cambia cuando cambia el origen: el panel se arma de nuevo. */
     gen: number;
   }
   let gen = 0;
-  const side = (host: string | null): Side => ({ host, id: 0, home: "/", status: host ? "connecting" : "ready", failure: "", gen: ++gen });
+  const side = (host: string | null): Side => ({
+    host,
+    id: 0,
+    home: "/",
+    status: host ? "connecting" : "ready",
+    failure: "",
+    proto: fileProtoOf(app.snap?.hosts.find((h) => h.name === host)),
+    gen: ++gen,
+  });
   // svelte-ignore state_referenced_locally
   let sides = $state<Record<Slot, Side>>({ left: side(null), right: side(tab.host) });
   let panels = $state<Record<Slot, FilePanel | undefined>>({ left: undefined, right: undefined });
@@ -97,7 +107,9 @@
       const host = s.host;
       if (!keep) s.status = "connecting";
       s.failure = "";
-      if (!(await testHost(host, true))) {
+      // FTP no va por SSH: no hay huella que confirmar.
+      const ftp = s.proto === "FTP" || s.proto === "FTPS";
+      if (!ftp && !(await testHost(host, true))) {
         s.status = "failed";
         s.failure = "The host key was not accepted.";
         return sync();
@@ -108,6 +120,7 @@
         if (s.id) api.sftpClose(s.id);
         s.id = o.id;
         s.home = o.home;
+        s.proto = o.proto;
         s.status = "ready";
       } catch (e) {
         s.status = "failed";
@@ -135,7 +148,8 @@
     if (!t) return;
     const l = sides.left.host,
       r = sides.right.host;
-    t.title = l && r ? `${l} ⇄ ${r}` : `${r ?? l ?? "This PC"} · SFTP`;
+    const remote = sides.right.host ? sides.right : sides.left;
+    t.title = l && r ? `${l} ⇄ ${r}` : `${r ?? l ?? "This PC"} · ${remote.host ? remote.proto : "Files"}`;
     t.alive = (["left", "right"] as Slot[]).every((s) => sides[s].status !== "failed");
   }
 
@@ -303,7 +317,7 @@
         <div class="state">
           {#if s.status === "connecting"}
             <LoaderCircle size={22} class="spin" />
-            <div>Opening SFTP on <b>{s.host}</b>...</div>
+            <div>Opening {s.proto} on <b>{s.host}</b>...</div>
           {:else}
             <CircleAlert size={22} />
             <div class="bad">{s.failure}</div>

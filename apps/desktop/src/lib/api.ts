@@ -19,6 +19,67 @@ export interface Policy {
   max_file_kb: number;
 }
 
+export interface PingStats {
+  sent: number;
+  received: number;
+  /** % perdido (0 a 100). */
+  loss: number;
+  min_ms: number | null;
+  avg_ms: number | null;
+  max_ms: number | null;
+  jitter_ms: number | null;
+  ttl: number | null;
+  samples: (number | null)[];
+  error: string | null;
+}
+
+export interface TcpProbe {
+  ok: boolean;
+  connect_ms: number | null;
+  banner: string | null;
+  error: string | null;
+}
+
+/** El test de conexion detallado (`host_diagnose`). */
+export interface Diagnosis {
+  address: string;
+  port: number;
+  ip: string | null;
+  resolve_ms: number | null;
+  ping: PingStats;
+  tcp: TcpProbe;
+  /** Bastiones: lo de arriba es el primero. */
+  via: string[];
+}
+
+export interface TraceHop {
+  ttl: number;
+  ip: string | null;
+  /** El host del vault con esa IP. */
+  host: string | null;
+  dns: string | null;
+  rtts: (number | null)[];
+  last: boolean;
+}
+
+export interface Trace {
+  host: string;
+  address: string;
+  ip: string | null;
+  hops: TraceHop[];
+  reached: boolean;
+  via: string[];
+  error: string | null;
+}
+
+/** Una credencial en claro (`reveal_secret`). */
+export interface Revealed {
+  username: string;
+  secret: string;
+  passphrase: string;
+  certificate: string;
+}
+
 export type Transport = "ssh" | "serial";
 export type Parity = "none" | "even" | "odd";
 
@@ -73,7 +134,30 @@ export interface Host {
   os_rev?: number;
   /** Colores de su terminal (id de lib/termschemes.ts); si no, los de Settings. */
   term_scheme?: string | null;
+  /** Protocolo del explorador de archivos (por defecto SFTP). */
+  file_proto?: FileProto;
+  /** Puerto de FTP / FTPS; null = 21. */
+  file_port?: number | null;
 }
+
+export type FileProto = "sftp" | "scp" | "ftp" | "ftps";
+export const FILE_PROTO_LABEL: Record<FileProto, string> = { sftp: "SFTP", scp: "SCP", ftp: "FTP", ftps: "FTPS" };
+/** El nombre del protocolo de archivos de un host ("SFTP" si no eligio otro). */
+export const fileProtoOf = (h: Host | undefined | null) => FILE_PROTO_LABEL[h?.file_proto ?? "sftp"];
+
+export interface TftpStatus {
+  running: boolean;
+  dir: string;
+  port: number;
+  write: boolean;
+  /** Las IPv4 de esta PC. */
+  addrs: string[];
+}
+
+export type TftpEvent =
+  | { kind: "start"; peer: string; file: string; write: boolean; size: number | null }
+  | { kind: "done"; peer: string; file: string; write: boolean; bytes: number; ms: number }
+  | { kind: "fail"; peer: string; file: string; write: boolean; error: string };
 
 export interface Group {
   name: string;
@@ -264,6 +348,9 @@ export const api = {
   hostDelete: (name: string) => invoke<void>("host_delete", { name }),
   hostMove: (name: string, group: string | null, before: string | null) => invoke<void>("host_move", { name, group, before }),
   hostTest: (name: string) => invoke<SshError | null>("host_test", { name }),
+  hostDiagnose: (name: string, count?: number) => invoke<Diagnosis>("host_diagnose", { name, count: count ?? null }),
+  hostTrace: (name: string) => invoke<Trace>("host_trace", { name }),
+  traceAll: () => invoke<Trace[]>("trace_all"),
   /** Los puertos serie de esta PC. */
   serialPorts: () => invoke<SerialPortInfo[]>("serial_ports"),
   openLink: (url: string) => invoke<void>("open_link", { url }),
@@ -293,6 +380,9 @@ export const api = {
   importSshConfig: (path: string | null) => invoke<ImportSummary>("import_ssh_config", { path }),
   importKeyFile: (path: string) => invoke<ImportSummary>("import_key_file", { path }),
   importBitwarden: (path: string) => invoke<ImportSummary>("import_bitwarden", { path }),
+  /** Una credencial en claro. Sin `password` solo funciona si se dio hace poco. */
+  revealSecret: (id: string, password: string | null) => invoke<Revealed>("reveal_secret", { id, password }),
+  revealUnlocked: () => invoke<boolean>("reveal_unlocked"),
   exportData: (format: ExportFormat, path: string, password: string | null) =>
     invoke<string>("export_data", { format, path, password }),
   backup: (path: string) => invoke<void>("backup_vault", { path }),
@@ -313,7 +403,10 @@ export const api = {
   termDetach: (id: number) => invoke<void>("term_detach", { id }),
   /** Toma una sesion que solto otra ventana (recibe primero lo ultimo que se vio). */
   termAttach: (id: number, onEvent: Channel<TermEvent>) => invoke<void>("term_attach", { id, onEvent }),
-  sftpOpen: (host: string) => invoke<{ id: number; home: string }>("sftp_open", { host }),
+  sftpOpen: (host: string) => invoke<{ id: number; home: string; proto: string }>("sftp_open", { host }),
+  tftpStart: (dir: string, port: number, write: boolean) => invoke<TftpStatus>("tftp_start", { dir, port, write }),
+  tftpStop: () => invoke<TftpStatus>("tftp_stop"),
+  tftpStatus: () => invoke<TftpStatus>("tftp_status"),
   sftpClose: (id: number) => invoke<void>("sftp_close", { id }),
   sftpList: (id: number, path: string) => invoke<FileEntry[]>("sftp_list", { id, path }),
   sftpRealpath: (id: number, path: string) => invoke<string>("sftp_realpath", { id, path }),

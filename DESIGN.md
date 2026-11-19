@@ -23,6 +23,11 @@ Below 100 % the window is frosted glass: the desktop shows through behind it, bl
 Acrylic, like in the Haze app) and the theme's background and surfaces become translucent. It's
 handled by `lib/themes.ts` on `<body>`; the themes don't know about it.
 
+What floats over other content (the ≡ sidebar over a terminal, search, menus, dialogs, drawers,
+toasts, tooltips) doesn't follow the opacity: it uses `--float`, the theme's `--sidebar` painted
+over `--bg` at 97 %, so its text never mixes with what's behind. `--float` only exists below
+100 %; floating components write `background: var(--float, <their usual background>)`.
+
 | Variable | Role |
 |---|---|
 | `--bg`, `--bg-image` | Window background (Warp and Haze use gradients, Poolsuite a sunset) |
@@ -152,7 +157,9 @@ hard offset shadows (`3px 3px 0`) on cards, primary buttons and the active item.
 ## 7. Do's and don'ts
 
 - Do: states with color and text at once (a red chip says "denied").
-- Do: secrets never visible; stored fields show "Stored. Type to replace."
+- Do: secrets hidden by default; stored fields show "Stored. Type to replace." Viewing or copying
+  one (Keychain, host card) asks for the master password (`lib/secrets.ts`, then 5 minutes of
+  grace) and a copied secret is cleared from the clipboard after 30 s.
 - Don't: hardcoded colors in components. If one is needed, it's a new variable in all four themes.
 - Don't: long animations. Only the drawer entrance (180 ms) and hovers.
 

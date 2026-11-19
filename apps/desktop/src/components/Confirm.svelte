@@ -69,7 +69,7 @@
     pointer-events: auto;
     width: min(440px, calc(100vw - 32px));
     padding: 20px;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
     display: grid;
     grid-template-columns: auto 1fr;

@@ -41,7 +41,7 @@
     app.quickOpen = false;
   }
 
-  /** Enter abre la terminal; Shift Enter, los archivos (SFTP) del host (no en una consola serial). */
+  /** Enter abre la terminal; Shift Enter, los archivos del host (no en una consola serial). */
   function pick(it: Item, files = false) {
     close();
     if (it.kind === "local") openLocal(it.shell.id);
@@ -72,7 +72,7 @@
     />
     <kbd>Esc</kbd>
   </div>
-  <div class="tip">Enter opens a terminal · Shift Enter opens the files (SFTP)</div>
+  <div class="tip">Enter opens a terminal · Shift Enter opens the files</div>
   <div class="list">
     {#each list as it, i (it.kind + (it.kind === "local" ? it.shell.id : it.host.name))}
       {#if it.kind === "local"}
@@ -118,7 +118,7 @@
     pointer-events: auto;
     transform-origin: top center;
     width: min(560px, calc(100vw - 32px));
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
     overflow: hidden;
   }

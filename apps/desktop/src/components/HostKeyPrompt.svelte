@@ -60,7 +60,7 @@
     pointer-events: auto;
     width: min(520px, calc(100vw - 32px));
     padding: 22px;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
     display: flex;
     flex-direction: column;

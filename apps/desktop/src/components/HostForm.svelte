@@ -13,7 +13,7 @@
   import { RefreshCw, X } from "@lucide/svelte";
   import { flip } from "svelte/animate";
   import { flipMs, pop } from "../lib/motion";
-  import { api, DEFAULT_PROMPT, defaultPolicy, defaultSerial, newHost, type Env, type Host, type Parity, type SerialPortInfo, type Transport } from "../lib/api";
+  import { api, DEFAULT_PROMPT, defaultPolicy, defaultSerial, newHost, type Env, type FileProto, type Host, type Parity, type SerialPortInfo, type Transport } from "../lib/api";
   import { app, attempt } from "../lib/state.svelte";
   import { ask } from "../lib/confirm.svelte";
 
@@ -57,6 +57,17 @@
     const x = SCHEMES.find((s) => s.id === id);
     return x ? `--s-bg:${x.bg};--s-fg:${x.fg};--s-a:${x.ansi[2]};--s-b:${x.ansi[4]}` : "";
   }
+
+  // Protocolo del explorador de archivos (el agente siempre usa SFTP).
+  h.file_proto ??= "sftp";
+  h.file_port ??= null;
+  const fileProtos: { value: FileProto; label: string; hint: string }[] = [
+    { value: "sftp", label: "SFTP", hint: "over SSH (default)" },
+    { value: "scp", label: "SCP", hint: "over SSH, for servers and devices without SFTP" },
+    { value: "ftp", label: "FTP", hint: "not encrypted" },
+    { value: "ftps", label: "FTPS", hint: "FTP over TLS" },
+  ];
+  const isFtp = $derived(h.file_proto === "ftp" || h.file_proto === "ftps");
 
   const transports: { value: Transport; label: string }[] = [
     { value: "ssh", label: "SSH" },
@@ -165,6 +176,7 @@
       group: h.group || null,
       sudo_credential: serial ? null : h.sudo_credential || null,
       policy: ownRules ? policy : null,
+      file_port: isFtp && h.file_port ? Number(h.file_port) || null : null,
     };
     if (await attempt(() => api.hostSave(out, original), "Host saved")) onclose();
     else if (created) {
@@ -284,6 +296,22 @@
         {/if}
       </div>
       <span class="hint">Bastions in order. The first one is reached from this PC.</span>
+    </div>
+  {/if}
+  {#if !serial}
+    <div class="grid2">
+      <div class="field">File transfer
+        <Select bind:value={h.file_proto} options={fileProtos} />
+        <span class="hint">
+          {#if h.file_proto === "ftps"}Uses the host's user and password. The certificate must be trusted by Windows.
+          {:else if isFtp}Uses the host's user and password, sent in clear text. Connects directly, without jumps.
+          {:else if h.file_proto === "scp"}Lists and edits with ls, mv and rm; transfers with scp.
+          {:else}What the files tab uses. The agent always uses SFTP.{/if}
+        </span>
+      </div>
+      {#if isFtp}
+        <label class="field" transition:pop={{ start: 0.98 }}>FTP port<input type="number" min="1" max="65535" bind:value={h.file_port} placeholder="21" /></label>
+      {/if}
     </div>
   {/if}
   <label class="field">Tags<input bind:value={tags} placeholder={serial ? "cisco, switch" : "nginx, docker"} /><span class="hint">Comma separated</span></label>
