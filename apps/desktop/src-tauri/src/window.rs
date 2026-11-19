@@ -300,13 +300,10 @@ pub fn term_window_give(pending: tauri::State<'_, PendingTabs>, label: String, t
 /// que cargue.
 static RAISED: Mutex<Option<String>> = Mutex::new(None);
 
-/// Trae la principal adelante cuando salta una notificacion (una aprobacion, una huella
-/// cambiada). Si ya se esta usando una ventana de Ethereon, no le saca el foco.
+/// Trae la principal adelante cuando se toca una notificacion (una aprobacion, una huella
+/// cambiada), mostrando `view`.
 pub fn raise(app: &AppHandle, view: &str) {
     use tauri::Emitter;
-    if app.webview_windows().values().any(|w| w.is_focused().unwrap_or(false)) {
-        return;
-    }
     *RAISED.lock().unwrap() = Some(view.to_string());
     show_main(app);
     if let Some(w) = app.get_webview_window("main") {

@@ -7,7 +7,7 @@ use ethereon_core::{Broker, Notifier};
 struct Quiet;
 impl Notifier for Quiet {
     fn event(&self, _: &str, _: serde_json::Value) {}
-    fn notify(&self, _: &str, _: &str) {}
+    fn notify(&self, _: &str, _: &str, _: &str) {}
 }
 
 const PW: &str = "tester-pass-123";

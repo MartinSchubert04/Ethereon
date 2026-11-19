@@ -30,13 +30,12 @@ use crate::{files, vault, Error, Result};
 pub trait Notifier: Send + Sync {
     /// Evento para la interfaz: "vault", "approvals", "alerts", "activity", "data", "connlog".
     fn event(&self, name: &str, payload: serde_json::Value);
-    /// Notificacion del sistema (escritorio).
-    fn notify(&self, title: &str, body: &str);
+    /// Notificacion del sistema (escritorio). Tocarla trae la app adelante mostrando `view`
+    /// ("approvals") o lo que hubiera ("": los avisos se ven en cualquier vista). Sin tocarla
+    /// no se le saca el foco a nadie.
+    fn notify(&self, title: &str, body: &str, view: &str);
     /// Un sonido ("approval"), con volumen de 0 a 100. Quien no tiene parlantes no hace nada.
     fn sound(&self, _name: &str, _volume: u8) {}
-    /// Trae la app adelante junto con una notificacion, mostrando `view` ("approvals") o lo
-    /// que hubiera ("" : los avisos se ven en cualquier vista).
-    fn raise(&self, _view: &str) {}
 }
 
 /// Quien pide: un dispositivo (token) y, si se sabe, la sesion MCP.
@@ -677,10 +676,9 @@ impl Broker {
         };
         let body = body.chars().take(180).collect::<String>();
         self.approvals.lock().unwrap().insert(id, Pending { view, session: session.into(), tx });
-        self.notifier.notify(&title, &body);
+        self.notifier.notify(&title, &body, "approvals");
         self.notifier.sound("approval", settings.sound_volume);
         self.emit_approvals();
-        self.notifier.raise("approvals");
         // Si el agente se va antes (corta la conexion y este future se suelta), la
         // aprobacion se retira igual: si no, queda en la lista para siempre.
         let _withdraw = Withdraw { b: self, id };
@@ -841,15 +839,11 @@ impl Broker {
             _ => String::new(),
         };
         a.retain(|x| key(&x.error) != key(&e));
-        let changed = matches!(e, SshError::HostKeyChanged { .. });
         if let SshError::HostKeyChanged { host, .. } = &e {
-            self.notifier.notify(&format!("Host key changed: {host}"), "The connection was blocked. Check it in Ethereon.");
+            self.notifier.notify(&format!("Host key changed: {host}"), "The connection was blocked. Check it in Ethereon.", "");
         }
         a.push(Alert { id: self.next_id(), ts: now(), error: e });
         self.notifier.event("alerts", serde_json::to_value(&*a).unwrap());
-        if changed {
-            self.notifier.raise("");
-        }
     }
 
     pub fn alerts(&self) -> Vec<Alert> {
@@ -1430,7 +1424,7 @@ mod tests {
     struct Quiet;
     impl Notifier for Quiet {
         fn event(&self, _: &str, _: serde_json::Value) {}
-        fn notify(&self, _: &str, _: &str) {}
+        fn notify(&self, _: &str, _: &str, _: &str) {}
     }
 
     /// Un switch por consola serial, con login y `enable`: el agente corre un comando de solo

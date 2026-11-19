@@ -203,9 +203,9 @@ export function start() {
   refresh();
 }
 
-/** La app vino adelante sola por una notificacion (ver `raise` en window.rs). Muestra las
- *  aprobaciones si no se veian, y suelta el foco: quien estaba escribiendo en otra app no
- *  tiene que seguir haciendolo en una terminal de un servidor. Al activarse la ventana,
+/** La app vino adelante porque se toco una notificacion (ver `raise` en window.rs). Muestra
+ *  las aprobaciones si no se veian, y suelta el foco: lo que se venia escribiendo en otra app
+ *  no tiene que terminar en una terminal de un servidor. Al activarse la ventana,
  *  WebView2 le devuelve el foco a lo que lo tenia, por eso se suelta otra vez entonces. */
 async function takeRaise() {
   const view = await invoke<string | null>("raise_take").catch(() => null);

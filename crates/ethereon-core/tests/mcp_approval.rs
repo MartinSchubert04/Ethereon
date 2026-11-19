@@ -11,7 +11,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 struct Quiet;
 impl Notifier for Quiet {
     fn event(&self, _: &str, _: serde_json::Value) {}
-    fn notify(&self, _: &str, _: &str) {}
+    fn notify(&self, _: &str, _: &str, _: &str) {}
 }
 
 #[tokio::test(flavor = "multi_thread")]

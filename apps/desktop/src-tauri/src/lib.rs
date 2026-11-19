@@ -90,16 +90,32 @@ impl Notifier for UiNotifier {
             tauri::async_runtime::spawn(async move { refresh_tray(&h) });
         }
     }
-    fn notify(&self, title: &str, body: &str) {
-        let _ = self.0.notification().builder().title(title).body(body).show();
+    fn notify(&self, title: &str, body: &str, view: &str) {
+        // La vista viaja con la notificacion: al tocarla, `on_notification_tap` la abre.
+        let _ = self.0.notification().builder().title(title).body(body).extra("view", view).show();
     }
     fn sound(&self, name: &str, volume: u8) {
         sound::play(name, volume);
     }
-    fn raise(&self, view: &str) {
-        let (h, view) = (self.0.clone(), view.to_string());
-        let _ = self.0.run_on_main_thread(move || window::raise(&h, &view));
-    }
+}
+
+/// Tocar una notificacion trae la principal adelante, en la vista que dice la notificacion.
+/// Solo al tocarla: que llegue una aprobacion no le saca el foco a lo que se este usando.
+/// En Windows el toque se recibe mientras el toast esta en pantalla, no desde el Centro de
+/// actividades.
+fn on_notification_tap(app: &AppHandle) {
+    let h = app.clone();
+    let _ = app.notification().on_action(move |p| {
+        if p.action_id() != "tap" {
+            return;
+        }
+        let view = p
+            .notification()
+            .and_then(|n| n.extra().get("view").and_then(|v| v.as_str()).map(str::to_string))
+            .unwrap_or_default();
+        let h2 = h.clone();
+        let _ = h.run_on_main_thread(move || window::raise(&h2, &view));
+    });
 }
 
 /// `ETHEREON_DATA_DIR` permite probar con otro vault sin tocar el de verdad.
@@ -207,6 +223,9 @@ pub fn run() {
             if !cfg_path.exists() {
                 let _ = std::fs::write(&cfg_path, serde_json::to_vec_pretty(&config).unwrap());
             }
+            // Antes que el broker: las notificaciones mostradas sin nadie escuchando no avisan
+            // si se las toca.
+            on_notification_tap(&handle);
             let broker = Broker::new(dir, Arc::new(UiNotifier(handle.clone())));
             app.manage(AppState {
                 broker: broker.clone(),
