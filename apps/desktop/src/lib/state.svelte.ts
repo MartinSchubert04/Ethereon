@@ -99,6 +99,10 @@ export const app = $state({
 
 let toastId = 0;
 export function toast(text: string, bad = false) {
+  // El mismo aviso otra vez (por ejemplo, apretar Guardar varias veces) no se apila: el que
+  // esta se queda un rato mas.
+  const same = app.toasts.find((t) => t.text === text && t.bad === bad);
+  if (same) app.toasts = app.toasts.filter((t) => t !== same);
   const id = ++toastId;
   app.toasts.push({ id, text, bad });
   setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), bad ? 6000 : 3000);

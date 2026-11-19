@@ -27,6 +27,7 @@
   h.transport ??= "ssh";
   h.serial ??= defaultSerial();
   let tags = $state(h.tags.join(", "));
+  let nameEl = $state<HTMLInputElement>();
   let alts = $state((h.alt_addrs ?? []).join(", "));
   let jump = $state<string[]>([...h.jump]);
   let ownRules = $state(h.policy !== null);
@@ -137,9 +138,24 @@
   // Si la credencial elegida trae usuario, el del host puede quedar vacio.
   const credUser = $derived(login === "saved" ? (app.snap?.credentials.find((c) => c.id === h.credential)?.username ?? "") : "");
 
+  // El nombre es lo que usa el agente y el `Host` de ~/.ssh/config: letras, numeros, - _ y .
+  // (la misma regla que `valid_name` en commands.rs).
+  const NAME_OK = /^[A-Za-z0-9._-]+$/;
+  /** Una version valida de un nombre: `192.168.20.14 (unitree)` -> `192.168.20.14-unitree`. */
+  const slug = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Za-z0-9._-]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+  const nameTrim = $derived(h.name.trim());
+  const nameBad = $derived(nameTrim !== "" && !NAME_OK.test(nameTrim));
+  const nameFix = $derived(nameBad ? slug(nameTrim) : "");
+
   function newCredId(): string {
     const ids = new Set((app.snap?.credentials ?? []).map((c) => c.id));
-    const base = `${h.name.trim() || "host"}-password`;
+    const base = `${slug(h.name.trim()) || "host"}-password`;
     let id = base;
     for (let n = 2; ids.has(id); n++) id = `${base}-${n}`;
     return id;
@@ -152,6 +168,11 @@
       .filter(Boolean);
 
   async function save() {
+    // El error ya se ve debajo del nombre: no mandar nada (ni crear la credencial).
+    if (!nameTrim || nameBad) {
+      nameEl?.focus();
+      return;
+    }
     let created: string | null = null;
     if (login === "none" && !serial) login = "password";
     if (login === "password") {
@@ -195,7 +216,18 @@
 
 <Drawer title={original ? `Edit ${original}` : "New host"} {onclose} onsave={save}>
   <div class="grid2">
-    <label class="field">Name<input bind:value={h.name} placeholder={serial ? "sw-core" : "web-1"} /><span class="hint">What the agent calls it</span></label>
+    <div class="field">
+      <label for="host-name">Name</label>
+      <input id="host-name" bind:this={nameEl} bind:value={h.name} class:bad={nameBad} placeholder={serial ? "sw-core" : "web-1"} />
+      {#if nameBad}
+        <span class="hint err">
+          Letters, numbers, - _ and . only (no spaces).
+          {#if nameFix}<button type="button" class="link" onclick={() => (h.name = nameFix)}>Use {nameFix}</button>{/if}
+        </span>
+      {:else}
+        <span class="hint">What the agent calls it. Put the long name in Description</span>
+      {/if}
+    </div>
     <div class="field">Group<Select bind:value={h.group} options={groupOpts} /></div>
   </div>
   <div class="field">Connection
@@ -335,6 +367,22 @@
 </Drawer>
 
 <style>
+  input.bad {
+    border-color: var(--danger);
+  }
+  .hint.err {
+    color: var(--danger);
+  }
+  .link {
+    margin-left: 4px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+  }
   /* La miniatura de un esquema en la lista de colores (la general usa los del tema). */
   .swatch {
     flex: none;
