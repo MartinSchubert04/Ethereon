@@ -24,7 +24,7 @@ use crate::policy::{self, Verdict};
 use crate::serial;
 use crate::ssh::{self, Conn, Hop, SshError, Target};
 use crate::transfer::{self, Direction, DownloadResult, FileRequest, UploadResult};
-use crate::{files, vault, Error, Result};
+use crate::{diag, files, remote, vault, Error, Result};
 
 /// Como avisa el broker a quien lo aloja (la app de escritorio o el servidor).
 pub trait Notifier: Send + Sync {
@@ -143,6 +143,9 @@ pub struct Broker {
     rate: Mutex<HashMap<String, VecDeque<Instant>>>,
     alerts: Mutex<Vec<Alert>>,
     last_ui: Mutex<Instant>,
+    /// Hasta cuando se pueden ver secretos sin volver a pedir la contrasena maestra
+    /// (`reveal`). Se borra al bloquear.
+    reveal_until: Mutex<Option<Instant>>,
     seq: AtomicU64,
     /// Comandos del agente corriendo ahora (para no actualizar en el medio).
     running: AtomicUsize,
@@ -183,6 +186,18 @@ async fn timed<T>(deadline: tokio::time::Instant, f: impl std::future::Future<Ou
     tokio::time::timeout_at(deadline, f).await.unwrap_or_else(|_| Err(Error::Invalid("the file transfer timed out".into())))
 }
 
+/// Cuanto dura la contrasena maestra para ver secretos (`Broker::reveal`).
+pub const REVEAL_GRACE: Duration = Duration::from_secs(5 * 60);
+
+/// Una credencial en claro (ver `Broker::reveal`). Se borra de memoria al soltarla.
+#[derive(Clone, Debug, Serialize, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
+pub struct Revealed {
+    pub username: String,
+    pub secret: String,
+    pub passphrase: String,
+    pub certificate: String,
+}
+
 fn token_hash(token: &str) -> String {
     audit::sha256_hex(token.as_bytes())
 }
@@ -201,6 +216,7 @@ impl Broker {
             rate: Default::default(),
             alerts: Default::default(),
             last_ui: Mutex::new(Instant::now()),
+            reveal_until: Mutex::new(None),
             seq: AtomicU64::new(1),
             running: AtomicUsize::new(0),
             locks: AtomicUsize::new(0),
@@ -288,6 +304,7 @@ impl Broker {
     /// estaba esperando aprobacion.
     pub async fn lock(&self) {
         let was = self.open.lock().unwrap().take().is_some();
+        *self.reveal_until.lock().unwrap() = None;
         self.locks.fetch_add(1, Ordering::SeqCst);
         self.pool.lock().await.clear();
         self.close_serial(|_| true);
@@ -311,6 +328,43 @@ impl Broker {
         let o = g.as_mut().ok_or(Error::Locked)?;
         let data = o.data.clone();
         o.vault.rekey(&self.vault_path(), new, &data)
+    }
+
+    /// Una credencial en claro, para verla o copiarla desde la interfaz (como Bitwarden).
+    /// Pide la contrasena maestra salvo que se haya dado hace menos de `REVEAL_GRACE`.
+    /// Solo la llama un comando de la interfaz: nada del agente (`mcp.rs`, `agent_*`) llega
+    /// aca, y queda en la auditoria.
+    pub fn reveal(&self, id: &str, password: Option<&str>) -> Result<Revealed> {
+        if !self.is_unlocked() {
+            return Err(Error::Locked);
+        }
+        let fresh = self.reveal_until.lock().unwrap().is_some_and(|t| Instant::now() < t);
+        if !fresh {
+            self.verify_password(password.unwrap_or(""))?;
+            *self.reveal_until.lock().unwrap() = Some(Instant::now() + REVEAL_GRACE);
+        }
+        let r = self.read(|d| {
+            d.credentials.iter().find(|c| c.id == id).map(|c| Revealed {
+                username: c.username.clone(),
+                secret: c.secret.clone(),
+                passphrase: c.passphrase.clone(),
+                certificate: c.certificate.clone(),
+            })
+        })?;
+        let r = r.ok_or_else(|| Error::Invalid(format!("credential `{id}` does not exist")))?;
+        self.log(Entry {
+            device: "ui".into(),
+            command: format!("reveal credential `{id}`"),
+            reason: "viewed or copied in the app".into(),
+            decision: "allowed".into(),
+            ..Default::default()
+        });
+        Ok(r)
+    }
+
+    /// Si `reveal` puede responder sin pedir la contrasena maestra ahora.
+    pub fn reveal_unlocked(&self) -> bool {
+        self.reveal_until.lock().unwrap().is_some_and(|t| Instant::now() < t)
     }
 
     /// Marca uso de la interfaz (posterga el autobloqueo). El agente no lo posterga.
@@ -1413,6 +1467,184 @@ impl Broker {
             // Un puerto serie con una terminal abierta no esta sin uso.
             self.close_serial(|c| c.is_closed() || (!c.in_use() && c.last_used.lock().unwrap().elapsed() >= idle));
         }
+    }
+}
+
+// ------------------------------------------------------------------ diagnostico de red
+//
+// Solo para la interfaz (test de conexion, traceroute y mapa de red). Devuelve IPs y nombres
+// DNS: nada de esto llega al agente.
+
+/// El resultado del test de conexion de un host, sin el login (eso lo prueba `test_host`).
+#[derive(Clone, Debug, Serialize)]
+pub struct Diagnosis {
+    /// La direccion que se probo (la del primer salto si el host va por bastion).
+    pub address: String,
+    pub port: u16,
+    /// La IPv4 a la que resolvio, si resolvio.
+    pub ip: Option<String>,
+    pub resolve_ms: Option<f64>,
+    pub ping: diag::PingStats,
+    pub tcp: diag::TcpProbe,
+    /// Si el host va por bastiones, sus nombres: lo de arriba es el primero.
+    pub via: Vec<String>,
+}
+
+/// El camino hasta un host.
+#[derive(Clone, Debug, Serialize)]
+pub struct Trace {
+    pub host: String,
+    pub address: String,
+    pub ip: Option<String>,
+    pub hops: Vec<diag::TraceHop>,
+    /// Si el ultimo salto es el destino.
+    pub reached: bool,
+    /// Los bastiones que hay despues de lo que se ve con ICMP (SSH adentro de SSH).
+    pub via: Vec<String>,
+    pub error: Option<String>,
+}
+
+const TRACE_MAX_HOPS: u8 = 30;
+const TRACE_PROBES: u8 = 3;
+const TRACE_TIMEOUT: Duration = Duration::from_millis(1500);
+/// Cuantos traceroutes corren a la vez en el mapa de red.
+const TRACE_PARALLEL: usize = 6;
+
+impl Broker {
+    /// Abre el explorador de archivos de un host con su protocolo (SFTP, SCP o FTP/FTPS).
+    /// Solo para la persona; el agente pasa archivos por `agent_download` / `agent_upload`.
+    pub async fn open_remote(&self, name: &str) -> Result<remote::Remote> {
+        self.touch_ui();
+        let (h, user, pass) = self.read(|d| {
+            let h = d.hosts.iter().find(|x| x.name == name).cloned().ok_or(Error::NotFound(name.into()))?;
+            let pass = d.credentials.iter().find(|c| c.id == h.credential).map(|c| Zeroizing::new(c.secret.clone()));
+            Ok::<_, Error>((h.clone(), d.user_of(&h), pass))
+        })??;
+        if h.is_serial() {
+            return Err(Error::Invalid(format!("`{name}` is a serial console: it has no files to browse")));
+        }
+        match h.file_proto {
+            FileProto::Sftp => Ok(remote::Remote::Sftp(files::Sftp::open(self.connection(&h).await?).await?)),
+            FileProto::Scp => Ok(remote::Remote::Scp(remote::Scp::new(self.connection(&h).await?))),
+            FileProto::Ftp | FileProto::Ftps => {
+                if !h.jump.is_empty() {
+                    return Err(Error::Invalid("FTP can't go through jump hosts: use SFTP or SCP for this host".into()));
+                }
+                let p = remote::FtpParams {
+                    host: h.hostname.clone(),
+                    port: h.file_port.unwrap_or(21),
+                    user: if user.is_empty() { "anonymous".into() } else { user },
+                    password: pass.unwrap_or_default(),
+                    tls: h.file_proto == FileProto::Ftps,
+                };
+                Ok(remote::Remote::Ftp(remote::Ftp::open(p).await?))
+            }
+        }
+    }
+
+    /// A que direccion se llega primero desde esta PC: la del host, o la del primer bastion.
+    fn first_hop(&self, name: &str) -> Result<(Host, String, u16, Vec<String>)> {
+        self.read(|d| {
+            let h = d.hosts.iter().find(|x| x.name == name).cloned().ok_or(Error::NotFound(name.into()))?;
+            if h.is_serial() {
+                return Err(Error::Invalid(format!("`{name}` is a serial console: there is no network to test")));
+            }
+            let first = match h.jump.first() {
+                Some(j) => d.hosts.iter().find(|x| &x.name == j).cloned().ok_or(Error::NotFound(format!("jump host `{j}`")))?,
+                None => h.clone(),
+            };
+            Ok((h.clone(), first.hostname.clone(), first.port, h.jump.clone()))
+        })?
+    }
+
+    /// Ping, conexion TCP y banner del servidor. `count` pings.
+    pub async fn diagnose(&self, name: &str, count: u32) -> Result<Diagnosis> {
+        self.touch_ui();
+        let (_, address, port, via) = self.first_hop(name)?;
+        let started = Instant::now();
+        let ip = diag::resolve_v4(&address, port).await;
+        let resolve_ms = ip.is_ok().then(|| (started.elapsed().as_secs_f64() * 100_000.0).round() / 100.0);
+        let tcp = diag::tcp_probe(&address, port, Duration::from_secs(5));
+        let (ping, tcp) = match &ip {
+            Ok(ip) => tokio::join!(diag::ping(*ip, count.clamp(1, 20), Duration::from_secs(2), Duration::from_millis(250)), tcp),
+            Err(e) => (diag::PingStats { sent: 0, error: Some(e.to_string()), ..Default::default() }, tcp.await),
+        };
+        Ok(Diagnosis { address, port, ip: ip.ok().map(|i| i.to_string()), resolve_ms, ping, tcp, via })
+    }
+
+    /// Las IPv4 de los hosts del vault (por la direccion principal y las alternativas), para
+    /// poner nombres en el traceroute.
+    async fn known_ips(&self) -> Result<HashMap<String, String>> {
+        let hosts = self.read(|d| d.hosts.iter().filter(|h| !h.is_serial()).map(|h| (h.name.clone(), h.addrs())).collect::<Vec<_>>())?;
+        let mut out = HashMap::new();
+        let lookups = hosts.into_iter().flat_map(|(name, addrs)| addrs.into_iter().map(move |(a, p)| (name.clone(), a, p)));
+        let res = futures_util::future::join_all(lookups.map(|(name, a, p)| async move { (name, diag::resolve_v4(&a, p).await) })).await;
+        for (name, ip) in res {
+            if let Ok(ip) = ip {
+                out.entry(ip.to_string()).or_insert(name);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Traceroute desde esta PC hasta un host (o su primer bastion), con los nombres del vault
+    /// y los DNS inversos en cada salto.
+    pub async fn trace(&self, name: &str) -> Result<Trace> {
+        self.touch_ui();
+        let names = self.known_ips().await?;
+        self.trace_with(name, &names).await
+    }
+
+    async fn trace_with(&self, name: &str, names: &HashMap<String, String>) -> Result<Trace> {
+        let (h, address, port, via) = self.first_hop(name)?;
+        let mut t = Trace { host: h.name.clone(), address: address.clone(), ip: None, hops: vec![], reached: false, via, error: None };
+        let ip = match diag::resolve_v4(&address, port).await {
+            Ok(ip) => ip,
+            Err(e) => {
+                t.error = Some(e.to_string());
+                return Ok(t);
+            }
+        };
+        t.ip = Some(ip.to_string());
+        match diag::traceroute(ip, TRACE_MAX_HOPS, TRACE_PROBES, TRACE_TIMEOUT).await {
+            Ok(hops) => t.hops = hops,
+            Err(e) => {
+                t.error = Some(e.to_string());
+                return Ok(t);
+            }
+        }
+        let dns = futures_util::future::join_all(t.hops.iter().map(|hp| async move {
+            match hp.ip.as_deref().and_then(|s| s.parse().ok()) {
+                Some(ip) => diag::reverse_dns(ip).await,
+                None => None,
+            }
+        }))
+        .await;
+        for (hp, dns) in t.hops.iter_mut().zip(dns) {
+            hp.dns = dns;
+            hp.host = hp.ip.as_ref().and_then(|ip| names.get(ip).cloned());
+        }
+        t.reached = t.hops.last().is_some_and(|h| h.last);
+        Ok(t)
+    }
+
+    /// Traceroute a todos los hosts de red, de a `TRACE_PARALLEL`. Los que fallan vienen con
+    /// `error`. Con un host por camino la interfaz arma el arbol (las ramas comunes se juntan).
+    pub async fn trace_all(&self) -> Result<Vec<Trace>> {
+        self.touch_ui();
+        let names = self.known_ips().await?;
+        let hosts: Vec<String> = self.read(|d| d.hosts.iter().filter(|h| !h.is_serial()).map(|h| h.name.clone()).collect())?;
+        let sem = Arc::new(tokio::sync::Semaphore::new(TRACE_PARALLEL));
+        let res = futures_util::future::join_all(hosts.iter().map(|n| {
+            let sem = sem.clone();
+            let names = &names;
+            async move {
+                let _p = sem.acquire().await;
+                self.trace_with(n, names).await
+            }
+        }))
+        .await;
+        Ok(res.into_iter().filter_map(|r| r.ok()).collect())
     }
 }
 

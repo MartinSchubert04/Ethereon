@@ -20,6 +20,9 @@ credential. It sits in the tray and is lightweight with the window closed.
 
 - **Encrypted vault:** passwords, private keys (with passphrase), certificates, sudo passwords
   and tokens. AES-256-GCM with a key derived from the master password (Argon2id). Locks itself.
+  Like Bitwarden, a stored secret can be shown or copied (user, password) after typing the master
+  password (then 5 minutes of grace); copied secrets leave the clipboard after 30 s. The agent
+  still never sees them.
 - **Termius-style hosts:** groups, tags, environment (prod, test, dev), chained bastion
   jumps and a description the agent reads for context.
 - **Built-in terminal:** double-click a host and a terminal opens in the app, with tabs. Also
@@ -29,8 +32,15 @@ credential. It sits in the tray and is lightweight with the window closed.
   agent uses the same `run(host, command)`: Ethereon sends the command, reads up to the prompt, answers
   the `--More--` prompts and returns the masked output. The read-only rules ship with a base list
   for network gear (`show`, `display`, `get`...).
-- **SFTP:** this PC and the server side by side; files are transferred by dragging (also from
-  Explorer), with progress and cancellation.
+- **Files:** this PC and the server side by side; files are transferred by dragging (also from
+  Explorer), with progress and cancellation. Each host picks its protocol: SFTP (default), SCP
+  (servers and devices without SFTP), FTP or FTPS.
+- **TFTP server:** serves a folder so switches, routers and APs can download firmware or configs
+  (`copy tftp: flash:`), optionally accepting uploads. In **Network**.
+- **Connection test:** ping (average, min/max, jitter, loss, TTL), port and server banner, SSH login
+  time, and a traceroute drawn as a tree with the latency of each hop; routers that are hosts in
+  the vault show by name.
+- **Network map:** traceroute to every host at once, merged into one tree where paths share routers.
 - **For Claude Code (MCP):** `list_hosts` and `run(host, command)`. The agent sees names and
   descriptions, never IPs or secrets. Output comes back with secrets covered by `***`.
   Optional per host or group (off by default): `download` and `upload` over SFTP, with the same

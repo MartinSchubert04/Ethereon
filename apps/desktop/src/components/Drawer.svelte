@@ -62,12 +62,12 @@
     z-index: 41;
     display: flex;
     flex-direction: column;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
   }
   :global([data-theme="warp"]) .drawer,
   :global([data-theme="haze"]) .drawer {
-    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    background: var(--float, color-mix(in srgb, var(--bg) 82%, transparent));
   }
   header {
     display: flex;

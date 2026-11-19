@@ -1,8 +1,10 @@
-//! Comandos del explorador SFTP: una sesion por pestaña, transferencias con progreso y
-//! cancelacion. Todo lo remoto exige el vault abierto y queda en la auditoria.
+//! Comandos del explorador de archivos: una sesion por pestaña (SFTP, SCP o FTP/FTPS segun
+//! el host, ver `ethereon_core::remote`), transferencias con progreso y cancelacion. Todo
+//! lo remoto exige el vault abierto y queda en la auditoria.
 
 use ethereon_core::audit::Entry;
-use ethereon_core::files::{self, FileEntry, Sftp};
+use ethereon_core::files::{self, FileEntry};
+use ethereon_core::remote::Remote;
 use ethereon_core::Error;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -18,7 +20,7 @@ use crate::AppState;
 #[derive(Default)]
 pub struct Sftps {
     /// id -> (host, sesion, bloqueos del vault cuando se abrio)
-    sessions: Mutex<HashMap<u32, (String, Arc<Sftp>, usize)>>,
+    sessions: Mutex<HashMap<u32, (String, Arc<Remote>, usize)>>,
     transfers: Arc<Mutex<HashMap<u32, Arc<AtomicBool>>>>,
     next: AtomicU32,
 }
@@ -35,11 +37,13 @@ pub enum XferEvent {
 pub struct Opened {
     id: u32,
     home: String,
+    /// "SFTP", "SCP", "FTP" o "FTPS".
+    proto: &'static str,
 }
 
-fn session(s: &State<AppState>, id: u32) -> Result<(String, Arc<Sftp>), Error> {
+fn session(s: &State<AppState>, id: u32) -> Result<(String, Arc<Remote>), Error> {
     s.broker.read(|_| ())?; // con el vault cerrado no se toca nada remoto
-    let (host, sftp, locks) = s.sftps.sessions.lock().unwrap().get(&id).cloned().ok_or(Error::NotFound("SFTP session".into()))?;
+    let (host, sftp, locks) = s.sftps.sessions.lock().unwrap().get(&id).cloned().ok_or(Error::NotFound("file session".into()))?;
     if locks != s.broker.lock_count() {
         s.sftps.sessions.lock().unwrap().remove(&id);
         return Err(Error::Invalid("the vault was locked since this tab opened. Reopen the tab.".into()));
@@ -51,11 +55,11 @@ fn session(s: &State<AppState>, id: u32) -> Result<(String, Arc<Sftp>), Error> {
     Ok((host, sftp))
 }
 
-fn audit(s: &State<AppState>, host: &str, what: String, ok: &Result<(), Error>) {
+fn audit(s: &State<AppState>, host: &str, proto: &str, what: String, ok: &Result<(), Error>) {
     s.broker.audit_log(Entry {
         device: "ui".into(),
         host: host.into(),
-        command: format!("[sftp] {what}"),
+        command: format!("[{}] {what}", proto.to_lowercase()),
         decision: if ok.is_ok() { "allowed" } else { "error" }.into(),
         detail: ok.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
         ..Default::default()
@@ -65,16 +69,14 @@ fn audit(s: &State<AppState>, host: &str, what: String, ok: &Result<(), Error>) 
 #[tauri::command]
 pub async fn sftp_open(s: State<'_, AppState>, host: String) -> Result<Opened, Error> {
     let b = s.broker.clone();
-    b.touch_ui();
-    let h = b.read(|d| d.hosts.iter().find(|x| x.name == host).cloned())?.ok_or(Error::NotFound(host.clone()))?;
-    let conn = b.connection(&h).await?;
     let locks = b.lock_count();
-    let sftp = Sftp::open(conn).await?;
-    let home = sftp.home().await.unwrap_or_else(|_| "/".into());
+    let remote = b.open_remote(&host).await?;
+    let proto = remote.proto();
+    let home = remote.home().await.unwrap_or_else(|_| "/".into());
     let id = s.sftps.next.fetch_add(1, Ordering::Relaxed) + 1;
-    s.sftps.sessions.lock().unwrap().insert(id, (host.clone(), Arc::new(sftp), locks));
-    audit(&s, &host, "open".into(), &Ok(()));
-    Ok(Opened { id, home })
+    s.sftps.sessions.lock().unwrap().insert(id, (host.clone(), Arc::new(remote), locks));
+    audit(&s, &host, proto, "open".into(), &Ok(()));
+    Ok(Opened { id, home, proto })
 }
 
 #[tauri::command]
@@ -99,7 +101,7 @@ pub async fn sftp_realpath(s: State<'_, AppState>, id: u32, path: String) -> Res
 pub async fn sftp_mkdir(s: State<'_, AppState>, id: u32, path: String) -> Result<(), Error> {
     let (host, sftp) = session(&s, id)?;
     let r = sftp.mkdir(&path).await;
-    audit(&s, &host, format!("mkdir {path}"), &r);
+    audit(&s, &host, sftp.proto(), format!("mkdir {path}"), &r);
     r
 }
 
@@ -107,7 +109,7 @@ pub async fn sftp_mkdir(s: State<'_, AppState>, id: u32, path: String) -> Result
 pub async fn sftp_rename(s: State<'_, AppState>, id: u32, from: String, to: String) -> Result<(), Error> {
     let (host, sftp) = session(&s, id)?;
     let r = sftp.rename(&from, &to).await;
-    audit(&s, &host, format!("rename {from} -> {to}"), &r);
+    audit(&s, &host, sftp.proto(), format!("rename {from} -> {to}"), &r);
     r
 }
 
@@ -116,7 +118,7 @@ pub async fn sftp_remove(s: State<'_, AppState>, id: u32, paths: Vec<String>) ->
     let (host, sftp) = session(&s, id)?;
     for p in paths {
         let r = sftp.remove(&p).await;
-        audit(&s, &host, format!("delete {p}"), &r);
+        audit(&s, &host, sftp.proto(), format!("delete {p}"), &r);
         r?;
     }
     Ok(())
@@ -141,7 +143,7 @@ impl Meter {
     }
 }
 
-/// Pasa `paths` de un lado al otro. Cada lado es una sesion SFTP (su id) o esta PC
+/// Pasa `paths` de un lado al otro. Cada lado es una sesion de archivos (su id) o esta PC
 /// (`None`): subir, bajar, de un servidor a otro (sin tocar el disco local) o copiar
 /// dentro de esta PC. Devuelve el id de la transferencia (para cancelarla) y sigue en
 /// segundo plano.
@@ -170,7 +172,8 @@ pub async fn files_transfer(
     let cancel = Arc::new(AtomicBool::new(false));
     s.sftps.transfers.lock().unwrap().insert(tid, cancel.clone());
     let broker = s.broker.clone();
-    let name = |e: &Option<(String, Arc<Sftp>)>| e.as_ref().map(|(h, _)| h.clone()).unwrap_or_else(|| "this PC".into());
+    let name = |e: &Option<(String, Arc<Remote>)>| e.as_ref().map(|(h, _)| h.clone()).unwrap_or_else(|| "this PC".into());
+    let proto = src.as_ref().or(dst.as_ref()).map(|(_, r)| r.proto().to_lowercase()).unwrap_or_else(|| "files".into());
     let what = format!("copy {} item(s) from {} to {}:{into}", paths.len(), name(&src), name(&dst));
     // Queda en la auditoria de cada servidor que toca.
     let hosts: Vec<String> = [&src, &dst].iter().filter_map(|e| e.as_ref().map(|(h, _)| h.clone())).collect();
@@ -196,7 +199,7 @@ pub async fn files_transfer(
             broker.audit_log(Entry {
                 device: "ui".into(),
                 host,
-                command: format!("[sftp] {what}: {}", paths.join(", ")),
+                command: format!("[{proto}] {what}: {}", paths.join(", ")),
                 decision: if result.is_ok() { "allowed" } else { "error" }.into(),
                 detail: result.as_ref().err().map(|e| e.to_string()).unwrap_or_default(),
                 ..Default::default()
@@ -246,4 +249,72 @@ pub fn local_remove(paths: Vec<String>) -> Result<(), Error> {
         files::remove_local(&PathBuf::from(p))?;
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------- servidor TFTP
+
+#[derive(Serialize)]
+pub struct TftpStatus {
+    running: bool,
+    dir: String,
+    port: u16,
+    write: bool,
+    /// Las IPv4 de esta PC, para el `copy tftp://<ip>/...` del equipo.
+    addrs: Vec<String>,
+}
+
+fn local_ipv4s() -> Vec<String> {
+    // Sin mandar nada: un socket UDP "conectado" dice por que interfaz saldria.
+    let mut out = Vec::new();
+    for probe in ["192.168.0.1:9", "10.0.0.1:9", "172.16.0.1:9", "8.8.8.8:9"] {
+        if let Ok(s) = std::net::UdpSocket::bind("0.0.0.0:0") {
+            if s.connect(probe).is_ok() {
+                if let Ok(a) = s.local_addr() {
+                    let ip = a.ip().to_string();
+                    if !ip.starts_with("0.") && !out.contains(&ip) {
+                        out.push(ip);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+async fn tftp_now(s: &State<'_, AppState>) -> TftpStatus {
+    let g = s.tftp.lock().await;
+    match g.as_ref() {
+        Some(t) => TftpStatus { running: true, dir: t.dir.display().to_string(), port: t.port, write: t.write, addrs: local_ipv4s() },
+        None => TftpStatus { running: false, dir: String::new(), port: 69, write: false, addrs: local_ipv4s() },
+    }
+}
+
+/// Prende el servidor TFTP sirviendo `dir`. Los pedidos llegan como evento "tftp".
+#[tauri::command]
+pub async fn tftp_start(app: tauri::AppHandle, s: State<'_, AppState>, dir: String, port: Option<u16>, write: bool) -> Result<TftpStatus, Error> {
+    use tauri::Emitter;
+    let mut g = s.tftp.lock().await;
+    if let Some(old) = g.take() {
+        old.stop();
+    }
+    let log: ethereon_core::tftp::Log = std::sync::Arc::new(move |e| {
+        let _ = app.emit("tftp", e);
+    });
+    let srv = ethereon_core::tftp::TftpServer::start(PathBuf::from(&dir), port.unwrap_or(69), write, log).await.map_err(|e| Error::Invalid(e.to_string()))?;
+    *g = Some(srv);
+    drop(g);
+    Ok(tftp_now(&s).await)
+}
+
+#[tauri::command]
+pub async fn tftp_stop(s: State<'_, AppState>) -> Result<TftpStatus, Error> {
+    if let Some(t) = s.tftp.lock().await.take() {
+        t.stop();
+    }
+    Ok(tftp_now(&s).await)
+}
+
+#[tauri::command]
+pub async fn tftp_status(s: State<'_, AppState>) -> Result<TftpStatus, Error> {
+    Ok(tftp_now(&s).await)
 }

@@ -4,6 +4,7 @@
     Inbox,
     KeyRound,
     Lock,
+    Network as NetworkIcon,
     Power,
     ScrollText,
     Server,
@@ -21,6 +22,7 @@
   import Unlock from "./views/Unlock.svelte";
   import Hosts from "./views/Hosts.svelte";
   import Keychain from "./views/Keychain.svelte";
+  import Network from "./views/Network.svelte";
   import Rules from "./views/Rules.svelte";
   import Approvals from "./views/Approvals.svelte";
   import Agents from "./views/Agents.svelte";
@@ -55,6 +57,7 @@
   const nav: { id: View; label: string; icon: typeof Server }[] = [
     { id: "hosts", label: "Hosts", icon: Server },
     { id: "keychain", label: "Keychain", icon: KeyRound },
+    { id: "network", label: "Network", icon: NetworkIcon },
     { id: "rules", label: "Rules", icon: ShieldCheck },
     { id: "approvals", label: "Approvals", icon: Inbox },
     { id: "agents", label: "Agents", icon: Bot },
@@ -165,6 +168,7 @@
         <div class="view-page" in:rise={{ y: 6 }}>
         {#if app.view === "hosts"}<Hosts />
         {:else if app.view === "keychain"}<Keychain />
+        {:else if app.view === "network"}<Network />
         {:else if app.view === "rules"}<Rules />
         {:else if app.view === "approvals"}<Approvals />
         {:else if app.view === "agents"}<Agents />
@@ -280,13 +284,13 @@
     width: 216px;
     padding: 12px 10px;
     border-right: var(--border) solid var(--line-strong);
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: 12px 0 40px -12px rgba(0, 0, 0, 0.6);
     animation: menu-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
   :global([data-theme="warp"]) .shell.full.overlay .sidebar,
   :global([data-theme="haze"]) .shell.full.overlay .sidebar {
-    background: color-mix(in srgb, var(--bg) 90%, transparent);
+    background: var(--float, color-mix(in srgb, var(--bg) 90%, transparent));
   }
   @keyframes menu-in {
     from {
@@ -415,7 +419,7 @@
   }
   .toast {
     padding: 10px 14px;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
     font-size: 12.5px;
     user-select: text;

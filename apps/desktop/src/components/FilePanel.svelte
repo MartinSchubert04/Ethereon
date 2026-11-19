@@ -792,7 +792,7 @@
     padding: 5px;
     display: flex;
     flex-direction: column;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
     transform-origin: top left;
   }
@@ -831,7 +831,7 @@
     gap: 6px;
     padding: 6px 10px;
     font-size: 12.5px;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
   }
   @media (max-width: 900px) {

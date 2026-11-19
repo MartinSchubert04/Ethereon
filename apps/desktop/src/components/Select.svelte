@@ -270,7 +270,7 @@
     max-height: 300px;
     display: flex;
     flex-direction: column;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     border: var(--border) solid var(--line-strong);
     border-radius: var(--radius);
     box-shadow: var(--pop-shadow);
@@ -284,7 +284,7 @@
   }
   :global([data-theme="warp"]) .select-pop,
   :global([data-theme="haze"]) .select-pop {
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    background: var(--float, color-mix(in srgb, var(--bg) 88%, transparent));
     backdrop-filter: blur(18px);
   }
   .search {

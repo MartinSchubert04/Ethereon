@@ -145,6 +145,7 @@ function applyOpacity(pct: number) {
   if (a >= 1) {
     for (const v of SURFACES) body.removeProperty(v);
     body.removeProperty("--bg-solid");
+    body.removeProperty("--float");
   } else {
     // Los valores del tema, resueltos a rgba y con el alfa multiplicado. Resueltos porque
     // la terminal (xterm) no entiende color-mix().
@@ -155,12 +156,31 @@ function applyOpacity(pct: number) {
       if (c) body.setProperty(v, `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${+(c[3] * a).toFixed(3)})`);
       else body.removeProperty(v);
     }
+    // Lo que flota (menu lateral sobre la terminal, busqueda, menus, dialogos, cajones,
+    // tooltips) no sigue la opacidad: queda casi opaco para no mezclar su texto con el de
+    // atras. Es --sidebar pintado sobre --bg, como se ve con la ventana al 100 %.
+    const f = flatten(theme.getPropertyValue("--sidebar"), theme.getPropertyValue("--bg"));
+    if (f) body.setProperty("--float", `rgba(${f[0]}, ${f[1]}, ${f[2]}, ${FLOAT_ALPHA})`);
+    else body.removeProperty("--float");
   }
   const on = a < 1;
   if (on !== glassOn) {
     glassOn = on;
     api.windowGlass(on).catch(() => {});
   }
+}
+
+/** Alfa de lo que flota cuando la ventana es translucida (ver `--float`). */
+const FLOAT_ALPHA = 0.97;
+
+/** `top` pintado sobre `under` (que se toma opaco), como [r, g, b]. */
+function flatten(top: string, under: string): [number, number, number] | null {
+  const t = resolve(top);
+  const u = resolve(under);
+  if (!t) return null;
+  if (!u) return [t[0], t[1], t[2]];
+  const k = t[3];
+  return [0, 1, 2].map((i) => Math.round(t[i] * k + u[i] * (1 - k))) as [number, number, number];
 }
 
 /** Cualquier color CSS a [r, g, b, a], via el motor del navegador. null si no es un color. */

@@ -1,13 +1,15 @@
 <script lang="ts">
-  import { Check, FileInput, FolderInput, FolderOpen, Layers, GripVertical, LoaderCircle, Pencil, Plug, Plus, Search, Server, Upload, X } from "@lucide/svelte";
+  import { Activity, Check, FileInput, FolderInput, FolderOpen, KeyRound, Layers, GripVertical, LoaderCircle, Pencil, Plug, Plus, Search, Server, Upload, UserRound, X } from "@lucide/svelte";
   import { onMount } from "svelte";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { importLocalSsh, importPath, importPick } from "../lib/importer";
   import HostForm from "../components/HostForm.svelte";
+  import ConnTest from "../components/ConnTest.svelte";
   import GroupForm from "../components/GroupForm.svelte";
   import Logo from "../components/Logo.svelte";
   import { hostIcon } from "../lib/icons";
-  import { addrOf, api, MODE_LABEL, type Group, type Host } from "../lib/api";
+  import { addrOf, api, fileProtoOf, MODE_LABEL, userOf, type Group, type Host } from "../lib/api";
+  import { copyHostSecret, copyPlain } from "../lib/secrets";
   import { app, attempt, openGroup, openSftp, openTerminal, toast } from "../lib/state.svelte";
   import { testHost } from "../lib/hostkey.svelte";
   import { pop } from "../lib/motion";
@@ -27,6 +29,8 @@
   let query = $state("");
   let editing = $state<Host | null | undefined>(undefined); // undefined = cerrado, null = nuevo
   let editingGroup = $state<Group | null | undefined>(undefined);
+  /** El host del test de conexion abierto. */
+  let testing = $state<Host | null>(null);
 
   // Ctrl N desde cualquier lado abre un host nuevo.
   $effect(() => {
@@ -307,6 +311,13 @@
                       {:else if t === "fail"}<X size={14} />
                       {:else}<Plug size={14} />{/if}
                     </button>
+                    <button class="icon-btn" title="Details: ping, port, login and route" onclick={() => (testing = h)}><Activity size={14} /></button>
+                    {#if userOf(h, app.snap?.credentials)}
+                      <button class="icon-btn" title="Copy user" onclick={() => copyPlain(userOf(h, app.snap?.credentials), "User")}><UserRound size={14} /></button>
+                    {/if}
+                    {#if h.credential}
+                      <button class="icon-btn" title="Copy password" onclick={() => copyHostSecret(h)}><KeyRound size={14} /></button>
+                    {/if}
                     <button class="icon-btn" title="Edit" onclick={() => (editing = h)}><Pencil size={14} /></button>
                   </div>
                 </div>
@@ -322,7 +333,7 @@
                 <div class="connect-row">
                   <button class="btn sm connect" onclick={() => openTerminal(h.name)}>Connect</button>
                   {#if h.transport !== "serial"}
-                    <button class="btn sm" title="Browse files (SFTP)" onclick={() => openSftp(h.name)}><FolderOpen size={13} /> SFTP</button>
+                    <button class="btn sm" title="Browse files ({fileProtoOf(h)})" onclick={() => openSftp(h.name)}><FolderOpen size={13} /> {fileProtoOf(h)}</button>
                   {/if}
                 </div>
               </div>
@@ -339,6 +350,9 @@
 
 {#if editing !== undefined}
   <HostForm host={editing} onclose={() => (editing = undefined)} />
+{/if}
+{#if testing}
+  <ConnTest host={testing} onclose={() => (testing = null)} />
 {/if}
 {#if editingGroup !== undefined}
   <GroupForm group={editingGroup} onclose={() => (editingGroup = undefined)} />
@@ -450,7 +464,7 @@
     z-index: 20;
     width: 320px;
     padding: 5px;
-    background: var(--sidebar);
+    background: var(--float, var(--sidebar));
     box-shadow: var(--pop-shadow);
     display: flex;
     flex-direction: column;

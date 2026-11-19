@@ -1,10 +1,11 @@
 //! Comandos de la interfaz. Son finitos a proposito: la logica esta en `ethereon-core`.
-//! Ninguno devuelve un secreto: las credenciales se ven como "guardada / vacia".
+//! Ninguno devuelve un secreto salvo `reveal_secret`, que pide la contrasena maestra (como
+//! Bitwarden); el resto ve las credenciales como "guardada / vacia".
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tauri::State;
-use ethereon_core::broker::{Alert, ApprovalView, Decision};
+use ethereon_core::broker::{Alert, ApprovalView, Decision, Revealed};
 use ethereon_core::export::{self, Format};
 use ethereon_core::model::*;
 use ethereon_core::{audit::Entry, import, policy, Error};
@@ -318,6 +319,24 @@ pub fn serial_ports() -> Vec<ethereon_core::serial::PortInfo> {
 #[tauri::command]
 pub async fn host_test(s: State<'_, AppState>, name: String) -> R<Option<ethereon_core::ssh::SshError>> {
     s.broker.test_host(&name).await
+}
+
+/// Ping, puerto TCP y banner del servidor (el test de conexion detallado).
+#[tauri::command]
+pub async fn host_diagnose(s: State<'_, AppState>, name: String, count: Option<u32>) -> R<ethereon_core::broker::Diagnosis> {
+    s.broker.diagnose(&name, count.unwrap_or(5)).await
+}
+
+/// Traceroute hasta un host, con los nombres del vault en cada salto.
+#[tauri::command]
+pub async fn host_trace(s: State<'_, AppState>, name: String) -> R<ethereon_core::broker::Trace> {
+    s.broker.trace(&name).await
+}
+
+/// Traceroute a todos los hosts de red, para el mapa.
+#[tauri::command]
+pub async fn trace_all(s: State<'_, AppState>) -> R<Vec<ethereon_core::broker::Trace>> {
+    s.broker.trace_all().await
 }
 
 /// Abre un link en el navegador (por ejemplo, el que manda Tailscale SSH para autorizar un
@@ -701,6 +720,20 @@ pub async fn import_auto(s: State<'_, AppState>, path: String, password: Option<
     .map_err(|e| invalid(e.to_string()))?
     .map_err(invalid)?;
     merge(&s, imp)
+}
+
+/// Una credencial en claro para verla o copiarla. Pide la contrasena maestra salvo que se
+/// haya dado hace poco (`Broker::reveal`). El agente no tiene forma de llegar aca.
+#[tauri::command]
+pub async fn reveal_secret(s: State<'_, AppState>, id: String, password: Option<String>) -> R<Revealed> {
+    let b = s.broker.clone();
+    tauri::async_runtime::spawn_blocking(move || b.reveal(&id, password.as_deref())).await.map_err(|e| invalid(e.to_string()))?
+}
+
+/// Si `reveal_secret` responde sin pedir la contrasena maestra ahora.
+#[tauri::command]
+pub fn reveal_unlocked(s: State<AppState>) -> bool {
+    s.broker.reveal_unlocked()
 }
 
 /// Exportar con secretos pide la contrasena maestra otra vez.

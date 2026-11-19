@@ -2,9 +2,9 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { homeDir } from "@tauri-apps/api/path";
-import { api, errText, type Alert, type Approval, type Snapshot, type Status, type UpdateInfo } from "./api";
+import { api, errText, fileProtoOf, type Alert, type Approval, type Snapshot, type Status, type UpdateInfo } from "./api";
 
-export type View = "hosts" | "keychain" | "rules" | "approvals" | "agents" | "audit" | "settings" | "terminal";
+export type View = "hosts" | "keychain" | "network" | "rules" | "approvals" | "agents" | "audit" | "settings" | "terminal";
 
 export interface TermTab {
   key: number;
@@ -99,6 +99,10 @@ export const app = $state({
 
 let toastId = 0;
 export function toast(text: string, bad = false) {
+  // El mismo aviso otra vez (por ejemplo, apretar Guardar varias veces) no se apila: el que
+  // esta se queda un rato mas.
+  const same = app.toasts.find((t) => t.text === text && t.bad === bad);
+  if (same) app.toasts = app.toasts.filter((t) => t !== same);
   const id = ++toastId;
   app.toasts.push({ id, text, bad });
   setTimeout(() => (app.toasts = app.toasts.filter((t) => t.id !== id)), bad ? 6000 : 3000);
@@ -258,7 +262,7 @@ export function openTerminal(host: string, local?: string, cwd?: string) {
 export function openSftp(host: string) {
   rememberVaultView(app.view);
   const key = newKey();
-  app.terms.push({ key, host, sftp: true, title: `${host} · SFTP`, alive: true });
+  app.terms.push({ key, host, sftp: true, title: `${host} · ${fileProtoOf(app.snap?.hosts.find((h) => h.name === host))}`, alive: true });
   app.activeTerm = key;
   app.view = "terminal";
 }
