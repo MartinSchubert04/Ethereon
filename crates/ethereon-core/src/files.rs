@@ -75,6 +75,30 @@ pub fn rname(path: &str) -> &str {
     path.trim_end_matches('/').rsplit('/').next().unwrap_or(path)
 }
 
+/// Un nombre que mando el servidor, listo para usar en esta PC como un solo nombre (nunca
+/// una ruta). En Linux `..\..\Startup\x.bat` o `C:\x` son nombres validos, y pegados a la
+/// carpeta de destino en Windows escribirian afuera de ella. Los caracteres que Windows no
+/// acepta pasan a `_` (como WinSCP); `.`, `..` y lo que Windows convierte en eso (`.. `,
+/// `...`) es un error. Los nombres de dispositivo (`COM1`, `NUL.txt`) llevan un `_` adelante.
+pub fn local_name(name: &str) -> Result<String> {
+    let bad = |c: char| c == '/' || c == '\\' || c.is_control() || (cfg!(windows) && ":*?\"<>|".contains(c));
+    let out: String = name.chars().map(|c| if bad(c) { '_' } else { c }).collect();
+    // Windows saca los puntos y espacios del final: ".. " termina siendo "..".
+    let core = if cfg!(windows) { out.trim_end_matches(['.', ' ']) } else { out.as_str() };
+    if core.is_empty() || core == "." || core == ".." {
+        return Err(Error::Invalid(format!("the server sent a file name that is not valid here: {name:?}")));
+    }
+    if cfg!(windows) {
+        let stem = core.split('.').next().unwrap_or("").trim_end().to_ascii_uppercase();
+        let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
+            || (stem.len() == 4 && (stem.starts_with("COM") || stem.starts_with("LPT")) && stem.as_bytes()[3].is_ascii_digit());
+        if device {
+            return Ok(format!("_{out}"));
+        }
+    }
+    Ok(out)
+}
+
 pub struct Sftp {
     conn: Arc<Conn>,
     s: SftpSession,
@@ -304,7 +328,7 @@ impl Sftp {
 
     /// Baja un archivo o carpeta remota adentro de la carpeta local `into`.
     pub async fn download(&self, remote: &str, into: &Path, progress: &(dyn Fn(u64, &str) + Sync), cancel: &AtomicBool) -> Result<()> {
-        let mut stack = vec![(remote.to_string(), into.join(rname(remote)))];
+        let mut stack = vec![(remote.to_string(), into.join(local_name(rname(remote))?))];
         while let Some((r, l)) = stack.pop() {
             if cancel.load(Ordering::Relaxed) {
                 return Err(Error::Invalid("cancelled".into()));
@@ -318,7 +342,7 @@ impl Sftp {
                     if n == "." || n == ".." {
                         continue;
                     }
-                    stack.push((rjoin(&r, &n), l.join(&n)));
+                    stack.push((rjoin(&r, &n), l.join(local_name(&n)?)));
                 }
             } else {
                 let mut src = self.s.open(&r).await.map_err(sftp_err)?;
@@ -523,6 +547,42 @@ mod tests {
         assert_eq!(rjoin("/", "etc"), "/etc");
         assert_eq!(rname("/var/log/"), "log");
         assert_eq!(rname("file.txt"), "file.txt");
+    }
+
+    #[test]
+    fn server_names_stay_inside_the_folder() {
+        let into = std::env::temp_dir().join("eth-dest");
+        let evil = [
+            r"..\..\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup\x.bat",
+            r"C:\Windows\x.dll",
+            r"\\server\share\x",
+            "C:x",
+            "a/../../x",
+            "file.txt:hidden",
+            "x\0y",
+        ];
+        for name in evil {
+            let n = local_name(name).unwrap();
+            let p = into.join(&n);
+            assert_eq!(p.parent(), Some(into.as_path()), "{name:?} -> {n:?}");
+            assert_eq!(p.components().count(), into.components().count() + 1, "{name:?} -> {n:?}");
+        }
+        assert_eq!(local_name("app.log").unwrap(), "app.log");
+        assert_eq!(local_name("con espacios y ñ.txt").unwrap(), "con espacios y ñ.txt");
+        for bad in ["", ".", ".."] {
+            assert!(local_name(bad).is_err(), "{bad:?}");
+        }
+        if cfg!(windows) {
+            assert_eq!(local_name(r"..\x").unwrap(), ".._x");
+            assert_eq!(local_name("a:b").unwrap(), "a_b");
+            // Windows saca puntos y espacios del final: estos terminarian siendo "..".
+            for bad in [".. ", "...", ". ."] {
+                assert!(local_name(bad).is_err(), "{bad:?}");
+            }
+            assert_eq!(local_name("COM1").unwrap(), "_COM1");
+            assert_eq!(local_name("nul.txt").unwrap(), "_nul.txt");
+            assert_eq!(local_name("console.txt").unwrap(), "console.txt");
+        }
     }
 
     #[test]

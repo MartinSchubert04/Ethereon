@@ -18,7 +18,7 @@ use std::time::{Duration, Instant, UNIX_EPOCH};
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader};
 use zeroize::Zeroizing;
 
-use crate::files::{rjoin, rname, FileEntry, Sftp};
+use crate::files::{local_name, rjoin, rname, FileEntry, Sftp};
 use crate::ssh::{self, Conn};
 use crate::{Error, Result};
 
@@ -145,7 +145,7 @@ impl Remote {
         let half = |n: u64, f: &str| progress(n / 2, f);
         let r = async {
             self.download(remote, &tmp, &half, cancel).await?;
-            other.upload(&tmp.join(rname(remote)), into, &half, cancel).await
+            other.upload(&tmp.join(local_name(rname(remote))?), into, &half, cancel).await
         }
         .await;
         let _ = std::fs::remove_dir_all(&tmp);
@@ -290,7 +290,7 @@ impl Scp {
             match line[0] {
                 b'C' => {
                     let (size, name) = header(&text)?;
-                    let path = here.join(&name);
+                    let path = here.join(local_name(&name)?);
                     w.write_all(&[0]).await.map_err(io_err)?;
                     let mut f = tokio::fs::File::create(&path).await.map_err(io_err)?;
                     let mut left = size;
@@ -315,7 +315,7 @@ impl Scp {
                 }
                 b'D' => {
                     let (_, name) = header(&text)?;
-                    let path = here.join(&name);
+                    let path = here.join(local_name(&name)?);
                     std::fs::create_dir_all(&path).map_err(io_err)?;
                     dirs.push(path);
                     w.write_all(&[0]).await.map_err(io_err)?;
@@ -613,7 +613,7 @@ impl Ftp {
 
     async fn download(&self, remote: &str, into: &Path, progress: Progress<'_>, cancel: &AtomicBool) -> Result<()> {
         let mut s = Self::connect(&self.p).await?;
-        let mut stack = vec![(remote.to_string(), into.join(rname(remote)))];
+        let mut stack = vec![(remote.to_string(), into.join(local_name(rname(remote))?))];
         while let Some((r, l)) = stack.pop() {
             if cancel.load(Ordering::Relaxed) {
                 return Err(cancelled());
@@ -621,7 +621,7 @@ impl Ftp {
             if s.cwd(&r).await.is_ok() {
                 std::fs::create_dir_all(&l).map_err(io_err)?;
                 for e in self.list(&r).await? {
-                    stack.push((rjoin(&r, &e.name), l.join(&e.name)));
+                    stack.push((rjoin(&r, &e.name), l.join(local_name(&e.name)?)));
                 }
             } else {
                 let mut src = s.retr_as_stream(&r).await.map_err(ftp_err)?;
