@@ -158,7 +158,7 @@
       {:else if trace}
         {#if trace.error}<div class="bad">{trace.error}</div>{/if}
         {#if trace.hops.length}
-          <NetTree traces={[trace]} />
+          <div class="route"><NetTree traces={[trace]} vertical /></div>
           <table class="list hops">
             <thead><tr><th>#</th><th>Hop</th><th>Probes</th></tr></thead>
             <tbody>
@@ -167,8 +167,11 @@
                   <td class="faint">{h.ttl}</td>
                   <td>
                     {#if h.ip}
-                      {#if h.host}<b>{h.host}</b> {/if}<span class="mono">{h.ip}</span>
-                      {#if h.dns}<div class="faint mono">{h.dns}</div>{/if}
+                      <div class="hopname">
+                        {#if h.host}<b>{h.host}</b>{/if}
+                        <span class="mono" class:faint={!!h.host}>{h.ip}</span>
+                      </div>
+                      {#if h.dns}<div class="faint mono small">{h.dns}</div>{/if}
                     {:else}<span class="faint">no reply</span>{/if}
                   </td>
                   <td class="mono">{#each h.rtts as r, i}{i ? " · " : ""}<span class={r === null ? "faint" : rttLevel(r)}>{r === null ? "*" : ms(r)}</span>{/each}</td>
@@ -285,5 +288,19 @@
   }
   .hops td {
     vertical-align: top;
+  }
+  .hopname {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .small {
+    font-size: 11px;
+  }
+  .route {
+    padding: 6px 0 4px;
+    border-radius: var(--radius);
+    background: color-mix(in srgb, var(--panel-2) 60%, transparent);
   }
 </style>

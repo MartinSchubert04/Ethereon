@@ -91,29 +91,48 @@ export const COL = 210;
 export const ROW = 58;
 export const NODE_W = 168;
 export const NODE_H = 40;
+/** En vertical: de un salto al siguiente, y entre ramas vecinas. */
+export const V_STEP = 74;
+export const V_GAP = 22;
 
-/** Columnas por profundidad, filas por hoja; cada padre queda a la altura media de sus hijos. */
-export function layout(root: NetNode): { nodes: NetNode[]; edges: Edge[]; width: number; height: number } {
+/**
+ * Horizontal (el mapa): una columna por salto, una fila por hoja. Vertical (el test de un
+ * host): una fila por salto, una columna por hoja. Cada padre queda al medio de sus hijos.
+ */
+export function layout(root: NetNode, vertical = false): { nodes: NetNode[]; edges: Edge[]; width: number; height: number } {
   const nodes: NetNode[] = [];
   const edges: Edge[] = [];
-  let row = 0;
+  let leaf = 0;
   let depthMax = 0;
-  function walk(n: NetNode, depth: number) {
+  const across = vertical ? NODE_W + V_GAP : ROW;
+  const along = vertical ? V_STEP : COL;
+  function walk(n: NetNode, depth: number): number {
     nodes.push(n);
     depthMax = Math.max(depthMax, depth);
-    n.x = depth * COL;
+    let pos: number;
     if (!n.children.length) {
-      n.y = row++ * ROW;
-      return;
+      pos = leaf++ * across;
+    } else {
+      const ps = n.children.map((c) => {
+        edges.push({ from: n, to: c, dashed: c.kind === "jump" || c.kind === "unreached" || c.kind === "lost" });
+        return walk(c, depth + 1);
+      });
+      pos = (ps[0] + ps[ps.length - 1]) / 2;
     }
-    for (const c of n.children) {
-      walk(c, depth + 1);
-      edges.push({ from: n, to: c, dashed: c.kind === "jump" || c.kind === "unreached" || c.kind === "lost" });
+    if (vertical) {
+      n.x = pos;
+      n.y = depth * along;
+    } else {
+      n.x = depth * along;
+      n.y = pos;
     }
-    n.y = (n.children[0].y + n.children[n.children.length - 1].y) / 2;
+    return pos;
   }
   walk(root, 0);
-  return { nodes, edges, width: depthMax * COL + NODE_W, height: Math.max(1, row) * ROW - (ROW - NODE_H) };
+  const leaves = Math.max(1, leaf);
+  return vertical
+    ? { nodes, edges, width: leaves * across - V_GAP, height: depthMax * along + NODE_H }
+    : { nodes, edges, width: depthMax * along + NODE_W, height: leaves * across - (ROW - NODE_H) };
 }
 
 /** El estado de una latencia, para el color. */
