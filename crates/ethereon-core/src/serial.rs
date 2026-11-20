@@ -447,8 +447,9 @@ pub struct ExecOut {
 /// que termina en `#` o `>` no es el prompt).
 const SETTLE: Duration = Duration::from_millis(200);
 /// Si en este tiempo el equipo no manda ni un byte despues del Enter, no hay nadie (apagado,
-/// otro puerto, otra velocidad): no tiene sentido esperar el timeout entero del prompt.
-const SILENT: Duration = Duration::from_millis(2500);
+/// otro puerto, otra velocidad): al abrir una terminal no tiene sentido esperar el timeout
+/// entero del prompt. Los comandos del agente no lo usan: esperan el timeout del host.
+pub const SILENT: Duration = Duration::from_millis(2500);
 
 /// Manda `command` y junta la salida hasta el prompt o hasta `timeout`.
 pub fn exec(conn: &Conn, command: &str, prompt: &Regex, timeout: Duration, max: usize) -> io::Result<ExecOut> {
@@ -503,7 +504,8 @@ pub struct Login {
 /// Despierta la linea con un Enter y la deja en el prompt: contesta el login y, si el prompt
 /// es de usuario (`>`) y hay contrasena de `enable`, entra al modo privilegiado. Devuelve el
 /// prompt. Lo que el equipo diga en el camino (banner, eco del usuario) se descarta.
-pub fn ready(conn: &Conn, prompt: &Regex, login: &Login, timeout: Duration) -> io::Result<String> {
+/// `silent`: si en ese tiempo no llega ni un byte, se abandona antes del timeout.
+pub fn ready(conn: &Conn, prompt: &Regex, login: &Login, timeout: Duration, silent: Option<Duration>) -> io::Result<String> {
     let _turn = conn.turn.lock().unwrap();
     let tap = conn.tap();
     let mut col = Collector::new(prompt.clone(), 64 * 1024);
@@ -521,7 +523,7 @@ pub fn ready(conn: &Conn, prompt: &Regex, login: &Login, timeout: Duration) -> i
         if now >= deadline {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "the console did not show a prompt"));
         }
-        if !heard && now.duration_since(started) >= SILENT {
+        if !heard && silent.is_some_and(|q| now.duration_since(started) >= q) {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "the device did not answer (is it on, and is the baud rate right?)"));
         }
         let wait = match settling {
@@ -768,20 +770,40 @@ mod tests {
             password: Some(Zeroizing::new("s3cret".into())),
             enable: Some(Zeroizing::new("en4ble".into())),
         };
-        let p = ready(&conn, &re(), &login, Duration::from_secs(3)).unwrap();
+        let p = ready(&conn, &re(), &login, Duration::from_secs(3), None).unwrap();
         assert_eq!(p, "Switch#");
         assert_eq!(link.written(), "\radmin\rs3cret\renable\ren4ble\r");
         // Ya en el prompt: un Enter alcanza.
         link.0.lock().unwrap().script.push(("\r\r".into(), b"\r\nSwitch#".to_vec(), false));
-        let p = ready(&conn, &re(), &login, Duration::from_secs(3)).unwrap();
+        let p = ready(&conn, &re(), &login, Duration::from_secs(3), None).unwrap();
         assert_eq!(p, "Switch#");
+    }
+
+    #[test]
+    fn ready_waits_the_whole_timeout_for_the_agent() {
+        // Un equipo que no contesta: para el agente se espera el timeout del host entero.
+        let conn = Conn::new(Box::new(FakeLink::new(&[]))).unwrap();
+        let t = Instant::now();
+        let e = ready(&conn, &re(), &Login::default(), Duration::from_secs(4), None).unwrap_err();
+        assert_eq!(e.to_string(), "the console did not show a prompt");
+        assert!(t.elapsed() >= Duration::from_millis(3900), "corto a los {:?}", t.elapsed());
+    }
+
+    #[test]
+    fn ready_gives_up_early_on_a_silent_device_when_asked() {
+        // Al abrir la terminal: si no llega ni un byte, se abandona a los `silent`.
+        let conn = Conn::new(Box::new(FakeLink::new(&[]))).unwrap();
+        let t = Instant::now();
+        let e = ready(&conn, &re(), &Login::default(), Duration::from_secs(4), Some(Duration::from_millis(500))).unwrap_err();
+        assert!(e.to_string().contains("did not answer"), "{e}");
+        assert!(t.elapsed() < Duration::from_secs(2), "tardo {:?}", t.elapsed());
     }
 
     #[test]
     fn ready_fails_without_credentials() {
         let link = FakeLink::new(&[("\r", "\r\nPassword: ")]);
         let conn = Conn::new(Box::new(link)).unwrap();
-        let e = ready(&conn, &re(), &Login::default(), Duration::from_secs(2)).unwrap_err();
+        let e = ready(&conn, &re(), &Login::default(), Duration::from_secs(2), None).unwrap_err();
         assert_eq!(e.kind(), io::ErrorKind::PermissionDenied);
     }
 

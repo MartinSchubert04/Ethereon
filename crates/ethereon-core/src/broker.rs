@@ -879,16 +879,16 @@ impl Broker {
     }
 
     /// Despierta la consola serial y la deja en el prompt (login y `enable` incluidos). En
-    /// otro hilo: el puerto es bloqueante.
-    /// Despierta la consola y hace el login. `cap` acorta la espera (al abrir una terminal:
+    /// otro hilo: el puerto es bloqueante. `cap` acorta la espera (al abrir una terminal:
     /// la persona ve la consola y puede loguearse a mano, no tiene que esperar el timeout
-    /// entero del host, que es para los comandos del agente).
+    /// entero del host, que es para los comandos del agente); con `cap` ademas se abandona
+    /// si el equipo no manda ni un byte (`serial::SILENT`).
     async fn serial_ready(&self, h: &Host, conn: Arc<serial::Conn>, cap: Option<Duration>) -> std::io::Result<String> {
         let prompt = Regex::new(&h.serial.prompt).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
         let login = self.serial_login(h).map_err(|e| std::io::Error::other(e.to_string()))?;
         let full = Duration::from_secs(h.serial.timeout_secs.clamp(1, 60));
         let timeout = cap.map_or(full, |c| c.min(full));
-        tokio::task::spawn_blocking(move || serial::ready(&conn, &prompt, &login, timeout))
+        tokio::task::spawn_blocking(move || serial::ready(&conn, &prompt, &login, timeout, cap.map(|_| serial::SILENT)))
             .await
             .map_err(|e| std::io::Error::other(e.to_string()))?
     }

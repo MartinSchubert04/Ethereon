@@ -187,8 +187,13 @@ export function tones(ansi: string[], background: string): Record<Tone, string> 
   return { red: list[1 + o], green: list[2 + o], yellow: list[3 + o], blue: list[4 + o], magenta: list[5 + o], cyan: list[6 + o], dim: list[8] };
 }
 
-/** Cuantas lineas hacia atras se pintan como mucho (al empezar, al cambiar el tamaño o el tema). */
-const BACK = 400;
+/** Cuantas pantallas arriba y abajo de lo que se ve se pintan de antemano (al desplazarse ya
+ *  esta pintado). */
+const MARGIN = 1;
+/** Lo pintado a mas de estas pantallas de lo que se ve se despinta: cada decoracion viva le
+ *  cuesta a xterm en cada cuadro y en cada linea que sale del historial. Con el historial
+ *  lleno de lineas pintadas, 3,5 MB de salida tardaban 6 s en vez de 0,15 s. */
+const KEEP = 3;
 /** Lo que se esta escribiendo (el prompt, la linea sin Enter) se pinta despues de esta pausa. */
 const IDLE_MS = 120;
 /** Tope de decoraciones por linea. */
@@ -199,11 +204,20 @@ interface Row {
   decos: IDecoration[];
 }
 
+/** Despinta una fila (las decoraciones caen con su marcador). */
+function drop(row: Row) {
+  row.decos.forEach((d) => d.dispose());
+  row.marker.dispose();
+}
+
+// Solo se pinta lo que se ve, mas un margen: una salida larga no deja miles de decoraciones
+// vivas, y lo del historial se pinta recien cuando se sube a verlo.
 export class Highlighter {
   private rows: Row[] = [];
-  /** La primera linea que falta pintar (se mueve con el historial). */
+  /** Desde esta linea todo es nuevo: lo pintado ahi pudo cambiar y se rehace. */
   private next: IMarker | null = null;
   private idle: ReturnType<typeof setTimeout> | undefined;
+  private frame = 0;
   private subs: IDisposable[] = [];
   private cell: IBufferCell;
   private colors: Record<Tone, string>;
@@ -218,6 +232,8 @@ export class Highlighter {
     this.colors = palette;
     this.subs.push(
       term.onWriteParsed(() => this.onWrite()),
+      // Desplazarse por el historial: pintar lo que aparece.
+      term.onScroll(() => this.schedule()),
       // Al cambiar el ancho las lineas se reacomodan: las columnas viejas ya no sirven.
       term.onResize(() => this.on && this.repaint()),
     );
@@ -241,48 +257,80 @@ export class Highlighter {
 
   dispose() {
     clearTimeout(this.idle);
+    cancelAnimationFrame(this.frame);
     this.clear();
     this.subs.forEach((s) => s.dispose());
   }
 
   private clear() {
-    for (const row of this.rows) {
-      row.decos.forEach((d) => d.dispose());
-      row.marker.dispose();
-    }
+    const rows = this.rows;
     this.rows = [];
+    rows.forEach(drop);
     this.next?.dispose();
     this.next = null;
   }
 
-  /** Borra todo y pinta de nuevo lo ultimo. */
+  /** Borra todo y pinta de nuevo lo que se ve. */
   private repaint() {
     this.clear();
-    if (!this.on) return;
-    const buf = this.term.buffer.active;
-    if (buf.type !== "normal") return;
-    const cursor = buf.baseY + buf.cursorY;
-    this.next = this.term.registerMarker(Math.max(0, cursor - BACK) - cursor);
-    this.onWrite();
+    if (!this.on || this.term.buffer.active.type !== "normal") return;
+    this.next = this.term.registerMarker(0) ?? null;
+    this.update();
+    this.later();
   }
 
   private onWrite() {
     if (!this.on) return;
-    const buf = this.term.buffer.active;
     // vim, htop, less: pantalla alternativa, no se toca.
-    if (buf.type !== "normal") return;
-    const cursor = buf.baseY + buf.cursorY;
-    let from = this.next && !this.next.isDisposed ? this.next.line : cursor;
-    from = Math.max(from, cursor - BACK, 0);
-    for (let y = from; y < cursor; y++) this.paint(y, cursor);
+    if (this.term.buffer.active.type !== "normal") return;
+    // Lo que se escribio desde la ultima vez (de `next` al cursor) se vuelve a pintar.
+    const from = this.next && !this.next.isDisposed ? this.next.line : 0;
+    this.forget((y) => y >= from);
     this.next?.dispose();
-    this.next = this.term.registerMarker(0);
-    // La linea del cursor (un prompt, lo que se esta escribiendo) cuando se queda quieta.
+    this.next = this.term.registerMarker(0) ?? null;
+    this.update();
+    this.later();
+  }
+
+  /** La linea del cursor (un prompt, lo que se esta escribiendo), cuando se queda quieta. */
+  private later() {
     clearTimeout(this.idle);
     this.idle = setTimeout(() => {
       const b = this.term.buffer.active;
       if (this.on && b.type === "normal") this.paint(b.baseY + b.cursorY, b.baseY + b.cursorY);
     }, IDLE_MS);
+  }
+
+  private schedule() {
+    if (!this.on || this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      this.update();
+    });
+  }
+
+  /** Despinta las filas cuya linea cumple `gone`. Primero se sacan de la lista: al soltar el
+   *  marcador, su `onDispose` tambien la busca ahi. */
+  private forget(gone: (y: number) => boolean) {
+    const out = this.rows.filter((row) => row.marker.isDisposed || gone(row.marker.line));
+    if (!out.length) return;
+    this.rows = this.rows.filter((row) => !out.includes(row));
+    out.forEach(drop);
+  }
+
+  /** Pinta lo que se ve (y un margen) que falte, y despinta lo que quedo lejos. */
+  private update() {
+    if (!this.on) return;
+    const buf = this.term.buffer.active;
+    if (buf.type !== "normal") return;
+    const cursor = buf.baseY + buf.cursorY;
+    const top = buf.viewportY;
+    const n = this.term.rows;
+    this.forget((y) => y < top - KEEP * n || y > top + n + KEEP * n);
+    const done = new Set(this.rows.map((row) => row.marker.line));
+    // La linea del cursor la pinta `later`, cuando se queda quieta.
+    const to = Math.min(cursor - 1, top + n - 1 + MARGIN * n);
+    for (let y = Math.max(0, top - MARGIN * n); y <= to && this.on; y++) if (!done.has(y)) this.paint(y, cursor);
   }
 
   /** Pinta la fila `y` (absoluta). `cursor` es la fila del cursor, para ubicar el marcador. */
@@ -291,12 +339,18 @@ export class Highlighter {
     const line = buf.getLine(y);
     // Si ya estaba pintada (la linea del cursor que cambio), se rehace.
     const old = this.rows.findIndex((row) => !row.marker.isDisposed && row.marker.line === y);
-    if (old >= 0) {
-      this.rows[old].decos.forEach((d) => d.dispose());
-      this.rows[old].marker.dispose();
-      this.rows.splice(old, 1);
-    }
+    if (old >= 0) drop(this.rows.splice(old, 1)[0]);
     if (!line) return;
+    // Se anota aunque no haya nada que pintar: asi no se vuelve a leer en cada cuadro.
+    const marker = this.term.registerMarker(y - cursor);
+    if (!marker) return;
+    const decos: IDecoration[] = [];
+    this.rows.push({ marker, decos });
+    // Cuando la linea sale del historial se olvida.
+    marker.onDispose(() => {
+      const i = this.rows.findIndex((row) => row.marker === marker);
+      if (i >= 0) this.rows.splice(i, 1);
+    });
     // El texto de la fila, con la columna de cada caracter (las letras anchas ocupan dos).
     let text = "";
     const col: number[] = [];
@@ -323,12 +377,8 @@ export class Highlighter {
       for (let x = x0(s); x < x1(e); x++) if (busy[x]) return true;
       return false;
     };
-    const decos: IDecoration[] = [];
-    let marker: IMarker | undefined;
     try {
       for (const sp of findSpans(text, this.profiles, blocked)) {
-        marker ??= this.term.registerMarker(y - cursor);
-        if (!marker) return;
         const d = this.term.registerDecoration({ marker, x: x0(sp.start), width: x1(sp.end) - x0(sp.start), foregroundColor: this.colors[sp.tone], layer: "bottom" });
         if (d) decos.push(d);
       }
@@ -336,21 +386,8 @@ export class Highlighter {
       // Si xterm no deja decorar (por ejemplo, sin allowProposedApi), se apaga en vez de
       // tirar el mismo error en cada linea.
       console.warn("highlight off:", e);
-      decos.forEach((d) => d.dispose());
-      marker?.dispose();
       this.on = false;
-      return;
-    }
-    if (marker) {
-      this.rows.push({ marker, decos });
-      // Cuando la linea sale del historial se olvida.
-      marker.onDispose(() => {
-        const i = this.rows.findIndex((row) => row.marker === marker);
-        if (i >= 0) {
-          this.rows[i].decos.forEach((d) => d.dispose());
-          this.rows.splice(i, 1);
-        }
-      });
+      this.clear();
     }
   }
 }
