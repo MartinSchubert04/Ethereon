@@ -32,6 +32,15 @@
   /** El host del test de conexion abierto. */
   let testing = $state<Host | null>(null);
 
+  // "Edit host" desde el clic derecho de una pestaña.
+  $effect(() => {
+    const name = app.pendingEdit;
+    if (!name) return;
+    app.pendingEdit = null;
+    const h = app.snap?.hosts.find((x) => x.name === name);
+    if (h) editing = h;
+  });
+
   // Ctrl N desde cualquier lado abre un host nuevo.
   $effect(() => {
     if (app.pendingNew === "host") {

@@ -543,9 +543,21 @@
 
   // Al volver a verse se redibuja: oculta, el WebView puede haber descartado lo que tenia
   // pintado (sobre todo si se mostro en medio de un arrastre) y quedaba en negro.
+  // Ademas, con WebGL las terminales comparten el atlas de letras: si otra (por ejemplo otra
+  // pestaña del mismo puerto serie, que recibe la misma salida) lo cambio mientras esta
+  // estaba oculta, al volver se veian letras cruzadas hasta el proximo cuadro (~1 s). Al
+  // mostrarse se rehace el atlas, asi aparece bien de entrada.
+  let wasShown = false;
   $effect(() => {
     if (term) dbg("panel", { key, shown, active });
-    if (shown && term) queueMicrotask(() => term.refresh(0, term.rows - 1));
+    const now = shown && !!term;
+    if (now && !wasShown)
+      queueMicrotask(() => {
+        term.clearTextureAtlas();
+        term.refresh(0, term.rows - 1);
+      });
+    else if (now) queueMicrotask(() => term.refresh(0, term.rows - 1));
+    wasShown = now;
   });
   onDestroy(() => {
     window.removeEventListener("themechange", onTheme);

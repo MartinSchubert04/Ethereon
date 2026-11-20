@@ -91,6 +91,8 @@ export const app = $state({
   })(),
   /** Ctrl N pide un formulario nuevo; la vista que corresponde lo abre y lo limpia. */
   pendingNew: null as "host" | "credential" | null,
+  /** Abrir el formulario de este host al llegar a Hosts (desde el clic derecho de una pestaña). */
+  pendingEdit: null as string | null,
   update: null as UpdateInfo | null,
   /** Los pasos de la ultima conexion a cada host (evento "connlog"), para "Show logs". */
   connLogs: {} as Record<string, ConnLine[]>,

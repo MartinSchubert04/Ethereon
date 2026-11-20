@@ -6,13 +6,14 @@
   import { ArrowDownToLine, Bell, Copy, FolderOpen, Inbox, Layers, Lock, LayoutGrid, Menu, Minus, Plus, Square, SquareTerminal, X } from "@lucide/svelte";
   import { moveTab, otherWindows, windowAtCursor } from "../lib/windows";
   import { invoke } from "@tauri-apps/api/core";
-  import { api } from "../lib/api";
+  import { api, type Host } from "../lib/api";
   import Logo from "./Logo.svelte";
-  import { hostIcon } from "../lib/icons";
+  import { hostIcon, ICONS, iconOptions } from "../lib/icons";
+  import { SCHEMES } from "../lib/termschemes";
   import { prefs } from "../lib/prefs.svelte";
   import Scramble from "./Scramble.svelte";
   import { onMount } from "svelte";
-  import { app, closeTab, goToTab, openApprovals, toggleSidebar } from "../lib/state.svelte";
+  import { app, attempt, closeTab, goToTab, openApprovals, rememberVaultView, toggleSidebar } from "../lib/state.svelte";
   import { flipMs, pop } from "../lib/motion";
   import { flip } from "svelte/animate";
   import { tick } from "svelte";
@@ -261,10 +262,37 @@
   // ---- clic derecho en una pestaña
 
   let menu = $state<{ x: number; key: number; wins: { label: string; name: string }[] } | null>(null);
+  /** Dentro del menu: la lista de colores o de iconos del host. */
+  let sub = $state<null | "colors" | "icon">(null);
   async function tabMenu(e: MouseEvent, key: number) {
     e.preventDefault();
     const wins = await otherWindows();
-    menu = { x: Math.min(e.clientX, innerWidth - 240), key, wins };
+    sub = null;
+    menu = { x: Math.min(e.clientX, innerWidth - 300), key, wins };
+  }
+
+  // ---- personalizar el host de la pestaña (colores, icono) sin abrir el formulario
+  const menuHost = $derived.by((): Host | undefined => {
+    const t = menu ? app.terms.find((x) => x.key === menu!.key) : undefined;
+    if (!t || t.local || t.layout || t.members || t.approvals) return undefined;
+    return app.snap?.hosts.find((h) => h.name === t.host);
+  });
+  async function customize(patch: Partial<Host>) {
+    const h = menuHost;
+    if (!h) return;
+    await attempt(() => api.hostSave({ ...$state.snapshot(h), ...patch } as Host, h.name));
+  }
+  const swatch = (id: string | null | undefined) => {
+    const x = SCHEMES.find((s) => s.id === id);
+    return x ? `--s-bg:${x.bg};--s-fg:${x.fg};--s-a:${x.ansi[2]};--s-b:${x.ansi[4]}` : "";
+  };
+  function editHost() {
+    const h = menuHost;
+    menu = null;
+    if (!h) return;
+    rememberVaultView("hosts");
+    app.pendingEdit = h.name;
+    app.view = "hosts";
   }
   /** Cierra el menu y hace `f` con la pestaña de ese menu (despues de cerrarlo ya no esta). */
   function act(f: (key: number) => unknown) {
@@ -379,6 +407,43 @@
       <hr />
       <button role="menuitem" onclick={() => toggle("locked")}>{menuTab?.locked ? "Unlock tab" : "Lock tab (can't be closed)"}</button>
       <button role="menuitem" onclick={() => toggle("collapsed")}>{menuTab?.collapsed ? "Expand tab" : "Collapse to icon"}</button>
+      {#if menuHost}
+        <hr />
+        <div class="mlabel">Customize {menuHost.name}</div>
+        <button role="menuitem" class="sub" class:open={sub === "colors"} onclick={() => (sub = sub === "colors" ? null : "colors")}>
+          <span class="swatch" class:general={!menuHost.term_scheme} style={swatch(menuHost.term_scheme)}><i class="f"></i><span><i class="a"></i><i class="b"></i></span></span>
+          Terminal colors
+          <span class="hint">{SCHEMES.find((s) => s.id === menuHost?.term_scheme)?.name ?? "Settings"}</span>
+        </button>
+        {#if sub === "colors"}
+          <div class="pick colors" transition:pop>
+            <button class:on={!menuHost.term_scheme} onclick={() => customize({ term_scheme: null })}>
+              <span class="swatch general"><i class="f"></i><span><i class="a"></i><i class="b"></i></span></span>Same as Settings
+            </button>
+            {#each SCHEMES as s (s.id)}
+              <button class:on={menuHost.term_scheme === s.id} onclick={() => customize({ term_scheme: s.id })}>
+                <span class="swatch" style={swatch(s.id)}><i class="f"></i><span><i class="a"></i><i class="b"></i></span></span>{s.name}
+              </button>
+            {/each}
+          </div>
+        {/if}
+        <button role="menuitem" class="sub" class:open={sub === "icon"} onclick={() => (sub = sub === "icon" ? null : "icon")}>
+          <span class="ico"><Logo id={hostIcon(menuHost)} size={14} /></span>
+          Icon
+          <span class="hint">{menuHost.icon && ICONS[menuHost.icon] ? ICONS[menuHost.icon].label : "Automatic"}</span>
+        </button>
+        {#if sub === "icon"}
+          <div class="pick icons" transition:pop>
+            <button class="auto" class:on={!menuHost.icon} title="Automatic" onclick={() => customize({ icon: null })}>Auto</button>
+            {#each iconOptions() as o (o.value)}
+              <button class:on={menuHost.icon === o.value} title={o.label} aria-label={o.label} onclick={() => customize({ icon: o.value })}>
+                <Logo id={o.value} size={16} />
+              </button>
+            {/each}
+          </div>
+        {/if}
+        <button role="menuitem" onclick={editHost}>Edit host…</button>
+      {/if}
       <hr />
       <button role="menuitem" disabled={menuTab?.locked} onclick={() => act(closeTab)}>Close tab</button>
     </div>
@@ -570,6 +635,113 @@
   .tabmenu button:disabled {
     color: var(--text-3);
     cursor: default;
+  }
+  .tabmenu {
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+    width: 280px;
+  }
+  .mlabel {
+    padding: 6px 10px 2px;
+    font-size: 11px;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-3);
+  }
+  .tabmenu button.sub {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tabmenu button.sub .hint {
+    margin-left: auto;
+    font-size: 11.5px;
+    color: var(--text-3);
+  }
+  .tabmenu button.sub.open {
+    background: var(--hover);
+  }
+  .ico {
+    display: inline-grid;
+    place-items: center;
+    width: 22px;
+  }
+  .pick {
+    margin: 2px 4px 6px;
+    padding: 4px;
+    border-radius: var(--radius-sm);
+    background: var(--panel-2);
+  }
+  .pick.colors {
+    display: flex;
+    flex-direction: column;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .pick.colors button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    font-size: 12.5px;
+  }
+  .pick.icons {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .pick.icons button {
+    display: grid;
+    place-items: center;
+    height: 32px;
+    padding: 0;
+  }
+  .pick.icons button.auto {
+    font-size: 10.5px;
+    font-weight: 650;
+    color: var(--text-2);
+  }
+  .pick button.on {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+    outline: 1px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  /* La miniatura de un esquema de colores (como en el formulario del host). */
+  .swatch {
+    display: inline-flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    width: 22px;
+    height: 16px;
+    padding: 0 3px;
+    border-radius: 3px;
+    border: 1px solid var(--line-strong);
+    background: var(--s-bg, var(--term-bg));
+    flex: none;
+  }
+  .swatch .f {
+    display: block;
+    height: 2px;
+    width: 70%;
+    background: var(--s-fg, var(--term-fg));
+  }
+  .swatch span {
+    display: flex;
+    gap: 2px;
+  }
+  .swatch span i {
+    display: block;
+    height: 2px;
+    flex: 1;
+  }
+  .swatch .a {
+    background: var(--s-a, var(--accent));
+  }
+  .swatch .b {
+    background: var(--s-b, var(--text-3));
   }
   .tabmenu hr {
     border: 0;
