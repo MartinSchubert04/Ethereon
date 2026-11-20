@@ -3,7 +3,7 @@
 // (CC0), en un solo color: toman el del texto, como los de lucide. Microsoft saco los suyos
 // de simple-icons, asi que para PowerShell y cmd quedan los genericos.
 import type { Component } from "svelte";
-import { Box, Cable, Cloud, Code, Database, Laptop, Monitor, Network, Router, Server, SquareTerminal, Terminal } from "@lucide/svelte";
+import { Box, BrickWallFire, Cable, Cctv, Cloud, Code, Database, EthernetPort, Laptop, Monitor, Network, Printer, RadioTower, Router, Server, SquareTerminal, Terminal, Wifi } from "@lucide/svelte";
 import {
   siAlmalinux,
   siAlpinelinux,
@@ -66,6 +66,12 @@ export const ICONS: Record<string, IconDef> = {
   box: L("Box", Box),
   cable: L("Console cable", Cable),
   router: L("Router", Router),
+  switch: L("Switch", EthernetPort),
+  ap: L("Access point", Wifi),
+  firewall: L("Firewall", BrickWallFire),
+  antenna: L("Antenna", RadioTower),
+  camera: L("Camera", Cctv),
+  printer: L("Printer", Printer),
   network: L("Network", Network),
   linux: S(siLinux),
   debian: S(siDebian),

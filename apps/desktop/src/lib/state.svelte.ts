@@ -22,6 +22,8 @@ export interface TermTab {
   locked?: boolean;
   /** Colapsada: en la barra solo se ve el icono (y el candado si esta bloqueada). */
   collapsed?: boolean;
+  /** Resaltado de sintaxis de esta pestaña; sin definir = el de Settings. */
+  highlight?: boolean;
   /** Lo que mostraba antes de actualizar: se escribe apagado antes de volver a conectar. */
   replay?: string;
   title: string;
@@ -91,6 +93,8 @@ export const app = $state({
   })(),
   /** Ctrl N pide un formulario nuevo; la vista que corresponde lo abre y lo limpia. */
   pendingNew: null as "host" | "credential" | null,
+  /** Abrir el formulario de este host al llegar a Hosts (desde el clic derecho de una pestaña). */
+  pendingEdit: null as string | null,
   update: null as UpdateInfo | null,
   /** Los pasos de la ultima conexion a cada host (evento "connlog"), para "Show logs". */
   connLogs: {} as Record<string, ConnLine[]>,

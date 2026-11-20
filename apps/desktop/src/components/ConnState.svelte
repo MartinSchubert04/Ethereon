@@ -4,7 +4,9 @@
   // caida, el tramo final queda cortado en rojo y hay un boton para reintentar.
   // La flechita despliega el registro de la conexion: que paso, y lo que dijo el servidor
   // (Tailscale SSH manda ahi el link para autorizar el login y espera hasta que se abra).
-  import { ChevronDown, Monitor, RotateCw, Server, SquareTerminal } from "@lucide/svelte";
+  import { ChevronDown, Monitor, RotateCw, SquareTerminal } from "@lucide/svelte";
+  import Logo from "./Logo.svelte";
+  import { hostIcon } from "../lib/icons";
   import { slide } from "svelte/transition";
   import { api } from "../lib/api";
   import { app, toast, type TermTab } from "../lib/state.svelte";
@@ -77,7 +79,7 @@
         {/if}
         <span class="node" class:end={dead ? i === cut : i === nodes.length - 1} class:off={dead && i > cut}>
           <span class="ic">
-            {#if n.kind === "pc"}<Monitor size={15} />{:else if n.kind === "shell"}<SquareTerminal size={15} />{:else}<Server size={15} />{/if}
+            {#if n.kind === "pc"}<Monitor size={15} />{:else if n.kind === "shell"}<SquareTerminal size={15} />{:else}<Logo id={hostIcon(app.snap?.hosts.find((x) => x.name === n.name))} size={15} />{/if}
           </span>
           <span class="name ellipsis">{n.name}</span>
         </span>

@@ -32,6 +32,15 @@
   /** El host del test de conexion abierto. */
   let testing = $state<Host | null>(null);
 
+  // "Edit host" desde el clic derecho de una pestaña.
+  $effect(() => {
+    const name = app.pendingEdit;
+    if (!name) return;
+    app.pendingEdit = null;
+    const h = app.snap?.hosts.find((x) => x.name === name);
+    if (h) editing = h;
+  });
+
   // Ctrl N desde cualquier lado abre un host nuevo.
   $effect(() => {
     if (app.pendingNew === "host") {
@@ -587,14 +596,22 @@
     color: var(--text-3);
     font-size: 11.5px;
   }
+  /* Ocultos no ocupan lugar (el nombre se ve entero); al pasar el mouse se abren y recien
+     ahi el nombre se corta con "…". */
   .actions {
     display: flex;
+    flex: none;
+    max-width: 0;
+    overflow: hidden;
     opacity: 0;
-    transition: opacity 0.12s;
+    transition:
+      max-width 0.16s ease,
+      opacity 0.12s;
   }
   .host:hover .actions,
   .host:focus-within .actions,
   .actions:has(.test.testing, .test.ok, .test.fail) {
+    max-width: 200px;
     opacity: 1;
   }
   .test.testing {

@@ -83,6 +83,10 @@ const defaults = () => ({
     scrambleMs: 700,
     /** Icono de cada shell local en las pestañas (id de shell -> id de lib/icons.ts). */
     shellIcons: {} as Record<string, string>,
+    /** Resaltado de sintaxis (IPs, interfaces, up/down, errores...) en todas las terminales.
+     *  Apagado de entrada: se prende aca o en cada pestaña con el clic derecho. Ver
+     *  lib/highlight.ts. */
+    syntax: false,
   },
   files: {
     /** Donde arranca el panel de esta PC en SFTP: el Escritorio, la carpeta del usuario u otra. */
