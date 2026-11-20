@@ -22,6 +22,8 @@ export interface TermTab {
   locked?: boolean;
   /** Colapsada: en la barra solo se ve el icono (y el candado si esta bloqueada). */
   collapsed?: boolean;
+  /** Resaltado de sintaxis de esta pestaña; sin definir = el de Settings. */
+  highlight?: boolean;
   /** Lo que mostraba antes de actualizar: se escribe apagado antes de volver a conectar. */
   replay?: string;
   title: string;

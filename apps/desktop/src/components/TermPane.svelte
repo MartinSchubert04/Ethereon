@@ -19,6 +19,7 @@
   import { adopt, drop, own, type Live } from "../lib/live";
   import { watchCwd } from "../lib/cwd";
   import { dbg, dbgGlLost, dbgGone, dbgTerm, sw } from "../lib/debug.svelte";
+  import { Highlighter, profileFor, tones } from "../lib/highlight";
 
   // `bare`: dentro de un mosaico, sin margen ni tarjeta propia (el marco lo pone TilePane).
   // `shown`: la pestaña se ve (en un mosaico se ven todos los paneles, aunque solo uno tenga
@@ -79,7 +80,19 @@
   const hostLook = $derived(tabStyle(me()));
   $effect(() => {
     void hostLook;
-    if (term) term.options.theme = untrack(theme);
+    if (term) {
+      term.options.theme = untrack(theme);
+      untrack(() => L?.hl?.setPalette(hlColors()));
+    }
+  });
+
+  // Resaltado de sintaxis: el general (Settings) o el de esta pestaña (clic derecho), con el
+  // perfil que le toca segun el host (red, Linux, Windows).
+  const hlHost = $derived(app.snap?.hosts.find((h) => h.name === me().host));
+  const hlProfiles = $derived((me().highlight ?? prefs.term.syntax) ? profileFor(me(), hlHost) : null);
+  $effect(() => {
+    const p = hlProfiles;
+    if (term && L?.hl) untrack(() => L.hl!.set(p));
   });
 
   const fontSize = () => prefs.term.fontSize || parseInt(cssVar("--term-font-size")) || 13;
@@ -233,9 +246,13 @@
       term.clearSelection();
     } else paste();
   }
+  /** Los colores del resaltado, sacados de la paleta de esta terminal. */
+  const hlColors = () => tones(cssVar("--term-ansi", el).split(/\s+/).filter(Boolean), cssVar("--term-bg", el));
+
   const onTheme = () => {
     if (!term) return;
     term.options.theme = theme();
+    L?.hl?.setPalette(hlColors());
     term.options.fontFamily = termFont();
     term.options.fontWeightBold = boldWeight();
     term.options.fontSize = fontSize();
@@ -433,6 +450,9 @@
       allowTransparency: true,
       theme: theme(),
       scrollback: 5000,
+      // Las decoraciones con color (el resaltado de sintaxis, lib/highlight.ts) son API
+      // "propuesta" de xterm: sin esto registerDecoration tira un error.
+      allowProposedApi: true,
       // Los links de la salida (OSC 8, los que imprime Claude Code) van al navegador. Lo de
       // xterm por defecto es confirm() y window.open() dentro del WebView: abria una ventana
       // emergente y dejaba la ventana con el IPC de respaldo (ver handle).
@@ -501,6 +521,8 @@
     }
     term = L.term;
     fit = L.fit;
+    L.hl ??= new Highlighter(term, hlColors());
+    L.hl.set(untrack(() => hlProfiles));
     dbgTerm(term, key, true);
     dbg(got ? "terminal adoptada" : "terminal nueva", { key, from }, true);
     L.handle = handle;
@@ -576,6 +598,7 @@
     L.handle = () => {};
     // Si se esta pasando a otra ventana, la sesion sigue: la toma la otra.
     if (L.id && !me().moving && !leaving.has(L.id)) api.termClose(L.id);
+    L.hl?.dispose();
     L.term.dispose();
   });
 </script>

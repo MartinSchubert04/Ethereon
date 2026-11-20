@@ -49,6 +49,8 @@ Each host can have its own (edit host → Terminal colors, `term_scheme` in the 
 applied with the same variables as a style on the pane (`lib/hostcolors.svelte.ts`), not on `<html>`:
 in a tiled layout each terminal has its host's colors, with its frame, and the rest inherit the global ones.
 
+Syntax highlighting (off by default; per tab with right click, or for every terminal in Settings → Terminal) colors IPs, MACs, interfaces, up / down, errors, prompts and config lines with the scheme's ANSI colors (bright ones on a dark background), painted over the text with xterm decorations (`lib/highlight.ts`): the data and what gets copied stay plain. Profiles: network gear (serial hosts, and hosts with a switch / router / AP / firewall icon or tag), Linux and Windows; an SSH host without hints gets Linux + network.
+
 Each theme has palettes (Settings → Palette). They're defined in `apps/desktop/scripts/palettes.py`, which
 generates `styles/palettes.css` and `lib/palettes.gen.ts`; each theme remembers its own.
 

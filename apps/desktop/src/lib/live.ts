@@ -24,6 +24,8 @@ export interface Live {
   keys: (e: KeyboardEvent) => boolean;
   selection: () => void;
   parked: boolean;
+  /** El resaltado de sintaxis de esta terminal (ver lib/highlight.ts). */
+  hl?: import("./highlight").Highlighter;
 }
 
 /** Por clave del panel que la muestra. */

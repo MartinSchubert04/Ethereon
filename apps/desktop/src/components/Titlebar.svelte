@@ -407,6 +407,17 @@
       <hr />
       <button role="menuitem" onclick={() => toggle("locked")}>{menuTab?.locked ? "Unlock tab" : "Lock tab (can't be closed)"}</button>
       <button role="menuitem" onclick={() => toggle("collapsed")}>{menuTab?.collapsed ? "Expand tab" : "Collapse to icon"}</button>
+      {#if menuTab && !menuTab.sftp && !menuTab.approvals && !menuTab.layout && !menuTab.members}
+        {@const hlOn = menuTab.highlight ?? prefs.term.syntax}
+        <button
+          role="menuitem"
+          onclick={() => {
+            const t = menuTab;
+            menu = null;
+            if (t) t.highlight = !(t.highlight ?? prefs.term.syntax);
+          }}>{hlOn ? "Turn off syntax highlighting" : "Turn on syntax highlighting"}</button
+        >
+      {/if}
       {#if menuHost}
         <hr />
         <div class="mlabel">Customize {menuHost.name}</div>

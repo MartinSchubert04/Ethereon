@@ -395,6 +395,7 @@
         <Switch bind:checked={prefs.term.ctrlVPaste}>Ctrl V pastes</Switch>
         <Switch bind:checked={prefs.term.rightClick}>Right click copies the selection, or pastes when nothing is selected</Switch>
         <Switch bind:checked={prefs.term.copyOnSelect}>Copy as soon as text is selected</Switch>
+        <Switch bind:checked={prefs.term.syntax}>Syntax highlighting in every terminal: IPs, MACs, interfaces, up / down, errors and prompts (network gear, Linux and Windows). Off: turn it on per tab with right click</Switch>
         <Switch bind:checked={prefs.term.osc52Copy}>Programs in the terminal can copy to the clipboard (OSC 52: Claude Code, tmux, vim over SSH)</Switch>
         <Switch bind:checked={prefs.term.sixelLikeWt}>Show Sixel images at the size Windows Terminal uses (10×20 pixels per cell)</Switch>
         <Switch bind:checked={prefs.term.ctrlWToShell}>Inside a terminal, Ctrl W goes to the shell (close the tab with Ctrl Shift W)</Switch>
