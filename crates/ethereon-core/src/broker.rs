@@ -186,6 +186,9 @@ async fn timed<T>(deadline: tokio::time::Instant, f: impl std::future::Future<Ou
     tokio::time::timeout_at(deadline, f).await.unwrap_or_else(|_| Err(Error::Invalid("the file transfer timed out".into())))
 }
 
+/// Cuanto espera el login de una consola serial antes de abrir su terminal igual.
+const SERIAL_OPEN_WAIT: Duration = Duration::from_secs(6);
+
 /// Cuanto dura la contrasena maestra para ver secretos (`Broker::reveal`).
 pub const REVEAL_GRACE: Duration = Duration::from_secs(5 * 60);
 
@@ -877,10 +880,14 @@ impl Broker {
 
     /// Despierta la consola serial y la deja en el prompt (login y `enable` incluidos). En
     /// otro hilo: el puerto es bloqueante.
-    async fn serial_ready(&self, h: &Host, conn: Arc<serial::Conn>) -> std::io::Result<String> {
+    /// Despierta la consola y hace el login. `cap` acorta la espera (al abrir una terminal:
+    /// la persona ve la consola y puede loguearse a mano, no tiene que esperar el timeout
+    /// entero del host, que es para los comandos del agente).
+    async fn serial_ready(&self, h: &Host, conn: Arc<serial::Conn>, cap: Option<Duration>) -> std::io::Result<String> {
         let prompt = Regex::new(&h.serial.prompt).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?;
         let login = self.serial_login(h).map_err(|e| std::io::Error::other(e.to_string()))?;
-        let timeout = Duration::from_secs(h.serial.timeout_secs.clamp(1, 60));
+        let full = Duration::from_secs(h.serial.timeout_secs.clamp(1, 60));
+        let timeout = cap.map_or(full, |c| c.min(full));
         tokio::task::spawn_blocking(move || serial::ready(&conn, &prompt, &login, timeout))
             .await
             .map_err(|e| std::io::Error::other(e.to_string()))?
@@ -936,7 +943,7 @@ impl Broker {
             // arrancando) o no acepte el login se anota, pero la terminal se abre igual: la
             // persona puede querer ver el arranque o loguearse a mano.
             let conn = self.serial_connection(&h)?;
-            match self.serial_ready(&h, conn).await {
+            match self.serial_ready(&h, conn, Some(SERIAL_OPEN_WAIT)).await {
                 Ok(p) => log(format!("Console ready at prompt {p}")),
                 Err(e) => log(format!("No prompt yet: {e}. The terminal opens anyway; press Enter to wake the device")),
             }
@@ -984,7 +991,7 @@ impl Broker {
         let out = loop {
             let conn = self.serial_connection(h).map_err(|_| generic("could not open the port"))?;
             let res: std::io::Result<serial::ExecOut> = async {
-                self.serial_ready(h, conn.clone()).await?;
+                self.serial_ready(h, conn.clone(), None).await?;
                 let (c, cmd, p) = (conn.clone(), command.to_string(), prompt.clone());
                 tokio::task::spawn_blocking(move || serial::exec(&c, &cmd, &p, timeout, max)).await.map_err(|e| std::io::Error::other(e.to_string()))?
             }

@@ -36,9 +36,12 @@ pub trait Link: Send {
     fn try_clone(&self) -> io::Result<Box<dyn Link>>;
 }
 
-/// Cuanto espera cada lectura del puerto. Tambien es el tope de la demora de una escritura
-/// (en Windows el puerto atiende de a una operacion por vez).
-const READ_WAIT: Duration = Duration::from_millis(50);
+/// Cuanto espera cada lectura del puerto. Tambien es el tope de la demora de una escritura:
+/// en Windows el puerto atiende de a una operacion por vez, asi que cada tecla espera a que
+/// termine la lectura en curso. Con 50 ms se notaba al escribir rapido (las teclas se
+/// encolaban); con 5 ms no se nota y el hilo lector igual duerme en el puerto (la lectura
+/// vuelve apenas llega un byte, no espera los 5 ms).
+const READ_WAIT: Duration = Duration::from_millis(5);
 
 struct Port(Box<dyn serialport::SerialPort>);
 
@@ -443,6 +446,9 @@ pub struct ExecOut {
 /// Despues de ver el prompt se espera un instante por si llega mas (una linea de salida
 /// que termina en `#` o `>` no es el prompt).
 const SETTLE: Duration = Duration::from_millis(200);
+/// Si en este tiempo el equipo no manda ni un byte despues del Enter, no hay nadie (apagado,
+/// otro puerto, otra velocidad): no tiene sentido esperar el timeout entero del prompt.
+const SILENT: Duration = Duration::from_millis(2500);
 
 /// Manda `command` y junta la salida hasta el prompt o hasta `timeout`.
 pub fn exec(conn: &Conn, command: &str, prompt: &Regex, timeout: Duration, max: usize) -> io::Result<ExecOut> {
@@ -507,18 +513,26 @@ pub fn ready(conn: &Conn, prompt: &Regex, login: &Login, timeout: Duration) -> i
     let mut sent_pw = 0;
     let mut enabled = false;
     let mut settling: Option<Instant> = None;
+    let started = Instant::now();
+    let mut heard = false;
     let fail = |m: &str| io::Error::new(io::ErrorKind::PermissionDenied, m.to_string());
     loop {
         let now = Instant::now();
         if now >= deadline {
             return Err(io::Error::new(io::ErrorKind::TimedOut, "the console did not show a prompt"));
         }
+        if !heard && now.duration_since(started) >= SILENT {
+            return Err(io::Error::new(io::ErrorKind::TimedOut, "the device did not answer (is it on, and is the baud rate right?)"));
+        }
         let wait = match settling {
             Some(s) => SETTLE.saturating_sub(now.duration_since(s)),
             None => (deadline - now).min(Duration::from_millis(100)),
         };
         let step = match tap.recv(wait) {
-            Ok(Some(d)) => Some(col.feed(&d)),
+            Ok(Some(d)) => {
+                heard = true;
+                Some(col.feed(&d))
+            }
             Ok(None) => None,
             Err(Closed) => return Err(io::Error::new(io::ErrorKind::BrokenPipe, "the serial port was closed")),
         };
