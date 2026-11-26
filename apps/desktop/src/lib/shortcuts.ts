@@ -230,6 +230,14 @@ function isReload(e: KeyboardEvent) {
 
 function onKey(e: KeyboardEvent) {
   if (prefs.recording) return;
+  // Esc cierra "New tab" aunque el foco ya no este en su campo (por ejemplo, si una terminal
+  // nueva se lo llevo): si no, la tecla le llega a la shell y el dialogo queda abierto.
+  if (app.quickOpen && e.key === "Escape") {
+    app.quickOpen = false;
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
   if (app.status?.unlocked && matches(e, "refresh") && !document.querySelector(".drawer, [role=alertdialog]")) {
     if (refreshTab(e)) {
       e.preventDefault();
@@ -270,7 +278,11 @@ function onKey(e: KeyboardEvent) {
   const modal = !!document.querySelector(".drawer, [role=alertdialog]");
 
   if (matches(e, "newTab") && !modal) app.quickOpen = true;
-  else if (matches(e, "newLocal") && !modal) newLocal();
+  else if (matches(e, "newLocal") && !modal) {
+    // La terminal nueva tapa "New tab": se cierra, como si se hubiera elegido desde ahi.
+    app.quickOpen = false;
+    newLocal();
+  }
   else if (matches(e, "newItem") && !modal && !term && !inFiles(e)) {
     goToTab(0);
     app.pendingNew = app.view === "keychain" ? "credential" : "host";
