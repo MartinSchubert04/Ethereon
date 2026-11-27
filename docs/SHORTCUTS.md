@@ -136,7 +136,8 @@ browser.
 | `Ctrl Shift C` / `Ctrl Shift V` ✎ | Copy / paste |
 | `Ctrl C` | Copies if there's selected text; otherwise, interrupts the process (configurable) |
 | `Ctrl V` | Pastes (configurable) |
-| Right-click | Copies the selection or pastes if there's nothing selected (configurable) |
+| Right-click | Copies the selection or pastes if there's nothing selected (configurable). If the program asked for the mouse (Claude Code, tmux, vim), the click is the program's, as in Windows Terminal: Claude Code pastes on its own |
+| `Shift` + right-click | Pastes even when the program asked for the mouse |
 | `Ctrl =` / `Ctrl -` ✎ | Bigger / smaller font |
 | `Ctrl 0` ✎ | Back to the theme's size |
 | `Tab` ✎ | Accepts the gray suggestion (only when one is showing; otherwise Tab goes to the shell and completes as always) |
