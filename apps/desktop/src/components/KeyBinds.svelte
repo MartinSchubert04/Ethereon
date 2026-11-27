@@ -27,8 +27,10 @@
     }
     const c = comboOf(e);
     if (!c) return; // solo un modificador: se sigue esperando
-    // Sin Ctrl ni Alt chocaria con escribir.
-    if (!e.ctrlKey && !e.altKey && !/^F\d+$/.test(e.key)) return;
+    // Sin Ctrl ni Alt chocaria con escribir. Aceptar la sugerencia es la excepcion: Tab, las
+    // flechas o Fin (solo cuentan cuando hay una sugerencia a la vista).
+    const navKey = recording === "acceptSuggestion" && /^(Tab|End|Arrow(Right|Left|Up|Down))$/.test(e.key);
+    if (!e.ctrlKey && !e.altKey && !/^F\d+$/.test(e.key) && !navKey) return;
     setBind(recording, c);
     stop();
   }

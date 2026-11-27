@@ -21,7 +21,9 @@ export type Action =
   | "settings"
   | "lock"
   | "termCopy"
-  | "termPaste";
+  | "termPaste"
+  | "termBreak"
+  | "acceptSuggestion";
 
 export const ACTIONS: { id: Action; label: string; def: string }[] = [
   { id: "newTab", label: "New tab (pick a host or local shell)", def: "Ctrl+T" },
@@ -49,6 +51,9 @@ export const ACTIONS: { id: Action; label: string; def: string }[] = [
   { id: "zoomReset", label: "Terminal: text size of the theme", def: "Ctrl+0" },
   { id: "termCopy", label: "Terminal: copy selection", def: "Ctrl+Shift+C" },
   { id: "termPaste", label: "Terminal: paste", def: "Ctrl+Shift+V" },
+  // Como la tecla Break de PuTTY. Tambien en el clic derecho de la pestaña.
+  { id: "termBreak", label: "Serial console: send Break (stops the boot on many devices)", def: "Ctrl+Shift+B" },
+  { id: "acceptSuggestion", label: "Terminal: accept the gray suggestion", def: "Tab" },
 ];
 
 const defaults = () => ({
@@ -87,6 +92,9 @@ const defaults = () => ({
      *  Apagado de entrada: se prende aca o en cada pestaña con el clic derecho. Ver
      *  lib/highlight.ts. */
     syntax: false,
+    /** Sugerencias en gris mientras se escribe en una shell local (como Warp o fish): del
+     *  historial y, para rutas, de las carpetas. Se aceptan con el atajo "acceptSuggestion". */
+    suggest: true,
   },
   files: {
     /** Donde arranca el panel de esta PC en SFTP: el Escritorio, la carpeta del usuario u otra. */
@@ -143,6 +151,8 @@ const CODE_KEYS: Record<string, string> = {
   Equal: "=",
   Backquote: "`",
   Space: "Space",
+  // Con Ctrl, Windows avisa la tecla Pausa como "Cancel": por el codigo queda "Pause".
+  Pause: "Pause",
 };
 
 /** "Ctrl+Shift+T" a partir de un evento. Vacio si solo se aprieta un modificador. */
@@ -161,7 +171,9 @@ export function matches(e: KeyboardEvent, a: Action): boolean {
   return !!b && comboOf(e) === b;
 }
 
-/** Para mostrar: "Ctrl Shift T". */
+const ARROWS: Record<string, string> = { ArrowRight: "→", ArrowLeft: "←", ArrowUp: "↑", ArrowDown: "↓" };
+
+/** Para mostrar: "Ctrl Shift T", "Shift →". */
 export function pretty(combo: string): string {
-  return combo ? combo.split("+").join(" ") : "Not set";
+  return combo ? combo.split("+").map((k) => ARROWS[k] ?? k).join(" ") : "Not set";
 }

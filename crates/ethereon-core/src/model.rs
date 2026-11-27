@@ -143,7 +143,8 @@ pub enum Parity {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SerialConfig {
-    /// `COM3`, `/dev/ttyUSB0`. Para el agente es como la IP: nunca sale por el MCP.
+    /// `COM3`, `/dev/ttyUSB0`. Para el agente es como la IP: nunca sale por el MCP. Vacio =
+    /// automatico: el adaptador USB-serie que este enchufado (ver `serial::open`).
     pub port: String,
     pub baud: u32,
     pub data_bits: u8,

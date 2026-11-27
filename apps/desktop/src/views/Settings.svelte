@@ -396,6 +396,7 @@
         <Switch bind:checked={prefs.term.rightClick}>Right click copies the selection, or pastes when nothing is selected</Switch>
         <Switch bind:checked={prefs.term.copyOnSelect}>Copy as soon as text is selected</Switch>
         <Switch bind:checked={prefs.term.syntax}>Syntax highlighting in every terminal: IPs, MACs, interfaces, up / down, errors and prompts (network gear, Linux and Windows). Off: turn it on per tab with right click</Switch>
+        <Switch bind:checked={prefs.term.suggest}>Gray suggestions while typing in a local shell, from your history and the folders where you are (like Warp). Accept with {pretty(prefs.binds.acceptSuggestion)}; change the key in Keyboard shortcuts or with the label next to the suggestion</Switch>
         <Switch bind:checked={prefs.term.osc52Copy}>Programs in the terminal can copy to the clipboard (OSC 52: Claude Code, tmux, vim over SSH)</Switch>
         <Switch bind:checked={prefs.term.sixelLikeWt}>Show Sixel images at the size Windows Terminal uses (10×20 pixels per cell)</Switch>
         <Switch bind:checked={prefs.term.ctrlWToShell}>Inside a terminal, Ctrl W goes to the shell (close the tab with Ctrl Shift W)</Switch>

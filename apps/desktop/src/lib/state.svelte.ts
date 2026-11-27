@@ -187,6 +187,13 @@ export function start() {
     if (log.length > 200) log.splice(0, log.length - 200);
   });
   if (!app.detached) {
+    // El agente esta usando una consola serial que nadie mira: se abre su pestaña, sin
+    // sacarle el foco a lo que se esta haciendo, para ver lo mismo que el agente.
+    listen<{ host: string }>("console", (e) => {
+      const host = e.payload.host;
+      const open = app.terms.some((t) => (t.host === host && !t.sftp && !t.local) || t.members?.some((m) => m.host === host && !m.sftp && !m.local));
+      if (!open) app.terms.push({ key: newKey(), host, title: freeTitle(host), alive: true });
+    });
     listen("raise", () => takeRaise());
     takeRaise();
   }
