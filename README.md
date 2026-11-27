@@ -12,11 +12,11 @@
 A Termius-style SSH manager for Windows that also gives Claude Code access without handing it any
 credential. It sits in the tray and is lightweight with the window closed.
 
-![Ethereon with the Poolsuite FM theme, Monochrome palette](docs/screenshot.png)
+![Ethereon with the Neovim theme](docs/screenshot.png)
 
-![Demo: unlock, open terminals through the bastion, tile them, approve an agent command, audit, rules and agents](docs/demo.gif)
+![Demo: hosts with their system icons and a serial console, a terminal through the bastion with gray suggestions and syntax highlighting, per-host colors, a mosaic with Approvals beside the terminals, approving and rejecting agent commands, and the audit](docs/demo.gif)
 
-<sub>The demo uses made-up data: no host, IP or credential is real.</sub>
+<sub>The demo uses made-up data (Docker containers): no host, IP or credential is real.</sub>
 
 - **Encrypted vault:** passwords, private keys (with passphrase), certificates, sudo passwords
   and tokens. AES-256-GCM with a key derived from the master password (Argon2id). Locks itself.

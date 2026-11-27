@@ -123,6 +123,8 @@ function tile(t: TermTab) {
     sid: t.sid,
     connecting: t.connecting,
     approvals: t.approvals,
+    // El resaltado prendido desde la pestaña sigue en su panel.
+    highlight: t.highlight,
     // El mismo bloque de TilePane sigue dibujandola: no se desmonta.
     slot: t.slot,
   };
@@ -134,7 +136,7 @@ function tile(t: TermTab) {
 /** Un panel nuevo que se queda con la terminal de `m` (la misma, viva). Si `m` no tiene
  *  terminal en esta ventana, retoma su sesion desde el backend. */
 async function successor(m: TermTab): Promise<TermTab> {
-  const next: TermTab = { key: newKey(), host: m.host, local: m.local, cwd: m.cwd, title: m.title, alive: m.alive, sid: m.sid };
+  const next: TermTab = { key: newKey(), host: m.host, local: m.local, cwd: m.cwd, title: m.title, alive: m.alive, sid: m.sid, highlight: m.highlight };
   m.moving = true;
   // Las aprobaciones no tienen sesion: alcanza con un panel nuevo.
   if (m.approvals) return { ...next, approvals: true, sid: undefined, alive: true };
@@ -269,6 +271,7 @@ function untile(t: TermTab, m: TermTab) {
   t.error = m.error;
   t.failedAt = m.failedAt;
   t.approvals = m.approvals;
+  t.highlight = m.highlight;
   t.members = undefined;
   t.layout = undefined;
   t.focus = undefined;
