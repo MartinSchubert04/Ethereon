@@ -10,7 +10,7 @@
   import Logo from "./Logo.svelte";
   import { hostIcon, ICONS, iconOptions } from "../lib/icons";
   import { SCHEMES } from "../lib/termschemes";
-  import { prefs } from "../lib/prefs.svelte";
+  import { prefs, pretty } from "../lib/prefs.svelte";
   import Scramble from "./Scramble.svelte";
   import { onMount } from "svelte";
   import { app, attempt, closeTab, goToTab, openApprovals, rememberVaultView, toggleSidebar } from "../lib/state.svelte";
@@ -417,6 +417,12 @@
             if (t) t.highlight = !(t.highlight ?? prefs.term.syntax);
           }}>{hlOn ? "Turn off syntax highlighting" : "Turn on syntax highlighting"}</button
         >
+      {/if}
+      {#if menuHost?.transport === "serial"}
+        <hr />
+        <button role="menuitem" class="sub" onclick={() => act((k) => window.dispatchEvent(new CustomEvent("ethereon:break", { detail: k })))}>
+          Send Break <span class="hint">{pretty(prefs.binds.termBreak)}</span>
+        </button>
       {/if}
       {#if menuHost}
         <hr />

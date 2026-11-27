@@ -28,10 +28,14 @@ credential. It sits in the tray and is lightweight with the window closed.
 - **Built-in terminal:** double-click a host and a terminal opens in the app, with tabs. Also
   local terminals (PowerShell, CMD, WSL, Git Bash).
 - **Serial console:** a host can be a switch, AP or router over a console cable (port, baud rate,
-  8N1, prompt pattern, login and `enable` from the vault). The terminal talks to the device raw, and the
+  8N1, prompt pattern, login and `enable` from the vault). The port can be **Automatic**: the USB
+  console cable that is plugged in, even if Windows gives it another COM (Bluetooth and built-in ports
+  are skipped). The terminal talks to the device raw, with **Break** like PuTTY, and the
   agent uses the same `run(host, command)`: Ethereon sends the command, reads up to the prompt, answers
-  the `--More--` prompts and returns the masked output. The read-only rules ship with a base list
-  for network gear (`show`, `display`, `get`...).
+  the `--More--` prompts and returns the masked output. When there is no prompt to wait for (booting,
+  ROMMON, a login the host doesn't have), the agent follows the **live console** with `console_read` /
+  `console_send` (text and keys like Enter, Ctrl C or Break): you and the agent see the same screen.
+  The read-only rules ship with a base list for network gear (`show`, `display`, `get`...).
 - **Files:** this PC and the server side by side; files are transferred by dragging (also from
   Explorer), with progress and cancellation. Each host picks its protocol: SFTP (default), SCP
   (servers and devices without SFTP), FTP or FTPS.
@@ -41,8 +45,11 @@ credential. It sits in the tray and is lightweight with the window closed.
   time, and a traceroute drawn as a tree with the latency of each hop; routers that are hosts in
   the vault show by name.
 - **Network map:** traceroute to every host at once, merged into one tree where paths share routers.
-- **For Claude Code (MCP):** `list_hosts` and `run(host, command)`. The agent sees names and
-  descriptions, never IPs or secrets. Output comes back with secrets covered by `***`.
+- **For Claude Code (MCP):** `list_hosts` and `run(host, command)`, and on serial hosts
+  `console_read` / `console_send`. The agent sees names and descriptions, never IPs, port names or
+  secrets. Output comes back with secrets covered by `***`. Typing into a live console follows the
+  host's mode: read-only only reads, approval asks for everything except a lone Enter, and forbidden
+  commands are refused in every mode.
   Optional per host or group (off by default): `download` and `upload` over SFTP, with the same
   rules; downloads come back as masked text and nothing containing a vault secret is uploaded.
 - **sudo without exposing the password:** Ethereon writes it to the process's standard input.
@@ -63,7 +70,9 @@ credential. It sits in the tray and is lightweight with the window closed.
   like portfolio-athanor), each with several palettes (Nord, Dracula, Tokyo Night, Srcery, Solar
   Flare, Lavender, Vellum...).
 - **Terminal:** copy and paste like in Windows Terminal (Ctrl C with a selection, Ctrl V, right-click,
-  copy on select), all configurable in Settings, as is the font size.
+  copy on select), all configurable in Settings, as is the font size. Pasting an image into Claude
+  Code attaches it, like in Warp (in local shells and over SSH). Gray suggestions while typing in a
+  local shell, from history and folders, like Warp (Tab accepts; can be turned off).
 - **Like Termius:** top bar with tabs (Vault + one per terminal), "New tab" with a host
   search, and the window comes back with the same size and position.
 - **Shortcuts:** Ctrl T new tab, Ctrl W close (Ctrl Shift W inside a terminal), Ctrl Tab /

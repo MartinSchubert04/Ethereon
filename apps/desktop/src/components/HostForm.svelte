@@ -87,10 +87,19 @@
   $effect(() => {
     if (serial && !ports.length) scanPorts();
   });
+  // Automatico (vacio): el adaptador USB que este enchufado, aunque Windows le cambie el COM.
+  // Los que no son un cable de consola (Bluetooth, los de la placa) se pueden elegir a mano,
+  // pero el automatico no los prueba.
+  const usbNow = $derived(ports.filter((p) => p.console));
   const portOpts = $derived.by(() => {
-    const list = ports.map((p) => ({ value: p.name as string | null, label: p.name, hint: p.label || undefined }));
+    const auto = {
+      value: "" as string | null,
+      label: "Automatic",
+      hint: usbNow.length === 1 ? `now ${usbNow[0].name}` : usbNow.length ? `${usbNow.length} USB adapters: the one that answers` : "the USB adapter you plug in",
+    };
+    const list = ports.map((p) => ({ value: p.name as string | null, label: p.name, hint: [p.label, p.console ? "" : "not used by Automatic"].filter(Boolean).join(" · ") || undefined }));
     if (h.serial.port && !ports.some((p) => p.name === h.serial.port)) list.unshift({ value: h.serial.port, label: h.serial.port, hint: "not plugged in" });
-    return list;
+    return [auto, ...list];
   });
   const baudOpts = [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200].map((b) => ({ value: b, label: String(b) }));
   const dataBitsOpts = [8, 7].map((b) => ({ value: b, label: `${b} data bits` }));
@@ -135,6 +144,18 @@
     { value: "password" as const, label: "Password" },
     { value: "saved" as const, label: "Saved credential" },
   ]);
+  // Al pasar a consola serial, lo normal es que no pida login: "No login" de entrada (si no
+  // se escribio una contraseña ni hay una credencial). Al volver a SSH, que pida contraseña.
+  let wasSerial = untrack(() => serial);
+  $effect(() => {
+    const now = serial;
+    untrack(() => {
+      if (now === wasSerial) return;
+      wasSerial = now;
+      if (now && login === "password" && !password) login = "none";
+      else if (!now && login === "none") login = "password";
+    });
+  });
   // Si la credencial elegida trae usuario, el del host puede quedar vacio.
   const credUser = $derived(login === "saved" ? (app.snap?.credentials.find((c) => c.id === h.credential)?.username ?? "") : "");
 
@@ -149,6 +170,14 @@
       .replace(/[^A-Za-z0-9._-]+/g, "-")
       .replace(/-+/g, "-")
       .replace(/^-|-$/g, "");
+  // Una consola sin nombre se llama "serial-console" (o "-2", "-3"...): no hace falta pensar
+  // uno. No lleva el COM: puede cambiar, y el agente no tiene que verlo.
+  const defaultName = $derived.by(() => {
+    const taken = new Set((app.snap?.hosts ?? []).map((x) => x.name).filter((n) => n !== original));
+    let n = "serial-console";
+    for (let i = 2; taken.has(n); i++) n = `serial-console-${i}`;
+    return n;
+  });
   const nameTrim = $derived(h.name.trim());
   const nameBad = $derived(nameTrim !== "" && !NAME_OK.test(nameTrim));
   const nameFix = $derived(nameBad ? slug(nameTrim) : "");
@@ -168,8 +197,9 @@
       .filter(Boolean);
 
   async function save() {
+    if (!nameTrim && serial) h.name = defaultName;
     // El error ya se ve debajo del nombre: no mandar nada (ni crear la credencial).
-    if (!nameTrim || nameBad) {
+    if (!h.name.trim() || nameBad) {
       nameEl?.focus();
       return;
     }
@@ -218,14 +248,14 @@
   <div class="grid2">
     <div class="field">
       <label for="host-name">Name</label>
-      <input id="host-name" bind:this={nameEl} bind:value={h.name} class:bad={nameBad} placeholder={serial ? "sw-core" : "web-1"} />
+      <input id="host-name" bind:this={nameEl} bind:value={h.name} class:bad={nameBad} placeholder={serial ? defaultName : "web-1"} />
       {#if nameBad}
         <span class="hint err">
           Letters, numbers, - _ and . only (no spaces).
           {#if nameFix}<button type="button" class="link" onclick={() => (h.name = nameFix)}>Use {nameFix}</button>{/if}
         </span>
       {:else}
-        <span class="hint">What the agent calls it. Put the long name in Description</span>
+        <span class="hint">{serial && !nameTrim ? `Empty: it is saved as ${defaultName}` : "What the agent calls it. Put the long name in Description"}</span>
       {/if}
     </div>
     <div class="field">Group<Select bind:value={h.group} options={groupOpts} /></div>
@@ -239,10 +269,10 @@
     <div class="addr" transition:pop={{ start: 0.98 }}>
       <div class="field">Serial port
         <div class="port-row">
-          <Select bind:value={h.serial.port} options={portOpts} placeholder={ports.length ? "Pick one" : "No ports found"} />
+          <Select bind:value={h.serial.port} options={portOpts} />
           <button type="button" class="icon-btn" title="Scan ports again" aria-label="Scan ports again" class:spin={scanning} onclick={scanPorts}><RefreshCw size={14} /></button>
         </div>
-        <span class="hint">Plug the cable in and scan if it is missing</span>
+        <span class="hint">{h.serial.port ? "If it is not plugged in and there is only one USB adapter, that one is used" : "Uses the USB console cable even if Windows gives it another COM. Bluetooth is skipped"}</span>
       </div>
       <div class="field">Baud rate<Select bind:value={h.serial.baud} options={baudOpts} /></div>
     </div>

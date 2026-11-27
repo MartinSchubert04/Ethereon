@@ -56,7 +56,8 @@ crates/ethereon-core/src/   broker without a UI
   audit.rs                log with chained HMAC
   ssh.rs                  connections, jumps, fingerprints, exec, PTY
   serial.rs               serial console (console cable): shared port, prompt-based exec,
-                          pagers, login; `Link` trait to test it without hardware
+                          pagers, login, live console (history with a cursor, keys, Break),
+                          Automatic port (the USB adapter); `Link` trait to test it without hardware
   broker.rs               ties everything together and dispatches by transport (SSH or serial); the only thing the UI and the MCP use
   mcp.rs                  MCP server (HTTP, hand-written JSON-RPC)
   import.rs, export.rs    ssh config, keys, Bitwarden; OpenSSH, Bitwarden, CSV, JSON

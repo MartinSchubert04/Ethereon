@@ -107,6 +107,8 @@ export function defaultSerial(): SerialConfig {
 export interface SerialPortInfo {
   name: string;
   label: string;
+  /** Un adaptador USB-serie: el modo automatico lo usa (Bluetooth y los de la placa no). */
+  console: boolean;
 }
 
 export interface Host {
@@ -393,6 +395,14 @@ export const api = {
   termOpen: (host: string, cols: number, rows: number, onEvent: Channel<TermEvent>) =>
     invoke<number>("term_open", { host, cols, rows, onEvent }),
   termWrite: (id: number, data: string) => invoke<void>("term_write", { id, data }),
+  /** La tecla Break de PuTTY, en una consola serial. */
+  termBreak: (id: number) => invoke<void>("term_break", { id }),
+  /** Guarda la imagen del portapapeles como PNG temporal y devuelve su ruta (shells locales). */
+  termPasteImageLocal: () => invoke<string | null>("term_paste_image_local"),
+  /** Si el portapapeles tiene una imagen (sin leerla entera hacia la interfaz). */
+  clipboardHasImage: () => invoke<boolean>("clipboard_has_image"),
+  /** El historial de la propia shell local (PSReadLine, .bash_history), mas nuevo al final. */
+  shellHistory: (shell: string) => invoke<string[]>("shell_history", { shell }),
   termResize: (id: number, cols: number, rows: number) => invoke<void>("term_resize", { id, cols, rows }),
   termClose: (id: number) => invoke<void>("term_close", { id }),
   /** Sube la imagen del portapapeles al host y devuelve su ruta (null si no hay imagen). */
@@ -492,7 +502,7 @@ export function framing(s: SerialConfig): string {
 
 /** La linea debajo del nombre de un host: `user@host:puerto`, o `COM3 · 9600 8N1` en serial. */
 export function addrOf(h: Host, creds: CredView[] | undefined): string {
-  if (h.transport === "serial") return `${h.serial.port || "no port"} · ${h.serial.baud} ${framing(h.serial)}`;
+  if (h.transport === "serial") return `${h.serial.port || "USB (automatic)"} · ${h.serial.baud} ${framing(h.serial)}`;
   const user = userOf(h, creds);
   return `${user ? `${user}@` : ""}${h.hostname}${h.port !== 22 ? `:${h.port}` : ""}`;
 }

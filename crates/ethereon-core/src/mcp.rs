@@ -11,9 +11,11 @@
 //!   claude mcp add --transport http ethereon http://127.0.0.1:47321/mcp \
 //!     --header "Authorization: Bearer eth_..."
 //!
-//! Herramientas: `list_hosts`, `run`, y `download` / `upload` (archivos por SFTP, solo en
-//! los hosts SSH que lo tienen prendido en sus reglas; ver `transfer.rs`). No hay ninguna
-//! para desbloquear, leer secretos ni cambiar reglas: eso no existe del lado del agente.
+//! Herramientas: `list_hosts`, `run`, `download` / `upload` (archivos por SFTP, solo en
+//! los hosts SSH que lo tienen prendido en sus reglas; ver `transfer.rs`) y `console_read` /
+//! `console_send` (la consola serial en vivo, sin esperar un prompt; ver
+//! `Broker::agent_console`). No hay ninguna para desbloquear, leer secretos ni cambiar
+//! reglas: eso no existe del lado del agente.
 
 use axum::extract::State;
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
@@ -47,6 +49,11 @@ reading ~/.ssh) or unrestricted (anything). \
 On a host with transport \"serial\" there is no shell and no exit code: send the device's own CLI commands one at a \
 time (for example `show version`), and you get the output up to the next prompt, plus that prompt (`Switch#`). \
 Pagers are handled for you. Commands that wait for a confirmation ([confirm], yes/no) time out: avoid them. \
+When there is no prompt to wait for (the device is booting, in ROMMON, asks for a login the host does not have, or \
+asks for a confirmation), use the live console instead: console_read(host) shows what is on the screen and returns a \
+cursor; console_read(host, cursor, wait_ms) returns only what came after it (call it again to keep following the \
+console); console_send(host, text, keys) types into it, including special keys like enter, ctrl-c or break, and \
+returns what the device answered. The user sees the same console in Ethereon and may be typing too. \
 Hosts that list_hosts shows with \"files\": true also take download(host, path) and upload(host, path, content or \
 local_path) over SFTP, with the same mode and forbidden paths as run (read_only hosts: download only). download \
 returns the text with secrets replaced by ***; binary files are refused. Never upload a file you edited from a \
@@ -90,6 +97,44 @@ fn tools() -> Value {
                     "sudo": { "type": "boolean", "description": "Run as root. Ethereon types the sudo password; never call sudo yourself.", "default": false }
                 },
                 "required": ["host", "command", "reason"],
+                "additionalProperties": false
+            }
+        },
+        {
+            "name": "console_read",
+            "description": "Read the live console of a serial host (transport \"serial\"), as it shows on the screen, with \
+                secrets replaced by ***. Without a cursor you get the last part of the screen; with the cursor from a previous \
+                call you get only what came after it. wait_ms waits for new output (up to 60000) and returns once the console \
+                goes quiet. Works in every mode, also read_only. Keep the returned cursor for the next call.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": { "type": "string", "description": "Serial host name from list_hosts." },
+                    "cursor": { "type": "integer", "minimum": 0, "description": "The cursor a previous console_read or console_send returned." },
+                    "wait_ms": { "type": "integer", "minimum": 0, "maximum": 60000, "description": "How long to wait for new output. Default 0 (return what there is).", "default": 0 }
+                },
+                "required": ["host"],
+                "additionalProperties": false
+            },
+            "annotations": { "readOnlyHint": true }
+        },
+        {
+            "name": "console_send",
+            "description": format!("Type into the live console of a serial host and get what the device answers (it waits \
+                until the console goes quiet, or wait_ms). `text` is typed as is (a newline is Enter); `keys` are special keys \
+                sent after the text, in order: {}. A break is what PuTTY's Break sends (on many devices it stops the boot and \
+                enters ROMMON). Follows the host's rules: read_only hosts refuse it, approval hosts ask a person (except a lone \
+                Enter), forbidden commands are refused in every mode. Returns a cursor for console_read.", crate::serial::KEY_NAMES),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "host": { "type": "string", "description": "Serial host name from list_hosts." },
+                    "text": { "type": "string", "description": "Text to type. A newline is Enter. For a command, end it with a newline or add the key enter." },
+                    "keys": { "type": "array", "items": { "type": "string" }, "description": "Special keys to press after the text, for example [\"enter\"], [\"ctrl-c\"] or [\"break\"]." },
+                    "wait_ms": { "type": "integer", "minimum": 0, "maximum": 60000, "description": "Longest wait for the answer. Default 3000.", "default": 3000 },
+                    "reason": { "type": "string", "description": "Why; shown to the person who approves it." }
+                },
+                "required": ["host", "reason"],
                 "additionalProperties": false
             }
         },
@@ -290,6 +335,7 @@ async fn call(b: &Broker, ctx: Option<&AgentCtx>, _session: &str, client: &str, 
         let command = match name {
             "run" => Some(s("command")),
             "download" | "upload" => Some(format!("{name} {}", s("path"))),
+            "console_send" => Some(console_input(args).display()),
             _ => None,
         };
         if let Some(command) = command {
@@ -349,6 +395,30 @@ async fn call(b: &Broker, ctx: Option<&AgentCtx>, _session: &str, client: &str, 
                 Err(e) => tool_text(e.to_string(), true),
             }
         }
+        "console_read" | "console_send" => {
+            let host = s("host");
+            if host.is_empty() {
+                return tool_text("`host` is required".into(), true);
+            }
+            let num = |k: &str| args.get(k).and_then(|v| v.as_u64());
+            let send = (name == "console_send").then(|| console_input(args));
+            match b.agent_console(ctx, &host, send, num("cursor"), num("wait_ms"), &s("reason")).await {
+                Ok(r) => tool_text(serde_json::to_string_pretty(&r).unwrap(), false),
+                Err(e) => tool_text(e.to_string(), true),
+            }
+        }
         _ => tool_text(format!("unknown tool `{name}`"), true),
     }
+}
+
+/// `text` y `keys` de un `console_send`.
+fn console_input(args: &Value) -> crate::broker::ConsoleInput {
+    let text = args.get("text").and_then(|v| v.as_str()).unwrap_or("");
+    let keys: Vec<String> = match args.get("keys") {
+        Some(Value::Array(a)) => a.iter().filter_map(|k| k.as_str().map(String::from)).collect(),
+        // Una sola tecla como texto tambien vale.
+        Some(Value::String(k)) => vec![k.clone()],
+        _ => Vec::new(),
+    };
+    crate::broker::ConsoleInput::new(text, &keys)
 }

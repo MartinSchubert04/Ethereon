@@ -26,6 +26,8 @@ export interface Live {
   parked: boolean;
   /** El resaltado de sintaxis de esta terminal (ver lib/highlight.ts). */
   hl?: import("./highlight").Highlighter;
+  /** Las sugerencias en gris de esta terminal (ver lib/suggest.ts). */
+  sug?: import("./suggest").Suggester;
 }
 
 /** Por clave del panel que la muestra. */

@@ -9,7 +9,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { api, errText, type TermEvent } from "../lib/api";
   import { testHost } from "../lib/hostkey.svelte";
-  import { app, leaving, toast, type TermTab } from "../lib/state.svelte";
+  import { app, goToTab, leaving, toast, type TermTab } from "../lib/state.svelte";
   import { comboOf, matches, prefs, pretty } from "../lib/prefs.svelte";
   import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
   import { cssVar } from "../lib/themes";
@@ -20,6 +20,8 @@
   import { watchCwd } from "../lib/cwd";
   import { dbg, dbgGlLost, dbgGone, dbgTerm, sw } from "../lib/debug.svelte";
   import { Highlighter, profileFor, tones } from "../lib/highlight";
+  import { fixDefaultBackgrounds } from "../lib/xtermfix";
+  import { Suggester } from "../lib/suggest";
 
   // `bare`: dentro de un mosaico, sin margen ni tarjeta propia (el marco lo pone TilePane).
   // `shown`: la pestaña se ve (en un mosaico se ven todos los paneles, aunque solo uno tenga
@@ -109,19 +111,28 @@
   async function paste() {
     const text = await readText().catch(() => "");
     if (text) term.paste(text); // respeta el "bracketed paste" de la shell
-    else if (!me().local) await pasteImage();
+    else await pasteImage();
     term.focus();
   }
 
-  // Sin texto puede haber una imagen. Por SSH, Claude Code no ve el portapapeles de esta PC:
-  // la imagen se sube al servidor y se pega su ruta, que Claude Code adjunta como imagen.
+  // Sin texto puede haber una imagen. En una shell local con un programa corriendo (Claude
+  // Code) se le pasa la tecla con la que el pega imagenes en Windows, Alt V: lee el
+  // portapapeles el mismo y la adjunta ([Image #1]), como en Warp. En el prompt de la shell se
+  // pega la ruta de la imagen guardada en la carpeta temporal. Por SSH, el programa del
+  // servidor no ve el portapapeles de esta PC: la imagen se sube y se pega su ruta, que Claude
+  // Code adjunta igual. En una consola serial, nada.
   let uploading = false;
   async function pasteImage() {
-    if (uploading) return;
+    const t = me();
+    if (uploading || app.snap?.hosts.find((h) => h.name === t.host)?.transport === "serial") return;
+    if (t.local && L.id && !L.sug?.atPrompt) {
+      if (await api.clipboardHasImage().catch(() => false)) api.termWrite(L.id, "\x1bv");
+      return;
+    }
     uploading = true;
     try {
-      const path = await api.termPasteImage(me().host);
-      if (path) term.paste(/\s/.test(path) ? `"${path}"` : path);
+      const path = t.local ? await api.termPasteImageLocal() : await api.termPasteImage(t.host);
+      if (path) term.paste(t.local ? localPath(path, t.local) : /\s/.test(path) ? `"${path}"` : path);
     } catch (e) {
       toast(`Couldn't paste the image: ${errText(e)}`, true);
     } finally {
@@ -202,6 +213,8 @@
 
   function onTermKey(e: KeyboardEvent): boolean {
     if (e.type !== "keydown") return true;
+    // La tecla de aceptar la sugerencia en gris, solo si hay una a la vista.
+    if (L.sug?.accept(e)) return false;
     if (matches(e, "termCopy")) {
       e.preventDefault();
       copySelection();
@@ -210,6 +223,11 @@
     if (matches(e, "termPaste")) {
       e.preventDefault();
       paste();
+      return false;
+    }
+    if (matches(e, "termBreak") && isSerial()) {
+      e.preventDefault();
+      sendBreak();
       return false;
     }
     const c = comboOf(e);
@@ -236,6 +254,23 @@
       }
     }
     return true;
+  }
+
+  const isSerial = () => !me().local && app.snap?.hosts.find((h) => h.name === me().host)?.transport === "serial";
+
+  // La tecla Break de PuTTY. Tambien desde el clic derecho de la pestaña (evento
+  // "ethereon:break" con la clave de la pestaña).
+  async function sendBreak() {
+    if (!L.id) return toast("The console is not connected", true);
+    try {
+      await api.termBreak(L.id);
+      toast("Break sent");
+    } catch (e) {
+      toast(errText(e), true);
+    }
+  }
+  function onBreak(e: Event) {
+    if ((e as CustomEvent).detail === key) sendBreak();
   }
 
   function onContextMenu(e: MouseEvent) {
@@ -481,6 +516,8 @@
         t.refresh(0, t.rows - 1);
       });
       t.loadAddon(gl);
+      // Texto atenuado o en cursiva sin fondo negro (ver lib/xtermfix.ts).
+      fixDefaultBackgrounds(gl);
       glOk = true;
     } catch (e) {
       dbg("webgl no disponible", String(e));
@@ -492,10 +529,26 @@
     const live: Live = { term: t, fit: f, id: 0, replaying: false, handle, me, keys: () => true, selection: () => {}, parked: false };
     watchCwd(t, () => live.me());
     t.parser.registerOscHandler(52, onOsc52);
+    // Sugerencias en gris mientras se escribe (ver lib/suggest.ts). Despues de watchCwd: los
+    // dos escuchan el aviso del prompt y el de la carpeta.
+    live.sug = new Suggester(t, {
+      profile: () => live.me().local ?? live.me().host,
+      shell: () => live.me().local,
+      cwd: () => (live.me().local ? live.me().cwd : undefined),
+      send: (d) => void (live.id && api.termWrite(live.id, d)),
+      custom: () => {
+        goToTab(0);
+        app.view = "settings";
+      },
+    });
     // Lo que la terminal genera va a la sesion, la muestre el panel que la muestre.
     t.attachCustomKeyEventHandler((e) => live.keys(e));
     t.onSelectionChange(() => live.selection());
-    t.onData((d) => live.id && !live.replaying && api.termWrite(live.id, d));
+    t.onData((d) => {
+      if (!live.id || live.replaying) return;
+      live.sug?.input(d);
+      api.termWrite(live.id, d);
+    });
     // A la shell le llega el tamaño final, no cada paso de una animacion o de un arrastre:
     // con cada cambio redibuja el prompt, y muchos seguidos se pisan.
     let rt: ReturnType<typeof setTimeout> | undefined;
@@ -539,6 +592,7 @@
     document.fonts.addEventListener("loadingdone", refont);
     document.fonts.load(`${fontSize()}px ${termFont()}`).then(refont, () => {});
     window.addEventListener("ethereon:refresh", onRefresh);
+    window.addEventListener("ethereon:break", onBreak);
     if (got) {
       // El tema o la fuente pueden haber cambiado mientras estaba en otro lado.
       onTheme();
@@ -585,6 +639,7 @@
     window.removeEventListener("themechange", onTheme);
     document.fonts.removeEventListener("loadingdone", refont);
     window.removeEventListener("ethereon:refresh", onRefresh);
+    window.removeEventListener("ethereon:break", onBreak);
     gone = true;
     unlistenDrop?.();
     if (!L) return;
@@ -599,6 +654,7 @@
     // Si se esta pasando a otra ventana, la sesion sigue: la toma la otra.
     if (L.id && !me().moving && !leaving.has(L.id)) api.termClose(L.id);
     L.hl?.dispose();
+    L.sug?.dispose();
     L.term.dispose();
   });
 </script>
@@ -649,5 +705,112 @@
   }
   .term :global(.xterm-viewport) {
     background: transparent !important;
+  }
+  /* La sugerencia en gris (lib/suggest.ts), encima de la celda del cursor. */
+  .term :global(.eth-suggest) {
+    position: absolute;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: pre;
+    pointer-events: none;
+  }
+  .term :global(.eth-suggest > span) {
+    opacity: 0.42;
+  }
+  .term :global(.eth-suggest-key) {
+    pointer-events: auto;
+    font-family: var(--font);
+    font-size: 10.5px;
+    line-height: 1;
+    padding: 2px 5px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text-3);
+    background: transparent;
+    cursor: pointer;
+  }
+  .term :global(.eth-suggest-key:hover) {
+    color: var(--text);
+    background: var(--hover);
+  }
+  /* Se abre hacia arriba, pegado a la etiqueta: el cursor suele estar en la ultima fila. */
+  .term :global(.eth-suggest-menu) {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 168px;
+    padding: 5px;
+    border: 1px solid var(--line, var(--border));
+    border-radius: var(--radius-sm, 8px);
+    background: var(--float, var(--sidebar));
+    box-shadow: var(--pop-shadow);
+    pointer-events: auto;
+    font-family: var(--font);
+    font-size: 12.5px;
+    white-space: nowrap;
+    animation: eth-suggest-up 0.12s ease-out;
+  }
+  @keyframes eth-suggest-up {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+  }
+  .term :global(.eth-suggest-title) {
+    padding: 3px 8px 5px;
+    font-size: 10.5px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-3);
+  }
+  .term :global(.eth-suggest-menu button) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    text-align: left;
+    padding: 5px 8px;
+    border-radius: 5px;
+    color: var(--text);
+    background: transparent;
+    cursor: pointer;
+  }
+  .term :global(.eth-suggest-menu button:hover) {
+    background: var(--hover);
+  }
+  .term :global(.eth-suggest-menu button.off) {
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .term :global(.eth-suggest-menu button.custom) {
+    margin-top: 3px;
+    padding-top: 7px;
+    border-top: 1px solid var(--line, var(--border));
+    border-radius: 0 0 5px 5px;
+    color: var(--text-3);
+  }
+  .term :global(.eth-suggest-menu kbd) {
+    font-family: var(--font);
+    font-size: 11.5px;
+    min-width: 22px;
+    text-align: center;
+    padding: 1px 6px;
+    border: 1px solid var(--line, var(--border));
+    border-bottom-width: 2px;
+    border-radius: 4px;
+  }
+  .term :global(.eth-suggest-menu button.on kbd) {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .term :global(.eth-suggest-menu .check) {
+    color: var(--accent);
+    font-size: 12px;
   }
 </style>

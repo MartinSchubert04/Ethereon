@@ -139,6 +139,25 @@ browser.
 | Right-click | Copies the selection or pastes if there's nothing selected (configurable) |
 | `Ctrl =` / `Ctrl -` ✎ | Bigger / smaller font |
 | `Ctrl 0` ✎ | Back to the theme's size |
+| `Tab` ✎ | Accepts the gray suggestion (only when one is showing; otherwise Tab goes to the shell and completes as always) |
+| `Ctrl Shift B` ✎ | Serial console: sends a Break, like PuTTY's (also on the tab's right-click menu) |
+
+- **Gray suggestions** (like Warp or fish): while you type a command in a local shell, the rest of
+  the last matching command shows in gray, from what you typed in Ethereon and from the shell's own
+  history (PSReadLine, `.bash_history`); for a path, the folder or file that matches (after `cd `,
+  a folder that exists where you are, the one you touched most recently). It updates with every
+  key. The label next to it picks the key that accepts it (`Tab`, `→`, `Shift →` or any other in
+  Keyboard shortcuts) and can turn them off. They only show at the shell's prompt, never inside a
+  program (Claude Code, vim, ssh), and never on top of the shell's own suggestion. On by default;
+  on and off in **Settings → Terminal**.
+- **Pasting an image into Claude Code** running in a local shell works like Warp: `Ctrl V` with an
+  image in the clipboard sends Claude Code its image-paste key (`Alt V` on Windows) and it attaches
+  the image (`[Image #1]`).
+- **Pasting an image** at a shell prompt (`Ctrl V` with an image in the clipboard) pastes its path:
+  on SSH it's uploaded to the server first (Claude Code on the server attaches it); in a local shell
+  it's saved as a PNG in the temp folder.
+- **Serial consoles** show what already went through the port when the terminal opens (for example
+  what the agent did before), and the agent sees what you type.
 
 - The font is chosen in **Settings → Terminal → Font**: the theme's, the same as Windows Terminal
   (copies font and size), one of the bundled ones (JetBrains Mono, Fira Code, IBM Plex Mono, Source

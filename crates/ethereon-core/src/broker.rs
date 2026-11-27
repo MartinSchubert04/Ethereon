@@ -68,6 +68,160 @@ pub struct RunResult {
     pub prompt: Option<String>,
 }
 
+/// Lo que el agente escribe en una consola serial (`console_send`): texto y teclas, en orden.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ConsoleInput {
+    pub parts: Vec<ConsolePart>,
+    /// Si una persona lo cambio al aprobar, como lo dejo.
+    pub edited: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ConsolePart {
+    /// Se escribe tal cual; un salto de linea es un Enter.
+    Text(String),
+    /// Una tecla por nombre (ver `serial::key`).
+    Key(String),
+}
+
+/// El texto como lo manda el teclado: cada salto de linea es un Enter (`\r`).
+fn typed(t: &str) -> String {
+    t.replace("\r\n", "\r").replace('\n', "\r")
+}
+
+impl ConsoleInput {
+    /// `text` primero y despues `keys`, como los pide la herramienta.
+    pub fn new(text: &str, keys: &[String]) -> ConsoleInput {
+        let mut parts = Vec::new();
+        if !text.is_empty() {
+            parts.push(ConsolePart::Text(text.to_string()));
+        }
+        parts.extend(keys.iter().map(|k| ConsolePart::Key(k.trim().to_lowercase())));
+        ConsoleInput { parts, edited: None }
+    }
+
+    /// Lee lo que muestra `display` (lo que una persona edito al aprobar): `<nombre>` es una
+    /// tecla si el nombre existe; todo lo demas es texto.
+    pub fn parse(s: &str) -> ConsoleInput {
+        let mut parts = Vec::new();
+        let mut text = String::new();
+        let mut rest = s;
+        while let Some(open) = rest.find('<') {
+            let after = &rest[open + 1..];
+            match after.find('>').map(|close| &after[..close]).filter(|name| serial::key(name).is_some()) {
+                Some(name) => {
+                    text.push_str(&rest[..open]);
+                    if !text.is_empty() {
+                        parts.push(ConsolePart::Text(std::mem::take(&mut text)));
+                    }
+                    parts.push(ConsolePart::Key(name.trim().to_lowercase()));
+                    rest = &after[name.len() + 1..];
+                }
+                None => {
+                    text.push_str(&rest[..=open]);
+                    rest = after;
+                }
+            }
+        }
+        text.push_str(rest);
+        if !text.is_empty() {
+            parts.push(ConsolePart::Text(text));
+        }
+        ConsoleInput { parts, edited: None }
+    }
+
+    /// Para la persona (aprobaciones, auditoria): el texto, y las teclas y los Enter como
+    /// `<enter>`.
+    pub fn display(&self) -> String {
+        self.parts
+            .iter()
+            .map(|p| match p {
+                ConsolePart::Text(t) => typed(t).replace('\r', "<enter>"),
+                ConsolePart::Key(k) => format!("<{k}>"),
+            })
+            .collect()
+    }
+
+    /// Que haya algo y que todas las teclas existan.
+    fn check(&self) -> Result<()> {
+        if self.parts.is_empty() {
+            return Err(Error::Invalid("give `text`, `keys`, or both".into()));
+        }
+        for p in &self.parts {
+            if let ConsolePart::Key(k) = p {
+                if serial::key(k).is_none() {
+                    return Err(Error::Invalid(format!("unknown key `{k}`; use one of: {}", serial::KEY_NAMES)));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn is_enter(p: &ConsolePart) -> bool {
+        matches!(p, ConsolePart::Key(k) if serial::key(k) == Some(serial::Key::Bytes(b"\r".to_vec())))
+    }
+
+    /// Las lineas que quedan escritas, como las veria el equipo: los retrocesos borran, el
+    /// espacio y el tab siguen la linea, y Enter (o cualquier otra tecla) la corta. Es lo
+    /// que se revisa contra las reglas.
+    fn lines(&self) -> Vec<String> {
+        let mut all = String::new();
+        for p in &self.parts {
+            match p {
+                ConsolePart::Text(t) => all.push_str(&typed(t)),
+                ConsolePart::Key(k) => match k.as_str() {
+                    "backspace" | "bs" | "delete" | "del" => {
+                        if !all.ends_with('\r') {
+                            all.pop();
+                        }
+                    }
+                    "space" => all.push(' '),
+                    "tab" => {}
+                    _ => all.push('\r'),
+                },
+            }
+        }
+        all.split('\r').map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect()
+    }
+
+    /// Solo despierta la consola: Enter, o texto en blanco.
+    fn only_enter(&self) -> bool {
+        self.parts.iter().all(|p| match p {
+            ConsolePart::Text(t) => t.trim().is_empty(),
+            p => Self::is_enter(p),
+        })
+    }
+
+    fn only_text_and_enter(&self) -> bool {
+        self.parts.iter().all(|p| matches!(p, ConsolePart::Text(_)) || Self::is_enter(p))
+    }
+
+    fn has_break(&self) -> bool {
+        self.parts.iter().any(|p| matches!(p, ConsolePart::Key(k) if serial::key(k) == Some(serial::Key::Break)))
+    }
+}
+
+/// Lo que vuelve de `console_read` / `console_send`.
+#[derive(Debug, Serialize)]
+pub struct ConsoleResult {
+    /// Lo que aparecio en la consola, como se ve en pantalla, con los secretos tapados.
+    pub output: String,
+    /// Para seguir leyendo desde aca (`console_read` con este `cursor`).
+    pub cursor: u64,
+    /// Se perdio salida entre el cursor pedido y lo que vino (era vieja o mucha).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub skipped: bool,
+    pub masked: usize,
+    /// Si una persona cambio lo que se iba a escribir antes de aprobarlo, lo que se escribio.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub edited_text: Option<String>,
+}
+
+/// Cuanto devuelve `console_read` sin cursor: lo ultimo de la pantalla.
+const SCREEN: usize = 4 * 1024;
+/// La consola "termino de contestar" cuando pasa esto sin que llegue nada.
+const CONSOLE_QUIET: Duration = Duration::from_millis(700);
+
 #[derive(Clone, Debug, Serialize)]
 pub struct ApprovalView {
     pub id: u64,
@@ -848,12 +1002,17 @@ impl Broker {
             Parity::Even => 'E',
             Parity::Odd => 'O',
         };
-        log(format!("Opening {} at {} {}{}{}", s.port, s.baud, s.data_bits, parity, s.stop_bits));
-        let conn = serial::open(s).and_then(serial::Conn::new).map_err(|e| {
-            log(format!("Could not open {}: {e}", s.port));
+        let which = if s.port.trim().is_empty() { "the USB serial adapter (Automatic)".to_string() } else { s.port.clone() };
+        log(format!("Opening {which} at {} {}{}{}", s.baud, s.data_bits, parity, s.stop_bits));
+        let opened = serial::open(s).map_err(|e| {
+            log(format!("Could not open {which}: {e}"));
             Error::Invalid(format!("could not open the serial port of `{}`: {e}", h.name))
         })?;
-        log("Port open".into());
+        if !opened.note.is_empty() {
+            log(opened.note.clone());
+        }
+        let conn = serial::Conn::new(opened.link).map_err(|e| Error::Invalid(format!("could not open the serial port of `{}`: {e}", h.name)))?;
+        log(format!("Port {} open", opened.port));
         let conn = Arc::new(conn);
         pool.insert(h.name.clone(), conn.clone());
         Ok(conn)
@@ -1032,6 +1191,261 @@ impl Broker {
             raw_hash,
             joined,
         ))
+    }
+
+    // ------------------------------------------------------- consola serial en vivo
+    //
+    // `console_read` / `console_send`: el agente sigue la consola como la ve la persona, sin
+    // esperar un prompt (un equipo arrancando, ROMMON, un login que el host no tiene). Leer
+    // vale en cualquier modo; escribir sigue las reglas del host: solo lectura no escribe,
+    // Guarded revisa cada linea contra lo prohibido, Approval le pregunta a la persona (un
+    // Enter solo no) y Free deja pasar. Todo queda en la auditoria y la salida va enmascarada.
+
+    pub async fn agent_console(
+        &self,
+        ctx: &AgentCtx,
+        host: &str,
+        send: Option<ConsoleInput>,
+        cursor: Option<u64>,
+        wait_ms: Option<u64>,
+        reason: &str,
+    ) -> Result<ConsoleResult> {
+        self.running.fetch_add(1, Ordering::Relaxed);
+        let _guard = RunGuard(&self.running);
+        let mut entry = Entry {
+            device: ctx.device_name.clone(),
+            client: ctx.client.clone(),
+            host: host.into(),
+            command: send.as_ref().map(|s| s.display()).unwrap_or_else(|| "[console read]".into()),
+            reason: reason.into(),
+            ..Default::default()
+        };
+        match self.agent_console_inner(ctx, host, send, cursor, wait_ms, reason, &mut entry).await {
+            Ok(r) => Ok(r),
+            Err(e) => {
+                if entry.decision.is_empty() {
+                    entry.decision = if matches!(e, Error::Locked) { "locked".into() } else { "error".into() };
+                }
+                if entry.detail.is_empty() {
+                    entry.detail = e.to_string();
+                }
+                self.log(entry);
+                Err(e)
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn agent_console_inner(
+        &self,
+        ctx: &AgentCtx,
+        host: &str,
+        mut send: Option<ConsoleInput>,
+        cursor: Option<u64>,
+        wait_ms: Option<u64>,
+        reason: &str,
+        entry: &mut Entry,
+    ) -> Result<ConsoleResult> {
+        self.check_agent()?;
+        if !self.device_allows(ctx, host) {
+            entry.decision = "denied".into();
+            return Err(Error::Invalid(format!("this device has no access to `{host}`")));
+        }
+        let (h, pol, deny, settings) = self.read(|d| {
+            let h = d.hosts.iter().find(|x| x.name == host).cloned();
+            let pol = h.as_ref().map(|h| Self::effective_policy(d, h));
+            (h, pol, d.denylist.clone(), d.settings.clone())
+        })?;
+        let (Some(h), Some(pol)) = (h, pol) else {
+            return Err(Error::NotFound(format!("host `{host}` (use list_hosts)")));
+        };
+        if !h.is_serial() {
+            entry.decision = "denied".into();
+            return Err(Error::Invalid(format!("`{host}` is not a serial console: use run")));
+        }
+        if pol.mode == Mode::Off {
+            entry.decision = "denied".into();
+            return Err(Error::Invalid("the agent has no access to this host".into()));
+        }
+        if !self.rate_ok(&format!("{}/{}", ctx.device_id, host), pol.max_per_minute.max(1) * 2) {
+            entry.decision = "denied".into();
+            return Err(Error::Invalid(format!("rate limit: too many console calls per minute on `{host}`")));
+        }
+
+        if let Some(s) = send.as_mut() {
+            // Las teclas, antes de pedir nada: un nombre mal escrito no llega a la persona.
+            s.check()?;
+            self.console_rules(&h, s, &pol, &deny, &settings, ctx, reason, entry).await?;
+        } else {
+            entry.decision = "allowed".into();
+        }
+
+        let started = Instant::now();
+        let max = pol.max_output_kb.max(1) * 1024;
+        let generic = |what: &str| Error::Invalid(format!("serial console of `{}`: {what} (details in the connection log in Ethereon)", h.name));
+        let conn = self.serial_connection(&h).map_err(|_| generic("could not open the port"))?;
+        // Por defecto: escribir espera la respuesta unos segundos; leer devuelve lo que hay.
+        let wait = Duration::from_millis(wait_ms.unwrap_or(if send.is_some() { 3000 } else { 0 }).min(60_000));
+        let (c, input) = (conn.clone(), send.clone());
+        let res = tokio::task::spawn_blocking(move || -> std::io::Result<serial::Since> {
+            let from = match (&input, cursor) {
+                (Some(_), _) => c.cursor(),
+                (None, Some(at)) => at,
+                // Sin cursor: lo ultimo que hay en pantalla.
+                (None, None) => c.cursor().saturating_sub(SCREEN as u64),
+            };
+            if let Some(i) = &input {
+                for p in &i.parts {
+                    match p {
+                        ConsolePart::Text(t) => c.write(typed(t).as_bytes())?,
+                        ConsolePart::Key(k) => match serial::key(k) {
+                            Some(serial::Key::Bytes(b)) => c.write(&b)?,
+                            Some(serial::Key::Break) => c.send_break(serial::BREAK)?,
+                            None => {}
+                        },
+                    }
+                }
+            }
+            if wait.is_zero() {
+                c.touch();
+                Ok(c.read_since(Some(from), max))
+            } else {
+                serial::listen(&c, from, wait, CONSOLE_QUIET, max)
+            }
+        })
+        .await
+        .map_err(|e| Error::Invalid(e.to_string()))?;
+        let got = match res {
+            Ok(g) => g,
+            Err(e) => {
+                self.conn_log(&h.name)(format!("Console failed: {e}"));
+                if e.kind() == std::io::ErrorKind::BrokenPipe {
+                    self.drop_serial(&h.name);
+                }
+                return Err(match e.kind() {
+                    std::io::ErrorKind::Unsupported => generic("this port can't send a break"),
+                    _ => generic("the port failed"),
+                });
+            }
+        };
+        // Que la persona lo vea: la interfaz abre la terminal de este host si no estaba.
+        if !conn.in_use() {
+            self.notifier.event("console", serde_json::json!({ "host": h.name }));
+        }
+        let text = serial::console_text(&got.data);
+        let masker = self.masker()?;
+        let (output, masked) = masker.mask(&text);
+        entry.duration_ms = Some(started.elapsed().as_millis() as u64);
+        entry.output_sha256 = audit::sha256_hex(&got.data);
+        entry.masked = masked;
+        if settings.audit_output && send.is_some() {
+            entry.output = Some(output.clone());
+        }
+        self.log(entry.clone());
+        Ok(ConsoleResult { output, cursor: got.cursor, skipped: got.skipped, masked, edited_text: send.and_then(|s| s.edited) })
+    }
+
+    /// Si el agente puede escribir esto en la consola, segun el modo del host. Puede cambiar
+    /// el texto (una persona lo edito al aprobar).
+    #[allow(clippy::too_many_arguments)]
+    async fn console_rules(
+        &self,
+        h: &Host,
+        s: &mut ConsoleInput,
+        pol: &Policy,
+        deny: &[String],
+        settings: &Settings,
+        ctx: &AgentCtx,
+        reason: &str,
+        entry: &mut Entry,
+    ) -> Result<()> {
+        // Lo prohibido sigue prohibido en cualquier modo que escriba.
+        let forbidden = |s: &ConsoleInput| {
+            let free = Policy { mode: Mode::Guarded, ..pol.clone() };
+            s.lines().into_iter().find_map(|l| match Self::evaluate(h, &l, &free, deny, &[]) {
+                Verdict::Deny(why) => Some(format!("`{l}`: {why}")),
+                _ => None,
+            })
+        };
+        match pol.mode {
+            Mode::Off => unreachable!(),
+            Mode::ReadOnly => {
+                entry.decision = "denied".into();
+                Err(Error::Invalid(format!(
+                    "rejected: `{}` is read-only. You can read its console (console_read) and run allowed commands, but not type in it",
+                    h.name
+                )))
+            }
+            Mode::Free | Mode::Guarded => {
+                if let Some(why) = forbidden(s) {
+                    entry.decision = "denied".into();
+                    return Err(Error::Invalid(format!("rejected: {why}")));
+                }
+                entry.decision = "allowed".into();
+                Ok(())
+            }
+            Mode::Approval => {
+                if let Some(why) = forbidden(s) {
+                    entry.decision = "denied".into();
+                    return Err(Error::Invalid(format!("rejected: {why}")));
+                }
+                // Despertar la consola con un Enter no cambia nada: no se pregunta. Tampoco
+                // lo que la persona ya dejo pasar en esta sesion (linea por linea, sin otras
+                // teclas que Enter).
+                let patterns = self.session_patterns.lock().unwrap().get(&ctx.session).cloned().unwrap_or_default();
+                let lines = s.lines();
+                let all_ok = s.only_text_and_enter() && lines.iter().all(|l| Self::evaluate(h, l, pol, deny, &patterns) == Verdict::Allow);
+                if s.only_enter() || (!lines.is_empty() && all_ok) {
+                    entry.decision = "allowed".into();
+                    return Ok(());
+                }
+                let view = ApprovalView {
+                    id: self.next_id(),
+                    host: h.name.clone(),
+                    env: h.env,
+                    command: s.display(),
+                    sudo: false,
+                    reason: reason.into(),
+                    device: ctx.device_name.clone(),
+                    warnings: if s.has_break() {
+                        vec!["sends a Break: on many devices this stops the boot and enters the ROM monitor".into()]
+                    } else {
+                        vec!["typed into the console as is".into()]
+                    },
+                    created: now(),
+                    file: None,
+                };
+                match self.wait_approval(view, &ctx.session, settings).await {
+                    Some(Decision::Approve) => {}
+                    Some(Decision::ApprovePattern { pattern }) => {
+                        self.session_patterns.lock().unwrap().entry(ctx.session.clone()).or_default().push(pattern);
+                    }
+                    Some(Decision::ApproveEdited { command }) => {
+                        // Lo editado se lee igual que se mostro: texto y `<tecla>`.
+                        let edited = ConsoleInput::parse(&command);
+                        if let Some(why) = forbidden(&edited) {
+                            entry.decision = "rejected".into();
+                            return Err(Error::Invalid(format!("the edited text was rejected: {why}")));
+                        }
+                        entry.detail = format!("edited from: {}", s.display());
+                        *s = ConsoleInput { edited: Some(command), ..edited };
+                        entry.command = s.display();
+                    }
+                    Some(Decision::Reject { note }) => {
+                        entry.decision = "rejected".into();
+                        let note = note.filter(|n| !n.trim().is_empty()).map(|n| format!(": {n}")).unwrap_or_default();
+                        return Err(Error::Invalid(format!("a person rejected this{note}")));
+                    }
+                    None => {
+                        entry.decision = "timeout".into();
+                        return Err(Error::Invalid("nobody approved it in time".into()));
+                    }
+                }
+                entry.decision = "approved".into();
+                entry.approved_by = "ui".into();
+                Ok(())
+            }
+        }
     }
 
     async fn exec_ssh(&self, h: &Host, command: &str, sudo: bool, pol: &Policy, _s: &Settings) -> Result<(RunResult, String, String)> {
@@ -1744,6 +2158,142 @@ mod tests {
         assert!(link.written().len() > 0);
         let e = b.agent_run(&ctx, "sw1", "show run", false, "x").await.unwrap_err();
         assert!(matches!(e, Error::Locked));
+    }
+
+    /// La consola en vivo: un switch que pide un login que el host no tiene (`run` no puede
+    /// hacer nada ahi). El agente lee la pantalla, despierta la consola, manda Break, escribe
+    /// en ROMMON y sigue leyendo con el cursor; los secretos salen tapados; cada modo frena lo
+    /// que tiene que frenar; y el puerto no aparece en nada de lo que vuelve.
+    #[tokio::test]
+    async fn serial_live_console() {
+        let dir = tempfile::tempdir().unwrap();
+        let b = Broker::new(dir.path().to_path_buf(), Arc::new(Quiet));
+        b.create("tester-pass-123").unwrap();
+        let set_mode = |mode: Mode| {
+            b.write(|d| {
+                d.hosts.iter_mut().find(|h| h.name == "sw").unwrap().policy = Some(Policy { mode, ..Default::default() });
+                Ok(())
+            })
+            .unwrap()
+        };
+        b.write(|d| {
+            d.credentials.push(Credential {
+                id: "old".into(),
+                kind: CredentialKind::Password,
+                username: String::new(),
+                secret: "s3cret-pass".into(),
+                passphrase: String::new(),
+                certificate: String::new(),
+                note: String::new(),
+            });
+            d.hosts.push(Host {
+                name: "sw".into(),
+                transport: Transport::Serial,
+                serial: SerialConfig { port: "COM99".into(), ..Default::default() },
+                ..Default::default()
+            });
+            d.hosts.push(Host { name: "web".into(), hostname: "127.0.0.1".into(), port: 1, ..Default::default() });
+            Ok(())
+        })
+        .unwrap();
+        set_mode(Mode::Guarded);
+        let link = FakeLink::new(&[
+            ("\r", "\r\nUser Access Verification\r\n\r\nUsername: "),
+            ("<BRK>", "\r\nswitch: "),
+            ("set\r", "set\r\nBOOT=flash:packages.conf\r\nENABLE_PASSWORD=s3cret-pass\r\nswitch: "),
+            ("dir flash:\r", "dir flash:\r\npackages.conf\r\nswitch: "),
+        ]);
+        b.add_serial_connection("sw", serial::Conn::new(Box::new(link.clone())).unwrap());
+        let (_, token) = b.create_device("pc", None, vec![]).unwrap();
+        let ctx = b.authenticate(&token, "127.0.0.1", "s1").unwrap();
+        let send = |text: &str, keys: &[&str]| Some(ConsoleInput::new(text, &keys.iter().map(|k| k.to_string()).collect::<Vec<_>>()));
+
+        // Un Enter despierta la consola: se ve el login que el host no tiene.
+        let r = b.agent_console(&ctx, "sw", send("", &["enter"]), None, Some(2000), "wake").await.unwrap();
+        assert!(r.output.contains("Username:"), "{r:?}");
+        // Break: entra a ROMMON.
+        let r = b.agent_console(&ctx, "sw", send("", &["break"]), None, Some(2000), "rommon").await.unwrap();
+        assert_eq!(r.output.trim(), "switch:");
+        // Un comando de ROMMON: la salida con el secreto tapado.
+        let r = b.agent_console(&ctx, "sw", send("set\n", &[]), None, Some(2000), "boot vars").await.unwrap();
+        assert!(r.output.contains("BOOT=flash:packages.conf"), "{r:?}");
+        assert!(r.output.contains("ENABLE_PASSWORD=***") && !r.output.contains("s3cret"), "{r:?}");
+        // (el secreto del vault y el patron `PASSWORD=`)
+        assert!(r.masked >= 1);
+        // Leer sin cursor: lo ultimo de la pantalla. Con el cursor: nada nuevo.
+        let screen = b.agent_console(&ctx, "sw", None, None, None, "").await.unwrap();
+        assert!(screen.output.contains("Username:") && screen.output.contains("BOOT="), "{screen:?}");
+        let none = b.agent_console(&ctx, "sw", None, Some(r.cursor), None, "").await.unwrap();
+        assert_eq!(none.output, "");
+        // Lo que escribe la persona en su terminal tambien lo ve el agente, con el cursor.
+        link.push(b"\r\nswitch: boot\r\n");
+        let seen = b.agent_console(&ctx, "sw", None, Some(r.cursor), Some(1500), "").await.unwrap();
+        assert!(seen.output.contains("boot"), "{seen:?}");
+
+        // Lo prohibido no pasa, ni escondido con un retroceso.
+        let e = b.agent_console(&ctx, "sw", send("rm -rf /", &["enter"]), None, None, "x").await.unwrap_err().to_string();
+        assert!(e.contains("rejected"), "{e}");
+        let e = b.agent_console(&ctx, "sw", send("rm -rf /x", &["backspace", "enter"]), None, None, "x").await.unwrap_err().to_string();
+        assert!(e.contains("rejected"), "{e}");
+        assert!(!link.written().contains("rm -rf"));
+        // Una tecla que no existe se rechaza antes de escribir nada.
+        let e = b.agent_console(&ctx, "sw", send("", &["f13"]), None, None, "x").await.unwrap_err().to_string();
+        assert!(e.contains("unknown key"), "{e}");
+
+        // Solo lectura: leer si, escribir no.
+        set_mode(Mode::ReadOnly);
+        assert!(b.agent_console(&ctx, "sw", None, None, None, "").await.is_ok());
+        let e = b.agent_console(&ctx, "sw", send("", &["enter"]), None, None, "x").await.unwrap_err().to_string();
+        assert!(e.contains("read-only"), "{e}");
+
+        // Con aprobacion: un Enter solo pasa; lo demas espera a la persona.
+        set_mode(Mode::Approval);
+        assert!(b.agent_console(&ctx, "sw", send("", &["enter"]), None, Some(300), "x").await.is_ok());
+        let b2 = b.clone();
+        let ctx2 = ctx.clone();
+        let pending = tokio::spawn(async move { b2.agent_console(&ctx2, "sw", send_owned("reset", &["enter"]), None, Some(300), "reboot").await });
+        let mut waited = 0;
+        while b.approvals().is_empty() && waited < 100 {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            waited += 1;
+        }
+        let a = b.approvals();
+        assert_eq!(a.len(), 1);
+        assert_eq!(a[0].command, "reset<enter>");
+        // La persona lo cambia: lo que se escribe es lo editado.
+        b.resolve(a[0].id, Decision::ApproveEdited { command: "dir flash:<enter>".into() }).unwrap();
+        let r = pending.await.unwrap().unwrap();
+        assert_eq!(r.edited_text.as_deref(), Some("dir flash:<enter>"));
+        assert!(r.output.contains("packages.conf"), "{r:?}");
+        assert!(!link.written().contains("reset"));
+
+        // Solo consolas serie; y el puerto no sale nunca.
+        let e = b.agent_console(&ctx, "web", None, None, None, "").await.unwrap_err().to_string();
+        assert!(e.contains("not a serial console"), "{e}");
+        let audit = serde_json::to_string(&b.audit().search("", 100)).unwrap();
+        assert!(audit.contains("<break>") && audit.contains("[console read]"), "{audit}");
+        assert!(!audit.contains("COM99"));
+    }
+
+    fn send_owned(text: &str, keys: &[&str]) -> Option<ConsoleInput> {
+        Some(ConsoleInput::new(text, &keys.iter().map(|k| k.to_string()).collect::<Vec<_>>()))
+    }
+
+    #[test]
+    fn console_input_shows_and_reads_back() {
+        let i = ConsoleInput::new("show ver\nshow clock", &["enter".into(), "Break".into()]);
+        assert_eq!(i.display(), "show ver<enter>show clock<enter><break>");
+        assert_eq!(ConsoleInput::parse(&i.display()).display(), i.display());
+        assert_eq!(i.lines(), vec!["show ver", "show clock"]);
+        assert!(i.has_break());
+        // `<algo>` que no es una tecla queda como texto.
+        let p = ConsoleInput::parse("echo <hola><enter>");
+        assert_eq!(p.parts, vec![ConsolePart::Text("echo <hola>".into()), ConsolePart::Key("enter".into())]);
+        // Retrocesos y espacios arman la linea como la veria el equipo.
+        let k = ConsoleInput::new("reloadx", &["backspace".into(), "space".into(), "enter".into()]);
+        assert_eq!(k.lines(), vec!["reload"]);
+        assert!(ConsoleInput::new("", &["enter".into()]).only_enter());
+        assert!(!ConsoleInput::new("", &["ctrl-c".into()]).only_enter());
     }
 
     /// Archivos del agente: lo que se decide antes de conectar (sin servidor SSH; lo que

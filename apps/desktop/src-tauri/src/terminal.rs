@@ -212,16 +212,37 @@ pub async fn term_open(s: State<'_, AppState>, host: String, cols: u32, rows: u3
 
 // ---- consola serial
 
+/// Cuanto de lo que ya paso por el puerto muestra una terminal serial al abrirse.
+const SERIAL_REPLAY: usize = 64 * 1024;
+
+/// Manda un Break por la consola serial de la terminal `id` (la tecla Break de PuTTY).
+#[tauri::command]
+pub async fn term_break(s: State<'_, AppState>, id: u32) -> Result<(), Error> {
+    s.broker.touch_ui();
+    let session = s.terms.map.lock().unwrap().get(&id).map(|l| l.session.clone()).ok_or(Error::NotFound("terminal".into()))?;
+    let Session::Serial(conn, _) = session else {
+        return Err(Error::Invalid("Break only exists on a serial console".into()));
+    };
+    tauri::async_runtime::spawn_blocking(move || conn.send_break(ethereon_core::serial::BREAK))
+        .await
+        .map_err(|e| Error::Invalid(e.to_string()))?
+        .map_err(|e| Error::Invalid(format!("could not send the break: {e}")))
+}
+
 /// La consola en crudo: lo que llega del puerto va al xterm y lo que se teclea va al puerto.
-/// Si el agente corre un comando mientras tanto, se ve pasar aca. Un Enter despierta al
-/// equipo; el login lo hace la persona.
+/// Si el agente corre un comando mientras tanto, se ve pasar aca. Arranca mostrando lo que
+/// ya habia pasado por el puerto (lo que el agente leyo o escribio antes de abrirla). Un
+/// Enter despierta al equipo; el login lo hace la persona.
 fn open_serial(s: &State<'_, AppState>, h: &ethereon_core::model::Host, on_event: Events) -> Result<u32, Error> {
     use std::sync::atomic::AtomicBool;
     let b = s.broker.clone();
     let conn = b.serial_connection(h)?;
-    let tap = conn.tap();
+    let (past, tap) = conn.tap_with_history(SERIAL_REPLAY);
     let stop = Arc::new(AtomicBool::new(false));
     let sink = Sink::new(on_event);
+    if !past.is_empty() {
+        Sink::push(&sink, &past);
+    }
     let id = s.terms.add(Session::Serial(conn.clone(), stop.clone()), sink.clone());
     b.audit_log(Entry {
         device: "ui".into(),
@@ -230,7 +251,12 @@ fn open_serial(s: &State<'_, AppState>, h: &ethereon_core::model::Host, on_event
         decision: "allowed".into(),
         ..Default::default()
     });
-    let _ = conn.write(b"\r");
+    // Un Enter despierta al equipo y muestra el prompt. Solo si no hay nada que mostrar: con
+    // historia la consola ya esta en uso (el agente, otra pestaña) y un Enter de mas podria
+    // contestar algo que espera (`[confirm]`).
+    if past.is_empty() {
+        let _ = conn.write(b"\r");
+    }
     let map = s.terms.map.clone();
     std::thread::spawn(move || {
         while !stop.load(Ordering::Relaxed) {
@@ -603,6 +629,56 @@ pub async fn term_paste_image(app: tauri::AppHandle, s: State<'_, AppState>, hos
         ..Default::default()
     });
     r.map(Some)
+}
+
+/// Pegar una imagen en una terminal local: se guarda como PNG en la carpeta temporal y se
+/// devuelve su ruta para pegarla como texto (Claude Code adjunta una imagen cuando le pegan su
+/// ruta, igual que por SSH). `None` si en el portapapeles no hay una imagen. Las de mas de un
+/// dia se borran.
+#[tauri::command]
+pub async fn term_paste_image_local(app: tauri::AppHandle) -> Result<Option<String>, Error> {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    let Ok(img) = app.clipboard().read_image() else { return Ok(None) };
+    let png = encode_png(img.width(), img.height(), img.rgba())?;
+    let dir = std::env::temp_dir().join("ethereon-paste");
+    std::fs::create_dir_all(&dir)?;
+    if let Ok(list) = std::fs::read_dir(&dir) {
+        let day = Duration::from_secs(24 * 3600);
+        for e in list.flatten() {
+            if e.metadata().and_then(|m| m.modified()).is_ok_and(|t| t.elapsed().unwrap_or_default() > day) {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let ms = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or_default();
+    let name = format!("paste-{ms}.png");
+    let path = dir.join(name);
+    std::fs::write(&path, png)?;
+    Ok(Some(path.to_string_lossy().into_owned()))
+}
+
+/// Si hay una imagen en el portapapeles (para pasarle a Claude Code la tecla con la que la pega).
+#[tauri::command]
+pub fn clipboard_has_image(app: tauri::AppHandle) -> bool {
+    use tauri_plugin_clipboard_manager::ClipboardExt;
+    app.clipboard().read_image().is_ok()
+}
+
+/// Los ultimos comandos que la persona escribio en una shell local, del historial de la propia
+/// shell (PSReadLine en PowerShell, ~/.bash_history en Git Bash), mas nuevos al final. Para
+/// las sugerencias en gris de la terminal (lib/suggest.ts). Vacio si la shell no guarda uno.
+#[tauri::command]
+pub fn shell_history(shell: String) -> Vec<String> {
+    let home = |rest: &str| std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME")).map(|h| PathBuf::from(h).join(rest));
+    let file = match shell.as_str() {
+        "pwsh" | "powershell" => std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join(r"Microsoft\Windows\PowerShell\PSReadLine\ConsoleHost_history.txt")),
+        "gitbash" | "shell" => home(".bash_history"),
+        _ => None,
+    };
+    let Some(text) = file.and_then(|f| std::fs::read(f).ok()) else { return Vec::new() };
+    let text = String::from_utf8_lossy(&text);
+    let lines: Vec<&str> = text.lines().map(str::trim_end).filter(|l| !l.trim().is_empty() && l.len() < 400 && !l.ends_with('`')).collect();
+    lines[lines.len().saturating_sub(2000)..].iter().map(|l| l.to_string()).collect()
 }
 
 /// Archivos de esta PC soltados sobre una terminal SSH: se suben por SFTP (como una imagen
