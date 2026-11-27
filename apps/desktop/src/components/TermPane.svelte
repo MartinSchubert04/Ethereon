@@ -279,7 +279,14 @@
     if (term.hasSelection()) {
       copySelection();
       term.clearSelection();
-    } else paste();
+      return;
+    }
+    // Si el programa pidio el mouse (Claude Code, tmux, vim), xterm ya le mando el clic:
+    // Claude Code en Windows pega solo con el clic derecho, y pegar aca tambien lo
+    // duplicaba. Como en Windows Terminal, el clic es del programa; con Shift (que xterm no
+    // le manda) pega Ethereon.
+    if (term.modes.mouseTrackingMode !== "none" && !e.shiftKey) return;
+    paste();
   }
   /** Los colores del resaltado, sacados de la paleta de esta terminal. */
   const hlColors = () => tones(cssVar("--term-ansi", el).split(/\s+/).filter(Boolean), cssVar("--term-bg", el));
