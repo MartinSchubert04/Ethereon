@@ -1,10 +1,10 @@
 <script lang="ts">
   import { disable, enable, isEnabled } from "@tauri-apps/plugin-autostart";
   import { open, save } from "@tauri-apps/plugin-dialog";
-  import { api, type ExportFormat, type Settings } from "../lib/api";
+  import { api, errText, type ExportFormat, type Settings, type SettingsFile } from "../lib/api";
   import { app, attempt, toast } from "../lib/state.svelte";
   import KeyBinds from "../components/KeyBinds.svelte";
-  import { comboOf, matches, prefs, pretty } from "../lib/prefs.svelte";
+  import { comboOf, matches, prefs, prefsExport, prefsImport, pretty } from "../lib/prefs.svelte";
   import Select from "../components/Select.svelte";
   import Switch from "../components/Switch.svelte";
   import Section from "../components/Section.svelte";
@@ -13,7 +13,7 @@
   import Logo from "../components/Logo.svelte";
   import { iconOptions } from "../lib/icons";
   import type { LocalShell } from "../lib/api";
-  import { ArrowDownUp, FileInput, FolderInput, FolderOpen, Keyboard, Palette, Play, Power, Shield, ShieldCheck, SquareTerminal, Volume2, VolumeX } from "@lucide/svelte";
+  import { ArrowDownUp, FileInput, FileOutput, FolderInput, FolderOpen, Keyboard, Palette, Play, Power, Shield, ShieldCheck, SquareTerminal, Volume2, VolumeX } from "@lucide/svelte";
   import { importPick } from "../lib/importer";
   import { INCLUDED, ptToPx, systemFonts, wtFont, type WtFont } from "../lib/termfonts";
   import {
@@ -26,6 +26,8 @@
     currentScheme,
     currentTheme,
     palettesOf,
+    themeExport,
+    themeImport,
     type ThemeId,
   } from "../lib/themes";
   import { SCHEMES, type Scheme } from "../lib/termschemes";
@@ -264,6 +266,68 @@
   async function backup() {
     const path = await save({ defaultPath: "ethereon-vault-backup.json" });
     if (path) attempt(() => api.backup(path), "Encrypted backup saved");
+  }
+
+  // ---- solo los ajustes: los del vault, los de config.json y los de la interfaz, sin hosts
+  // ni secretos. Importar pide la contrasena (cambia ajustes de seguridad).
+  async function exportSettings() {
+    const path = await save({ defaultPath: "ethereon-settings.json" });
+    if (!path) return;
+    const appCfg = { hotkey, open_in: openIn, update_every_mins: updateEvery };
+    attempt(() => api.settingsExport(path, appCfg, { prefs: prefsExport(), theme: themeExport() }), "Settings exported");
+  }
+
+  let settingsPath = $state<string | null>(null);
+  let settingsPw = $state("");
+  const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+
+  async function pickSettings() {
+    const p = (await open({ multiple: false, directory: false })) as string | null;
+    if (!p) return;
+    settingsPath = p;
+    settingsPw = "";
+  }
+
+  function cancelSettingsImport() {
+    settingsPath = null;
+    settingsPw = "";
+  }
+
+  async function importSettings() {
+    let f: SettingsFile;
+    try {
+      f = await api.settingsImport(settingsPath!, settingsPw);
+    } catch (e) {
+      return toast(errText(e), true);
+    }
+    cancelSettingsImport();
+    // Los del vault ya quedaron guardados; aca solo se actualiza lo que muestra la pantalla.
+    s = { ...f.vault, agent_enabled: app.snap!.settings.agent_enabled };
+    prefsImport(f.ui?.prefs);
+    themeImport(f.ui?.theme);
+    theme = currentTheme();
+    palette = currentPalette(theme);
+    opacity = currentOpacity(theme);
+    scheme = currentScheme();
+    // Los de config.json, con los comandos de siempre: lo que no se puede en esta PC se saltea.
+    const a = f.app ?? {};
+    const skipped: string[] = [];
+    if (a.hotkey !== undefined && a.hotkey !== hotkey) {
+      try {
+        await api.hotkeySet(a.hotkey);
+        hotkey = a.hotkey;
+      } catch {
+        skipped.push("the global shortcut (something else uses it)");
+      }
+    }
+    if ((a.open_in === "wt" || a.open_in === "tab") && a.open_in !== openIn) {
+      if (a.open_in === "wt" && !wtInstalled) skipped.push("opening folders in Windows Terminal (not installed)");
+      else if (await api.openInSet(a.open_in).then(() => true, () => false)) openIn = a.open_in;
+    }
+    if (typeof a.update_every_mins === "number" && a.update_every_mins !== updateEvery) {
+      if (await api.updateEverySet(a.update_every_mins).then(() => true, () => false)) updateEvery = a.update_every_mins;
+    }
+    toast(skipped.length ? `Settings imported, except ${skipped.join(" and ")}` : "Settings imported");
   }
 </script>
 
@@ -573,7 +637,7 @@
       </div>
     </Section>
 
-    <Section id="export" title="Import and export" icon={ArrowDownUp} summary="Ethereon, OpenSSH, Bitwarden, CSV or an encrypted backup">
+    <Section id="export" title="Import and export" icon={ArrowDownUp} summary="Ethereon, OpenSSH, Bitwarden, CSV, an encrypted backup or only the settings">
       <div class="sub">Import</div>
       <div class="row">
         <button class="btn primary" onclick={() => importPick()}><FileInput size={14} /> Import a file...</button>
@@ -598,6 +662,26 @@
       <div class="row">
         <button class="btn primary" disabled={fmt.secrets && !exportPw} onclick={doExport}>Export</button>
         <button class="btn" onclick={backup}><ShieldCheck size={14} /> Encrypted backup</button>
+      </div>
+      <div class="sub">Settings only</div>
+      {#if settingsPath}
+        <label class="field">Master password
+          <input type="password" bind:value={settingsPw} onkeydown={(e) => e.key === "Enter" && settingsPw && importSettings()} />
+          <span class="hint">Replaces the settings on this PC with the ones in {baseName(settingsPath)}</span>
+        </label>
+        <div class="row">
+          <button class="btn primary" disabled={!settingsPw} onclick={importSettings}>Import settings</button>
+          <button class="btn" onclick={cancelSettingsImport}>Cancel</button>
+        </div>
+      {:else}
+        <div class="row">
+          <button class="btn" onclick={exportSettings}><FileOutput size={14} /> Export settings...</button>
+          <button class="btn" onclick={pickSettings}><FileInput size={14} /> Import settings...</button>
+        </div>
+      {/if}
+      <div class="faint small">
+        Security, sound, appearance, terminal, shortcuts, SFTP and updates. No hosts, credentials or rules. Importing
+        replaces these settings on this PC, except the agent switch, and asks for the master password.
       </div>
     </Section>
   </div>

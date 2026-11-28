@@ -128,6 +128,29 @@ $effect.root(() => {
   });
 });
 
+/** Para "Export settings": lo mismo que se guarda en el WebView. */
+export function prefsExport() {
+  return $state.snapshot({ binds: prefs.binds, term: prefs.term, files: prefs.files });
+}
+
+/** "Import settings": encima de los valores de siempre. Del archivo se toman solo las claves
+ *  que existen y con el mismo tipo; lo que no trae queda por defecto. */
+export function prefsImport(v: unknown) {
+  if (!v || typeof v !== "object") return;
+  const o = v as Record<string, unknown>;
+  const pick = <T extends object>(def: T, src: unknown): T => {
+    const out = { ...def } as Record<string, unknown>;
+    if (src && typeof src === "object" && !Array.isArray(src)) {
+      for (const [k, x] of Object.entries(src)) if (k in out && typeof x === typeof out[k] && x !== null) out[k] = x;
+    }
+    return out as T;
+  };
+  const d = defaults();
+  prefs.binds = pick(d.binds, o.binds);
+  prefs.term = pick(d.term, o.term);
+  prefs.files = pick(d.files, o.files);
+}
+
 export function resetBinds() {
   prefs.binds = defaults().binds;
 }

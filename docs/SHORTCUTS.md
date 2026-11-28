@@ -235,6 +235,20 @@ Hosts page. The format is detected automatically, by looking at the content:
 It always adds to the current vault: whatever already exists with the same name is left as is, and already
 confirmed server fingerprints aren't overwritten. Agent tokens aren't imported.
 
+### Settings only
+
+**Settings → Import and export → Export settings...** saves a JSON with the settings and nothing
+else: security (idle lock, approval wait, keep-alive, audit output), sound, appearance (theme,
+palettes, opacity, terminal colors), terminal, keyboard shortcuts, SFTP start folder, the global
+shortcut, where folders open and how often updates are checked. No hosts, credentials, rules or
+agent tokens, so it doesn't ask for the password.
+
+**Import settings...** replaces those settings on this PC with the file's and asks for the master
+password, because it changes security settings. The agent switch stays as it is. What can't be
+applied on this PC (a global shortcut another app already uses, Windows Terminal when it isn't
+installed) is skipped and named in the message. The general importer doesn't take this file and
+says to use **Import settings**.
+
 ## Settings
 
 Sections open and close with a click; Ethereon remembers which ones you left open.

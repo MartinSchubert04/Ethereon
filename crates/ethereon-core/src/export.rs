@@ -7,12 +7,41 @@
 //! - `Csv`: hosts sin secretos, para una planilla.
 //! - `Json`: todo el vault en claro (para migrar o revisar).
 //! - El respaldo cifrado (copiar el vault tal cual) esta en `Broker::backup_to`.
+//! - `SettingsFile`: solo los ajustes (sin hosts ni secretos), para llevarlos a otra PC.
 
-use serde::Deserialize;
-use serde_json::json;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
 use std::path::Path;
 
-use crate::model::{CredentialKind, VaultData};
+use crate::model::{CredentialKind, Settings, VaultData};
+
+/// Version del archivo de ajustes. Sube solo si cambia de forma que uno viejo ya no se lea.
+pub const SETTINGS_FILE_VERSION: u32 = 1;
+
+/// "Export settings": los ajustes y nada mas. Sin secretos, asi que exportarlo no pide la
+/// contrasena maestra; importarlo si (ver `import::settings_file`), porque cambia ajustes de
+/// seguridad.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SettingsFile {
+    /// La marca que lo distingue de los demas JSON (y su version).
+    pub ethereon_settings: u32,
+    /// Los del vault (Security, sonido). Al importarlo, el interruptor del agente no cambia.
+    #[serde(default)]
+    pub vault: Settings,
+    /// Los de config.json: atajo global, donde se abren las carpetas, cada cuanto busca
+    /// actualizaciones. Los arma y los aplica la interfaz con sus comandos de siempre.
+    #[serde(default)]
+    pub app: Value,
+    /// Los de la interfaz (tema, atajos, terminal, SFTP). El broker no los mira.
+    #[serde(default)]
+    pub ui: Value,
+}
+
+/// Escribe el archivo de ajustes en `to`.
+pub fn write_settings(settings: &Settings, app: Value, ui: Value, to: &Path) -> std::io::Result<()> {
+    let f = SettingsFile { ethereon_settings: SETTINGS_FILE_VERSION, vault: settings.clone(), app, ui };
+    std::fs::write(to, serde_json::to_vec_pretty(&f)?)
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]

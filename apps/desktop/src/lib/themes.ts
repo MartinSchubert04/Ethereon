@@ -129,6 +129,35 @@ export function applyTheme(t: ThemeId, palette = currentPalette(t), opacity = cu
   window.dispatchEvent(new CustomEvent("themechange"));
 }
 
+/** Para "Export settings": el tema, la paleta y la opacidad de cada tema, y los colores de
+ *  la terminal. */
+export function themeExport() {
+  return {
+    theme: currentTheme(),
+    palettes: Object.fromEntries(THEMES.map((t) => [t.id, currentPalette(t.id)])),
+    opacity: Object.fromEntries(THEMES.map((t) => [t.id, currentOpacity(t.id)])),
+    scheme: currentScheme(),
+  };
+}
+
+/** "Import settings": guarda lo que trae y lo aplica. Lo invalido (un tema o una paleta que
+ *  ya no existe) lo descartan `current*` al leerlo, como con lo guardado a mano. */
+export function themeImport(v: unknown) {
+  if (!v || typeof v !== "object") return;
+  const o = v as { theme?: unknown; palettes?: unknown; opacity?: unknown; scheme?: unknown };
+  const rec = (x: unknown) => (x && typeof x === "object" ? (x as Record<string, unknown>) : {});
+  for (const t of THEMES) {
+    const p = rec(o.palettes)[t.id];
+    if (typeof p === "string") write(PKEY(t.id), p);
+    const n = rec(o.opacity)[t.id];
+    if (typeof n === "number") write(OKEY(t.id), String(n));
+  }
+  if (typeof o.theme === "string") write(KEY, o.theme);
+  if (typeof o.scheme === "string") write(SKEY, o.scheme);
+  const t = currentTheme();
+  applyTheme(t, currentPalette(t), currentOpacity(t), currentScheme());
+}
+
 /** Lee una variable del tema actual (para la terminal, que no usa CSS). Desde <body>, que
  *  es donde estan los colores ya translucidos, o desde `el` si puede tener los suyos (la
  *  terminal de un host con su esquema, ver `schemeStyle`). */

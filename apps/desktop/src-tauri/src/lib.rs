@@ -366,6 +366,8 @@ pub fn run() {
             commands::import_detect,
             commands::import_auto,
             commands::export_data,
+            commands::settings_export,
+            commands::settings_import,
             commands::reveal_secret,
             commands::reveal_unlocked,
             commands::backup_vault,

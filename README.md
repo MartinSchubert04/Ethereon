@@ -65,7 +65,8 @@ credential. It sits in the tray and is lightweight with the window closed.
   signed chain that detects if someone edits it. Search and CSV export.
 - **Import and export:** import detects the format on its own: Ethereon backups and exports,
   `~/.ssh/config` (Termius's too), keys and Bitwarden. Exports to Ethereon, OpenSSH (what
-  Termius imports), Bitwarden, CSV or an encrypted backup.
+  Termius imports), Bitwarden, CSV or an encrypted backup. The settings alone also export and
+  import, to take them to another PC.
 - **Themes:** Default, Warp, Poolsuite FM, Haze and Athanor (IBM VGA bitmap font and "pixel clay",
   like portfolio-athanor), each with several palettes (Nord, Dracula, Tokyo Night, Srcery, Solar
   Flare, Lavender, Vellum...).

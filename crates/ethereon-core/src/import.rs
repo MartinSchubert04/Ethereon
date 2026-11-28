@@ -308,6 +308,9 @@ pub fn detect(path: &Path) -> Result<Kind, String> {
             }
             return Ok(Kind::Bitwarden);
         }
+        if v.get("ethereon_settings").is_some() {
+            return Err("that is an Ethereon settings file: use Import settings, below".into());
+        }
         if v.get("hosts").is_some() || v.get("credentials").is_some() {
             return Ok(Kind::EthereonJson);
         }
@@ -367,6 +370,20 @@ fn from_vault(d: VaultData) -> Imported {
         out.notes.push("Agent tokens are not imported: create new ones in Agents".into());
     }
     out
+}
+
+/// El archivo de "Export settings". Va aparte de `detect`/`load`: no trae hosts, reemplaza
+/// los ajustes en vez de sumar, y se importa con su propio boton.
+pub fn settings_file(text: &str) -> Result<crate::export::SettingsFile, String> {
+    let t = text.trim_start_matches('\u{feff}');
+    let v: Value = serde_json::from_str(t).map_err(|_| "that is not an Ethereon settings file".to_string())?;
+    let Some(ver) = v.get("ethereon_settings").and_then(|x| x.as_u64()) else {
+        return Err("that is not an Ethereon settings file (it is made with Export settings)".into());
+    };
+    if ver > crate::export::SETTINGS_FILE_VERSION as u64 {
+        return Err("that settings file is from a newer Ethereon: update this one first".into());
+    }
+    serde_json::from_value(v).map_err(|e| format!("could not read the settings file: {e}"))
 }
 
 /// El CSV que exporta Ethereon (solo hosts, sin secretos).
@@ -449,6 +466,36 @@ mod detect_tests {
         assert_eq!(detect(&tmp("f.csv", "name,hostname,port,user,credential,group,env,tags,jump,description\n")), Ok(Kind::EthereonCsv));
         assert!(detect(&tmp("g.pub", "ssh-ed25519 AAAA x")).unwrap_err().contains("public key"));
         assert!(detect(&tmp("h", "hello")).is_err());
+        assert!(detect(&tmp("i.json", r#"{"ethereon_settings":1,"vault":{}}"#)).unwrap_err().contains("Import settings"));
+    }
+
+    #[test]
+    fn settings_file_round_trip() {
+        let s = crate::model::Settings { autolock_minutes: 90, sound_volume: 12, audit_output: true, ..Default::default() };
+        let p = tmp("settings.json", "");
+        let app = serde_json::json!({ "hotkey": "Ctrl+Alt+E", "update_every_mins": 60 });
+        let ui = serde_json::json!({ "prefs": { "term": { "fontSize": 15 } } });
+        crate::export::write_settings(&s, app.clone(), ui.clone(), &p).unwrap();
+        let text = std::fs::read_to_string(&p).unwrap();
+        // Ni hosts ni credenciales: no tiene que parecerse a un export del vault.
+        assert!(!text.contains("\"hosts\"") && !text.contains("credentials"));
+        let f = settings_file(&text).unwrap();
+        assert_eq!(f.vault.autolock_minutes, 90);
+        assert_eq!(f.vault.sound_volume, 12);
+        assert!(f.vault.audit_output);
+        assert_eq!(f.app, app);
+        assert_eq!(f.ui, ui);
+    }
+
+    #[test]
+    fn settings_file_rejects_other_files() {
+        assert!(settings_file(r#"{"hosts":[],"credentials":[]}"#).is_err());
+        assert!(settings_file("Host web").is_err());
+        assert!(settings_file(r#"{"ethereon_settings":99}"#).unwrap_err().contains("newer"));
+        // Lo que falta queda en su valor de siempre.
+        let f = settings_file(r#"{"ethereon_settings":1,"vault":{"autolock_minutes":5}}"#).unwrap();
+        assert_eq!(f.vault.autolock_minutes, 5);
+        assert_eq!(f.vault.approval_timeout_secs, crate::model::Settings::default().approval_timeout_secs);
     }
 
     #[test]

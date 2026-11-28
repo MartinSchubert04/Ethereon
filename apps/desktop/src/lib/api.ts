@@ -202,6 +202,14 @@ export interface Settings {
   sound_volume: number;
 }
 
+/** El archivo de "Export settings" (ver export.rs). `app` y `ui` los arma y los lee la interfaz. */
+export interface SettingsFile {
+  ethereon_settings: number;
+  vault: Settings;
+  app: { hotkey?: string | null; open_in?: "wt" | "tab"; update_every_mins?: number };
+  ui: { prefs?: unknown; theme?: unknown };
+}
+
 export interface Snapshot {
   hosts: Host[];
   groups: Group[];
@@ -388,6 +396,10 @@ export const api = {
   exportData: (format: ExportFormat, path: string, password: string | null) =>
     invoke<string>("export_data", { format, path, password }),
   backup: (path: string) => invoke<void>("backup_vault", { path }),
+  settingsExport: (path: string, app: SettingsFile["app"], ui: SettingsFile["ui"]) =>
+    invoke<void>("settings_export", { path, app, ui }),
+  /** Reemplaza los ajustes del vault y devuelve el archivo, para aplicar `app` y `ui`. */
+  settingsImport: (path: string, password: string) => invoke<SettingsFile>("settings_import", { path, password }),
   version: () => invoke<string>("app_version"),
   updateStatus: () => invoke<UpdateInfo | null>("update_status"),
   updateCheck: () => invoke<string | null>("update_check"),

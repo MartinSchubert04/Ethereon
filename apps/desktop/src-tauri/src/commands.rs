@@ -753,6 +753,32 @@ pub fn backup_vault(s: State<AppState>, path: String) -> R<()> {
     s.broker.backup_to(std::path::Path::new(&path))
 }
 
+/// "Export settings": los del vault mas los de config.json y la interfaz, que manda la
+/// interfaz (`app`, `ui`). Sin secretos, asi que no pide la contrasena.
+#[tauri::command]
+pub fn settings_export(s: State<AppState>, path: String, app: serde_json::Value, ui: serde_json::Value) -> R<()> {
+    let settings = s.broker.settings()?;
+    export::write_settings(&settings, app, ui, std::path::Path::new(&path)).map_err(Error::Io)
+}
+
+/// "Import settings": reemplaza los del vault (menos el interruptor del agente, que queda
+/// como esta) y devuelve el archivo para que la interfaz aplique lo suyo. Pide la contrasena
+/// maestra porque cambia ajustes de seguridad.
+#[tauri::command]
+pub async fn settings_import(s: State<'_, AppState>, path: String, password: String) -> R<export::SettingsFile> {
+    let text = std::fs::read_to_string(&path)?;
+    let file = import::settings_file(&text).map_err(invalid)?;
+    let b = s.broker.clone();
+    tauri::async_runtime::spawn_blocking(move || b.verify_password(&password)).await.map_err(|e| invalid(e.to_string()))??;
+    s.broker.write(|d| {
+        let agent = d.settings.agent_enabled;
+        d.settings = file.vault.clone();
+        d.settings.agent_enabled = agent;
+        Ok(())
+    })?;
+    Ok(file)
+}
+
 // ---------------------------------------------------------------- actualizaciones
 
 #[tauri::command]
