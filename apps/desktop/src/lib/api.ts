@@ -392,6 +392,8 @@ export const api = {
   updateStatus: () => invoke<UpdateInfo | null>("update_status"),
   updateCheck: () => invoke<string | null>("update_check"),
   updateNow: () => invoke<void>("update_now"),
+  updateEveryGet: () => invoke<number>("update_every_get"),
+  updateEverySet: (minutes: number) => invoke<void>("update_every_set", { minutes }),
   termOpen: (host: string, cols: number, rows: number, onEvent: Channel<TermEvent>) =>
     invoke<number>("term_open", { host, cols, rows, onEvent }),
   termWrite: (id: number, data: string) => invoke<void>("term_write", { id, data }),

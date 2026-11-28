@@ -1,6 +1,7 @@
 //! Actualizaciones automaticas, como en Haze:
 //!
-//! 1. Al minuto de arrancar y cada 6 horas mira `latest.json` del ultimo Release de GitHub.
+//! 1. Al minuto de arrancar y despues cada tanto (5 minutos por defecto, se cambia en Settings)
+//!    mira `latest.json` del ultimo Release de GitHub.
 //! 2. Si hay una version nueva, la baja de fondo y verifica la firma.
 //! 3. Se instala sola solo si no se pierde nada: sin ventana abierta, con el vault
 //!    bloqueado y sin comandos del agente en curso.
@@ -11,6 +12,7 @@
 //!    por `handoff.rs`, sin tocar el disco) y la interfaz lo vuelve a abrir igual.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -20,8 +22,44 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 use crate::AppState;
 
 const FIRST_CHECK: Duration = Duration::from_secs(60);
-const CHECK_EVERY: Duration = Duration::from_secs(6 * 3600);
 const IDLE_POLL: Duration = Duration::from_secs(60);
+pub const DEFAULT_EVERY_MINS: u64 = 5;
+/// Entre un minuto y una semana.
+const EVERY_RANGE: std::ops::RangeInclusive<u64> = 1..=7 * 24 * 60;
+
+/// Cada cuanto se busca. Cambiarlo despierta al chequeo periodico para que tome el nuevo
+/// valor ya (bajar de 6 h a 5 min no espera las 6 h).
+pub struct Every {
+    mins: AtomicU64,
+    changed: tokio::sync::Notify,
+}
+
+impl Every {
+    pub fn new(mins: u64) -> Self {
+        let mins = if EVERY_RANGE.contains(&mins) { mins } else { DEFAULT_EVERY_MINS };
+        Every { mins: AtomicU64::new(mins), changed: tokio::sync::Notify::new() }
+    }
+    pub fn minutes(&self) -> u64 {
+        self.mins.load(Ordering::SeqCst)
+    }
+}
+
+#[tauri::command]
+pub fn update_every_get(app: AppHandle) -> u64 {
+    app.state::<AppState>().update_every.minutes()
+}
+
+#[tauri::command]
+pub fn update_every_set(app: AppHandle, minutes: u64) -> Result<(), ethereon_core::Error> {
+    if !EVERY_RANGE.contains(&minutes) {
+        return Err(ethereon_core::Error::Invalid("between 1 minute and 7 days".into()));
+    }
+    let every = &app.state::<AppState>().update_every;
+    every.mins.store(minutes, Ordering::SeqCst);
+    every.changed.notify_one();
+    crate::save_config(&app);
+    Ok(())
+}
 
 #[derive(Clone, Serialize)]
 pub struct UpdateInfo {
@@ -80,7 +118,16 @@ pub fn start(app: AppHandle) {
             if let Err(e) = check_and_download(&a).await {
                 log::warn!("no se pudo buscar actualizaciones: {e}");
             }
-            tokio::time::sleep(CHECK_EVERY).await;
+            // Espera desde el ultimo chequeo; si cambian el intervalo, recalcula con el nuevo.
+            let last = tokio::time::Instant::now();
+            let every = &a.state::<AppState>().update_every;
+            loop {
+                let due = last + Duration::from_secs(every.minutes() * 60);
+                tokio::select! {
+                    _ = tokio::time::sleep_until(due) => break,
+                    _ = every.changed.notified() => {}
+                }
+            }
         }
     });
     tauri::async_runtime::spawn(async move {

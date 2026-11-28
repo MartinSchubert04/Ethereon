@@ -32,13 +32,13 @@
 
   <div class="cols">
     <div class="stack">
-      <div class="card box">
+      <div class="card box deny">
         <div class="row">
           <h3 class="grow">Always forbidden</h3>
           <button class="btn sm ghost" onclick={() => (deny = app.snap?.default_deny.join("\n") ?? "")}>Reset to defaults</button>
           <button class="btn sm primary" disabled={!dirty} onclick={save}>Save</button>
         </div>
-        <textarea class="mono" rows="18" bind:value={deny} spellcheck="false"></textarea>
+        <textarea class="mono" bind:value={deny} spellcheck="false"></textarea>
         <div class="faint small">Checked on every part of the command: pipes, ;, &&, $( ), backticks, sh -c, sudo, xargs, find -exec.</div>
       </div>
     </div>
@@ -91,7 +91,23 @@
     display: grid;
     grid-template-columns: minmax(300px, 1fr) minmax(320px, 1.1fr);
     gap: 16px;
-    align-items: start;
+    align-items: stretch;
+  }
+  /* La lista ocupa el alto de la columna de al lado (sin hueco abajo) y crece con lo que
+     tiene, con un minimo para que se pueda editar comoda. */
+  .cols > .stack:first-child {
+    display: flex;
+    flex-direction: column;
+  }
+  .deny {
+    flex: 1;
+  }
+  .deny textarea {
+    flex: 1;
+    min-height: 320px;
+    field-sizing: content;
+    resize: none;
+    line-height: 1.55;
   }
   .box {
     padding: 16px;

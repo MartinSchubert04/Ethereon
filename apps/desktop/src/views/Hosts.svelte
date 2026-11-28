@@ -86,8 +86,8 @@
     started: boolean;
     /** Nombre del grupo de abajo; null = sin grupo; undefined = ninguno. */
     over: string | null | undefined;
-    /** Delante de que host cae (null = al final del grupo). */
-    before: string | null;
+    /** Delante de que host cae (null = al final del grupo; undefined = se queda donde estaba). */
+    before: string | null | undefined;
     /** Donde se dibuja la linea que marca el lugar. */
     mark: { name: string; side: "before" | "after" } | null;
   }
@@ -108,7 +108,7 @@
       w: r.width,
       started: false,
       over: undefined,
-      before: null,
+      before: undefined,
       mark: null,
     };
   }
@@ -137,10 +137,19 @@
       const next = cards[cards.indexOf(card) + 1]?.dataset.name ?? null;
       drag.mark = { name: card.dataset.name!, side };
       drag.before = side === "before" ? card.dataset.name! : next;
-    } else if (zone && !card) {
+    } else if (zone && card) {
+      // Sobre su propia tarjeta: se queda donde estaba.
       drag.mark = null;
-      drag.before = null; // al final del grupo
-    } else if (!zone) {
+      drag.before = undefined;
+    } else if (zone) {
+      drag.mark = null;
+      // En un hueco: en otro grupo va al final; en el suyo, solo si el cursor esta despues
+      // de la ultima tarjeta (en los huecos de en medio no se mueve).
+      const own = zone.dataset.drop === (drag.host.group ?? "");
+      const last = [...zone.querySelectorAll<HTMLElement>(".host[data-name]")].at(-1)?.getBoundingClientRect();
+      const pastLast = !last || e.clientY > last.bottom || (e.clientY >= last.top && e.clientX > last.right);
+      drag.before = own && !pastLast ? undefined : null;
+    } else {
       drag.mark = null;
     }
     // Cerca de los bordes, la pagina se desplaza sola.
@@ -159,6 +168,11 @@
     justDragged = true;
     setTimeout(() => (justDragged = false), 50);
     if (d.over === undefined) return;
+    if (d.before === undefined) {
+      // Soltado sin elegir lugar: en su grupo no cambia nada; en otro va al final.
+      if (d.over === (d.host.group ?? null)) return;
+      d.before = null;
+    }
     await moveHost(d.host, d.over, d.before);
   }
 

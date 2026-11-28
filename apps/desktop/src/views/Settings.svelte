@@ -8,6 +8,7 @@
   import Select from "../components/Select.svelte";
   import Switch from "../components/Switch.svelte";
   import Section from "../components/Section.svelte";
+  import DurationInput from "../components/DurationInput.svelte";
   import Seg from "../components/Seg.svelte";
   import Logo from "../components/Logo.svelte";
   import { iconOptions } from "../lib/icons";
@@ -50,6 +51,15 @@
   api.version().then((v) => (version = v));
   let checking = $state(false);
   let upToDate = $state(false);
+  // Cada cuanto busca actualizaciones (config.json, no el vault: hace falta con el vault cerrado).
+  let updateEvery = $state(5);
+  api.updateEveryGet().then((m) => (updateEvery = m)).catch(() => {});
+  async function setUpdateEvery(m: number) {
+    // Si no se pudo (fuera de rango), vuelve a mostrar el que quedo.
+    if (!(await attempt(() => api.updateEverySet(m)))) updateEvery = await api.updateEveryGet();
+  }
+  const everyText = (m: number) => (m % 60 === 0 ? `${m / 60} h` : `${m} min`);
+
   async function checkUpdate() {
     checking = true;
     upToDate = false;
@@ -323,15 +333,15 @@
       summary="{s.autolock_minutes ? `Locks after ${s.autolock_minutes} min idle` : 'Never locks by itself'}{askAtStart || confirmingStart ? '' : ' · opens by itself at start'}"
     >
       <div class="grid2">
-        <label class="field">Lock after (minutes without using Ethereon) <span class="hint">0 = never. Agent requests do not keep it open.</span>
-          <input type="number" min="0" bind:value={s.autolock_minutes} />
-        </label>
+        <div class="field">Lock after this long without using Ethereon <span class="hint">0 = never. Agent requests do not keep it open.</span>
+          <DurationInput label="Lock after" bind:minutes={s.autolock_minutes} />
+        </div>
         <label class="field">Approval wait (seconds) <span class="hint">After that the command is rejected</span>
-          <input type="number" min="10" bind:value={s.approval_timeout_secs} />
+          <input class="num" type="number" min="10" bind:value={s.approval_timeout_secs} />
         </label>
-        <label class="field">Keep idle SSH connections (minutes)
-          <input type="number" min="1" bind:value={s.keep_alive_minutes} />
-        </label>
+        <div class="field">Keep idle SSH connections
+          <DurationInput label="Keep idle SSH connections" min={1} bind:minutes={s.keep_alive_minutes} />
+        </div>
         <div class="chk"><Switch bind:checked={s.audit_output}>Save the (masked) output in the audit log, not only its hash</Switch></div>
       </div>
       <div><button class="btn primary" onclick={saveSettings}>Save</button></div>
@@ -408,17 +418,20 @@
           <span class="hint">Nerd Font icons work with any of them</span>
         </div>
         <div class="field">Font size
-          <Select
-            bind:value={prefs.term.fontSize}
-            options={[
-              { value: 0, label: "Theme default" },
-              ...[12, 13, 14, 15, 16, 18, 20].map((n) => ({ value: n, label: `${n} px` })),
-            ]}
-          />
+          <div class="short">
+            <Select
+              bind:value={prefs.term.fontSize}
+              options={[
+                { value: 0, label: "Theme default" },
+                ...[12, 13, 14, 15, 16, 18, 20].map((n) => ({ value: n, label: `${n} px` })),
+              ]}
+            />
+          </div>
         </div>
         <label class="field">Tab name follows the folder after (seconds)
           <span class="hint">Local terminals only. 0 = right away, empty = never.</span>
           <input
+            class="num"
             type="number"
             min="0"
             placeholder="Never"
@@ -432,6 +445,7 @@
         <label class="field">Name change animation (milliseconds)
           <span class="hint">How long the letters spin. 0 = no animation.</span>
           <input
+            class="num"
             type="number"
             min="0"
             step="100"
@@ -494,7 +508,7 @@
       id="app"
       title="Startup and updates"
       icon={Power}
-      summary="Ethereon {version}{autostart ? ' · starts with Windows' : ''}"
+      summary="Ethereon {version} · checks every {everyText(updateEvery)}{autostart ? ' · starts with Windows' : ''}"
     >
       <Switch checked={autostart} onchange={toggleAutostart}>Start with Windows, hidden in the tray</Switch>
       <div class="faint small">Closing the window keeps Ethereon in the tray. Quit from the tray menu.</div>
@@ -538,6 +552,10 @@
           </div>
         </div>
       {/if}
+      <div class="field">Check for updates every
+        <DurationInput label="Check for updates every" min={1} bind:minutes={updateEvery} onchange={setUpdateEvery} />
+        <span class="hint">Only reads a small file from GitHub. From 1 minute to 7 days.</span>
+      </div>
       <div class="row">
         <span class="grow">Ethereon {version}</span>
         {#if app.update?.status === "ready"}
@@ -826,6 +844,19 @@
   }
   .small {
     font-size: 12px;
+  }
+  /* Los campos no ocupan toda la columna: alcanza con lo que entra. */
+  .num {
+    width: 110px;
+  }
+  .field > :global(.select-trigger),
+  .field > input[type="password"],
+  .grid2 > input[type="password"],
+  .path-btn {
+    max-width: 320px;
+  }
+  .short {
+    width: 170px;
   }
   .foot {
     margin-top: 24px;

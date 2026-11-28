@@ -136,8 +136,8 @@ git push origin v0.2.0
 ```
 
 The tag triggers `.github/workflows/desktop.yml`: it builds the installer, signs it and publishes it to the
-Release along with `latest.json`. Installed apps check that file a minute after starting and every 6
-hours, download the new version in the background and install it on their own when the window is closed, the vault
+Release along with `latest.json`. Installed apps check that file a minute after starting and then every 5
+minutes (changeable in Settings → Startup and updates), download the new version in the background and install it on their own when the window is closed, the vault
 locked and no agent commands are running (updating restarts the app and the vault ends up
 locked). If that doesn't happen, **Update** appears in the top bar.
 

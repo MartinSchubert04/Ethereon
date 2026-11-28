@@ -39,11 +39,21 @@ pub struct LocalConfig {
     /// Vidrio de Windows detras de las ventanas (la opacidad de los temas esta por debajo
     /// del 100 %). Hace falta al crearlas, antes de que cargue la interfaz.
     pub glass: bool,
+    /// Cada cuantos minutos busca una version nueva (ver updater.rs). No afecta la seguridad:
+    /// lo que se baja tiene que venir firmado igual.
+    pub update_every_mins: u64,
 }
 
 impl Default for LocalConfig {
     fn default() -> Self {
-        LocalConfig { port: DEFAULT_PORT, window: None, hotkey: Some(hotkey::DEFAULT.into()), open_in: "wt".into(), glass: false }
+        LocalConfig {
+            port: DEFAULT_PORT,
+            window: None,
+            hotkey: Some(hotkey::DEFAULT.into()),
+            open_in: "wt".into(),
+            glass: false,
+            update_every_mins: updater::DEFAULT_EVERY_MINS,
+        }
     }
 }
 
@@ -57,6 +67,7 @@ pub fn save_config(app: &AppHandle) {
     cfg.hotkey = st.hotkey.combo.lock().unwrap().clone();
     cfg.open_in = st.hotkey.open_in.lock().unwrap().clone();
     cfg.glass = st.glass.load(std::sync::atomic::Ordering::SeqCst);
+    cfg.update_every_mins = st.update_every.minutes();
     let _ = std::fs::write(&path, serde_json::to_vec_pretty(&cfg).unwrap());
 }
 
@@ -72,6 +83,7 @@ pub struct AppState {
     pub window: Mutex<Option<window::WindowBox>>,
     pub glass: std::sync::atomic::AtomicBool,
     pub update: Mutex<updater::Pending>,
+    pub update_every: updater::Every,
     tray: Mutex<Option<TrayItems>>,
 }
 
@@ -244,6 +256,7 @@ pub fn run() {
                 window: Mutex::new(config.window),
                 glass: std::sync::atomic::AtomicBool::new(config.glass),
                 update: Mutex::new(Default::default()),
+                update_every: updater::Every::new(config.update_every_mins),
                 tray: Mutex::new(None),
             });
 
@@ -360,6 +373,8 @@ pub fn run() {
             commands::update_status,
             commands::update_check,
             commands::update_now,
+            updater::update_every_get,
+            updater::update_every_set,
             terminal::term_open,
             terminal::term_write,
             terminal::term_break,
